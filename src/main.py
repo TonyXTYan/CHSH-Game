@@ -1,3 +1,18 @@
+import os
+import sys
+# DON'T CHANGE THIS !!!
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+import eventlet
+eventlet.monkey_patch()
+
+from flask import Flask, send_from_directory, jsonify, request
+from flask_socketio import SocketIO, emit, join_room, leave_room
+from src.models.quiz_models import db, Teams, Answers, PairQuestionRounds, ItemEnum
+import random
+from datetime import datetime
+import traceback
+
 # First define the class for application state
 class AppState:
     def __init__(self):
@@ -7,32 +22,19 @@ class AppState:
         self.game_started = False # Track if game has started
         # Store previous session mappings for reconnection
         self.previous_sessions = {} # {previous_sid: current_sid}
+        # Store team ID to team name mapping for faster lookups
+        self.team_id_to_name = {} # {team_id: team_name}
 
     def reset(self):
         self.active_teams.clear()
         self.participant_to_team.clear()
         self.dashboard_clients.clear()
         self.previous_sessions.clear()
+        self.team_id_to_name.clear()
         self.game_started = False
 
 # Create singleton instance for state
 state = AppState()
-
-# Then, the rest of the file...
-import eventlet
-eventlet.monkey_patch()
-
-import os
-import sys
-# DON'T CHANGE THIS !!!
-sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
-
-from flask import Flask, send_from_directory, jsonify, request
-from flask_socketio import SocketIO, emit, join_room, leave_room
-from src.models.quiz_models import db, Teams, Answers, PairQuestionRounds, ItemEnum
-import random
-from datetime import datetime
-import traceback
 
 app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'asdf#FGSgvasgf$5$WGT')
@@ -90,16 +92,21 @@ def serve(path):
             return "index.html not found", 404
 
 def get_serialized_active_teams():
-    teams_list = []
-    for name, info in state.active_teams.items():
-        teams_list.append({
-            'team_name': name,
-            'team_id': info['team_id'],
-            'participant1_sid': info['creator_sid'],
-            'participant2_sid': info.get('participant2_sid'),
-            'current_round_number': info.get('current_round_number', 0)
-        })
-    return teams_list
+    try:
+        teams_list = []
+        for name, info in state.active_teams.items():
+            teams_list.append({
+                'team_name': name,
+                'team_id': info['team_id'],
+                'participant1_sid': info['creator_sid'],
+                'participant2_sid': info.get('participant2_sid'),
+                'current_round_number': info.get('current_round_number', 0)
+            })
+        return teams_list
+    except Exception as e:
+        print(f"Error in get_serialized_active_teams: {str(e)}")
+        traceback.print_exc()
+        return []
 
 def emit_dashboard_team_update():
     try:
@@ -146,7 +153,11 @@ def on_dashboard_join():
 def handle_connect():
     try:
         print(f'Client connected: {request.sid}')
-        emit('available_teams', get_available_teams_list())
+        # Send game state along with available teams
+        emit('connection_established', {
+            'game_started': state.game_started,
+            'available_teams': get_available_teams_list()
+        })
     except Exception as e:
         print(f"Error in handle_connect: {str(e)}")
         traceback.print_exc()
@@ -179,6 +190,9 @@ def handle_disconnect():
                                 print(f"Error notifying partner of creator disconnect: {str(e)}")
                         
                         del state.active_teams[team_name]
+                        if team_info['team_id'] in state.team_id_to_name:
+                            del state.team_id_to_name[team_info['team_id']]
+                            
                         # Check if there's already an inactive team with same name
                         existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
                         if existing_inactive:
@@ -200,10 +214,18 @@ def handle_disconnect():
                         db.session.commit()
                         try:
                             emit_dashboard_team_update()
-                            emit('teams_updated', get_available_teams_list(), broadcast=True)
+                            emit('teams_updated', {
+                                'teams': get_available_teams_list(),
+                                'game_started': state.game_started
+                            }, broadcast=True)
                             if not creator_left and team_info.get('creator_sid'):
                                 emit('team_status_update', 
-                                    {'team_name': team_name, 'status': 'waiting_for_partner', 'members': get_team_members(team_name)}, 
+                                    {
+                                        'team_name': team_name, 
+                                        'status': 'waiting_for_partner', 
+                                        'members': get_team_members(team_name),
+                                        'game_started': state.game_started
+                                    }, 
                                     room=team_info['creator_sid'])
                         except Exception as e:
                             print(f"Error updating team status: {str(e)}")
@@ -253,9 +275,23 @@ def on_create_team(data):
         db.session.add(new_team_db); db.session.commit()
         state.active_teams[team_name] = {'creator_sid': sid, 'participant2_sid': None, 'team_id': new_team_db.team_id, 'current_round_number': 0, 'combo_tracker': {}, 'p1_answered_current_round': False, 'p2_answered_current_round': False}
         state.participant_to_team[sid] = team_name
+        state.team_id_to_name[new_team_db.team_id] = team_name
         join_room(team_name)
-        emit('team_created', {'team_name': team_name, 'team_id': new_team_db.team_id, 'creator_sid': sid, 'message': 'Team created. Waiting for partner.'})
-        emit('teams_updated', get_available_teams_list(), broadcast=True)
+        
+        # Include game_started in the response
+        emit('team_created', {
+            'team_name': team_name, 
+            'team_id': new_team_db.team_id, 
+            'creator_sid': sid, 
+            'message': 'Team created. Waiting for partner.',
+            'game_started': state.game_started
+        })
+        
+        emit('teams_updated', {
+            'teams': get_available_teams_list(),
+            'game_started': state.game_started
+        }, broadcast=True)
+        
         emit_dashboard_team_update()
     except Exception as e:
         print(f"Error in on_create_team: {str(e)}")
@@ -280,11 +316,38 @@ def on_join_team(data):
         db_team = Teams.query.get(team_info['team_id'])
         if db_team: db_team.participant2_session_id = sid; db.session.commit()
 
-        emit('team_joined', {'team_name': team_name, 'message': f'You joined team {team_name}.'}, room=sid)
-        emit('partner_joined', {'team_name': team_name, 'partner_sid': sid, 'message': f'A partner ({sid}) joined your team!'}, room=team_info['creator_sid'])
-        emit('teams_updated', get_available_teams_list(), broadcast=True)
-        emit('team_status_update', {'team_name': team_name, 'status': 'full', 'members': get_team_members(team_name)}, room=team_name)
+        # Include game_started in the response
+        emit('team_joined', {
+            'team_name': team_name, 
+            'message': f'You joined team {team_name}.',
+            'game_started': state.game_started
+        }, room=sid)
+        
+        emit('partner_joined', {
+            'team_name': team_name, 
+            'partner_sid': sid, 
+            'message': f'A partner ({sid}) joined your team!',
+            'game_started': state.game_started
+        }, room=team_info['creator_sid'])
+        
+        emit('teams_updated', {
+            'teams': get_available_teams_list(),
+            'game_started': state.game_started
+        }, broadcast=True)
+        
+        emit('team_status_update', {
+            'team_name': team_name, 
+            'status': 'full', 
+            'members': get_team_members(team_name),
+            'game_started': state.game_started
+        }, room=team_name)
+        
         emit_dashboard_team_update()
+        
+        # If game has already started, start a round for this team immediately
+        if state.game_started and team_info.get('participant2_sid'):
+            socketio.emit('game_start', {'game_started': True}, room=team_name)
+            start_new_round_for_pair(team_name)
     except Exception as e:
         print(f"Error in on_join_team: {str(e)}")
         traceback.print_exc()
@@ -296,18 +359,57 @@ def on_verify_team_membership(data):
         team_name = data.get('team_name')
         previous_sid = data.get('previous_sid')
         current_sid = request.sid
+        team_id = data.get('team_id')  # Optional, for additional verification
         
         if not team_name or not previous_sid:
             emit('rejoin_team_failed', {'message': 'Missing team name or previous session ID'}); return
             
         # Check if team exists and is active
         team_info = state.active_teams.get(team_name)
+        
+        # If team_name lookup failed but we have team_id, try that
+        if not team_info and team_id and team_id in state.team_id_to_name:
+            team_name = state.team_id_to_name[team_id]
+            team_info = state.active_teams.get(team_name)
+        
         if not team_info:
-            emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
+            # Try to find team by looking up the team in the database
+            if team_id:
+                db_team = Teams.query.get(team_id)
+                if db_team and db_team.is_active:
+                    # Team exists in DB but not in memory, recreate it
+                    team_name = db_team.team_name
+                    team_info = {
+                        'creator_sid': db_team.participant1_session_id,
+                        'participant2_sid': db_team.participant2_session_id,
+                        'team_id': db_team.team_id,
+                        'current_round_number': 0,
+                        'combo_tracker': {},
+                        'p1_answered_current_round': False,
+                        'p2_answered_current_round': False
+                    }
+                    state.active_teams[team_name] = team_info
+                    state.team_id_to_name[db_team.team_id] = team_name
+                    print(f"Recreated team {team_name} from database")
+                else:
+                    emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
+            else:
+                emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
             
-        # Check if previous_sid matches creator or participant2
+        # Check if previous_sid matches creator or participant2 directly
         is_creator = team_info['creator_sid'] == previous_sid
         is_participant2 = team_info.get('participant2_sid') == previous_sid
+        
+        # If no direct match, check previous session mapping chain
+        if not is_creator and not is_participant2:
+            # Check if previous_sid is in our mapping chain
+            for old_sid, mapped_sid in state.previous_sessions.items():
+                if team_info['creator_sid'] == mapped_sid:
+                    is_creator = True
+                    break
+                elif team_info.get('participant2_sid') == mapped_sid:
+                    is_participant2 = True
+                    break
         
         if not is_creator and not is_participant2:
             emit('rejoin_team_failed', {'message': 'You were not a member of this team'}); return
@@ -361,13 +463,16 @@ def on_verify_team_membership(data):
         status_message = "Team created! Waiting for a partner." if is_creator else "You have joined the team!"
         if team_info.get('participant2_sid') and is_creator:
             status_message = "Your team is full! Waiting for game to start."
+            if state.game_started:
+                status_message = "Game has started! Get ready for questions."
             
         emit('rejoin_team_success', {
             'team_name': team_name,
             'status_message': status_message,
             'is_creator': is_creator,
             'current_round': current_round_data,
-            'already_answered': already_answered
+            'already_answered': already_answered,
+            'game_started': state.game_started
         })
         
         # Notify other team member if exists
@@ -391,18 +496,57 @@ def on_rejoin_team(data):
         team_name = data.get('team_name')
         previous_sid = data.get('previous_sid')
         current_sid = request.sid
+        team_id = data.get('team_id')  # Optional, for additional verification
         
         if not team_name or not previous_sid:
             emit('rejoin_team_failed', {'message': 'Missing team name or previous session ID'}); return
             
         # Check if team exists and is active
         team_info = state.active_teams.get(team_name)
+        
+        # If team_name lookup failed but we have team_id, try that
+        if not team_info and team_id and team_id in state.team_id_to_name:
+            team_name = state.team_id_to_name[team_id]
+            team_info = state.active_teams.get(team_name)
+        
         if not team_info:
-            emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
+            # Try to find team by looking up the team in the database
+            if team_id:
+                db_team = Teams.query.get(team_id)
+                if db_team and db_team.is_active:
+                    # Team exists in DB but not in memory, recreate it
+                    team_name = db_team.team_name
+                    team_info = {
+                        'creator_sid': db_team.participant1_session_id,
+                        'participant2_sid': db_team.participant2_session_id,
+                        'team_id': db_team.team_id,
+                        'current_round_number': 0,
+                        'combo_tracker': {},
+                        'p1_answered_current_round': False,
+                        'p2_answered_current_round': False
+                    }
+                    state.active_teams[team_name] = team_info
+                    state.team_id_to_name[db_team.team_id] = team_name
+                    print(f"Recreated team {team_name} from database")
+                else:
+                    emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
+            else:
+                emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
             
-        # Check if previous_sid matches creator or participant2
+        # Check if previous_sid matches creator or participant2 directly
         is_creator = team_info['creator_sid'] == previous_sid
         is_participant2 = team_info.get('participant2_sid') == previous_sid
+        
+        # If no direct match, check previous session mapping chain
+        if not is_creator and not is_participant2:
+            # Check if previous_sid is in our mapping chain
+            for old_sid, mapped_sid in state.previous_sessions.items():
+                if team_info['creator_sid'] == mapped_sid:
+                    is_creator = True
+                    break
+                elif team_info.get('participant2_sid') == mapped_sid:
+                    is_participant2 = True
+                    break
         
         if not is_creator and not is_participant2:
             emit('rejoin_team_failed', {'message': 'You were not a member of this team'}); return
@@ -456,13 +600,16 @@ def on_rejoin_team(data):
         status_message = "Team created! Waiting for a partner." if is_creator else "You have joined the team!"
         if team_info.get('participant2_sid') and is_creator:
             status_message = "Your team is full! Waiting for game to start."
+            if state.game_started:
+                status_message = "Game has started! Get ready for questions."
             
         emit('rejoin_team_success', {
             'team_name': team_name,
             'status_message': status_message,
             'is_creator': is_creator,
             'current_round': current_round_data,
-            'already_answered': already_answered
+            'already_answered': already_answered,
+            'game_started': state.game_started
         })
         
         # Notify other team member if exists
@@ -498,6 +645,8 @@ def on_leave_team(data):
                 leave_room(team_name, sid=team_info['participant2_sid'])
                 del state.participant_to_team[team_info['participant2_sid']]
             del state.active_teams[team_name]
+            if team_info['team_id'] in state.team_id_to_name:
+                del state.team_id_to_name[team_info['team_id']]
             if db_team:
                 # Check if there's already an inactive team with same name
                 existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
@@ -509,13 +658,21 @@ def on_leave_team(data):
             team_info['participant2_sid'] = None
             if db_team: db_team.participant2_session_id = None
             emit('partner_left', {'message': 'Your partner has left the team.'}, room=team_info['creator_sid'])
-            emit('team_status_update', {'team_name': team_name, 'status': 'waiting_for_partner', 'members': get_team_members(team_name)}, room=team_info['creator_sid'])
+            emit('team_status_update', {
+                'team_name': team_name, 
+                'status': 'waiting_for_partner', 
+                'members': get_team_members(team_name),
+                'game_started': state.game_started
+            }, room=team_info['creator_sid'])
             emit('left_team_success', {'message': 'You have left the team.'}, room=sid)
         
         leave_room(team_name, sid=sid)
         del state.participant_to_team[sid]
         if db_team: db.session.commit()
-        emit('teams_updated', get_available_teams_list(), broadcast=True)
+        emit('teams_updated', {
+            'teams': get_available_teams_list(),
+            'game_started': state.game_started
+        }, broadcast=True)
         emit_dashboard_team_update()
     except Exception as e:
         print(f"Error in on_leave_team: {str(e)}")
@@ -639,11 +796,15 @@ def on_start_game():
             # Notify teams and dashboard that game has started
             for team_name, team_info in state.active_teams.items():
                 if team_info.get('participant2_sid'):  # Only notify full teams
-                    socketio.emit('game_start', room=team_name)
+                    socketio.emit('game_start', {'game_started': True}, room=team_name)
             
             # Notify dashboard
             for dashboard_sid in state.dashboard_clients:
                 socketio.emit('game_started', room=dashboard_sid)
+                
+            # Notify all clients about game state change
+            socketio.emit('game_state_changed', {'game_started': True}, broadcast=True)
+                
             # Start first round for all full teams
             for team_name, team_info in state.active_teams.items():
                 if team_info.get('participant2_sid'): # If team is full
