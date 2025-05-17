@@ -212,29 +212,28 @@ def handle_disconnect():
                     
                     if creator_left or partner_left:
                         db.session.commit()
-                        try:
-                            emit_dashboard_team_update()
-                            emit('teams_updated', {
-                                'teams': get_available_teams_list(),
+                        
+                    try:
+                        emit_dashboard_team_update()
+                        socketio.emit('teams_updated', {
+                            'teams': get_available_teams_list(),
+                            'game_started': state.game_started
+                        })
+                        if not creator_left and team_info.get('creator_sid'):
+                            emit('team_status_update', {
+                                'team_name': team_name, 
+                                'status': 'waiting_for_partner', 
+                                'members': get_team_members(team_name),
                                 'game_started': state.game_started
-                            }, broadcast=True)
-                            if not creator_left and team_info.get('creator_sid'):
-                                emit('team_status_update', 
-                                    {
-                                        'team_name': team_name, 
-                                        'status': 'waiting_for_partner', 
-                                        'members': get_team_members(team_name),
-                                        'game_started': state.game_started
-                                    }, 
-                                    room=team_info['creator_sid'])
-                        except Exception as e:
-                            print(f"Error updating team status: {str(e)}")
+                            }, room=team_info['creator_sid'])
+                    except Exception as e:
+                        print(f"Error updating team status: {str(e)}")
 
-                try:
-                    leave_room(team_name, sid=sid)
-                except Exception as e:
-                    print(f"Error leaving room: {str(e)}")
-                del state.participant_to_team[sid]
+                    try:
+                        leave_room(team_name, sid=sid)
+                    except Exception as e:
+                        print(f"Error leaving room: {str(e)}")
+                    del state.participant_to_team[sid]
     except Exception as e:
         print(f"Disconnect handler error: {str(e)}")
         traceback.print_exc()
@@ -287,10 +286,10 @@ def on_create_team(data):
             'game_started': state.game_started
         })
         
-        emit('teams_updated', {
+        socketio.emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
-        }, broadcast=True)
+        })
         
         emit_dashboard_team_update()
     except Exception as e:
@@ -330,10 +329,10 @@ def on_join_team(data):
             'game_started': state.game_started
         }, room=team_info['creator_sid'])
         
-        emit('teams_updated', {
+        socketio.emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
-        }, broadcast=True)
+        })
         
         emit('team_status_update', {
             'team_name': team_name, 
@@ -669,10 +668,10 @@ def on_leave_team(data):
         leave_room(team_name, sid=sid)
         del state.participant_to_team[sid]
         if db_team: db.session.commit()
-        emit('teams_updated', {
+        socketio.emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
-        }, broadcast=True)
+        })
         emit_dashboard_team_update()
     except Exception as e:
         print(f"Error in on_leave_team: {str(e)}")
@@ -803,7 +802,7 @@ def on_start_game():
                 socketio.emit('game_started', room=dashboard_sid)
                 
             # Notify all clients about game state change
-            socketio.emit('game_state_changed', {'game_started': True}, broadcast=True)
+            socketio.emit('game_state_changed', {'game_started': True})
                 
             # Start first round for all full teams
             for team_name, team_info in state.active_teams.items():
