@@ -104,4 +104,41 @@ function initializeSocketHandlers(socket, callbacks) {
     socket.on('rejoin_team_failed', (data) => {
         callbacks.onRejoinTeamFailed(data);
     });
+
+    socket.on('game_reset', () => {
+        // Reset client-side state
+        callbacks.showStatus('Game has been reset. Ready to start new game.', 'info');
+        
+        // Clear answer display if it exists
+        if (typeof callbacks.onAnswerConfirmed === 'function') {
+            callbacks.onAnswerConfirmed({ message: '' });
+        }
+        
+        // Reset round display
+        if (typeof callbacks.resetRoundDisplay === 'function') {
+            callbacks.resetRoundDisplay();
+        }
+        
+        // Reset game state
+        if (typeof callbacks.updateGameState === 'function') {
+            callbacks.updateGameState(false);
+        }
+        
+        // Clear any ongoing game UI elements
+        if (typeof callbacks.onGameReset === 'function') {
+            callbacks.onGameReset();
+        }
+    });
+    
+    socket.on('game_state_changed', (data) => {
+        // Update game state only if callback exists
+        if (typeof callbacks.updateGameState === 'function') {
+            callbacks.updateGameState(data.game_started);
+        }
+        // Show appropriate status message
+        callbacks.showStatus(
+            data.game_started ? 'Game has started!' : 'Game has been stopped.',
+            'info'
+        );
+    });
 }

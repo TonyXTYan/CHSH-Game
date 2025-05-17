@@ -1,9 +1,26 @@
 from flask import jsonify
-from src.config import app, socketio
+from src.config import app, socketio, db
 from src.state import state
-from src.models.quiz_models import Teams, Answers
+from src.models.quiz_models import Teams, Answers, PairQuestionRounds
 from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
+from time import time
+
+# Store last activity time for each dashboard client
+dashboard_last_activity = {}
+
+@socketio.on('keep_alive')
+def on_keep_alive():
+    try:
+        from flask import request
+        sid = request.sid
+        if sid in state.dashboard_clients:
+            dashboard_last_activity[sid] = time()
+            emit('keep_alive_ack', room=sid)
+    except Exception as e:
+        print(f"Error in on_keep_alive: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 def get_serialized_active_teams():
     try:
@@ -61,6 +78,7 @@ def on_dashboard_join():
         sid = request.sid
         state.dashboard_clients.add(sid)
         print(f"Dashboard client connected: {sid}")
+        dashboard_last_activity[sid] = time()
         emit_dashboard_full_update(client_sid=sid)
     except Exception as e:
         print(f"Error in on_dashboard_join: {str(e)}")
@@ -95,6 +113,71 @@ def on_start_game():
         import traceback
         traceback.print_exc()
         emit('error', {'message': f'Error starting game: {str(e)}'})
+
+@socketio.on('disconnect')
+def on_disconnect():
+    try:
+        from flask import request
+        sid = request.sid
+        if sid in state.dashboard_clients:
+            state.dashboard_clients.remove(sid)
+            if sid in dashboard_last_activity:
+                del dashboard_last_activity[sid]
+    except Exception as e:
+        print(f"Error in on_disconnect: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
+@socketio.on('restart_game')
+def on_restart_game():
+    try:
+        from flask import request
+        if request.sid not in state.dashboard_clients:
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'}); return
+
+        if not state.active_teams:
+            emit('error', {'message': 'No active teams to reset'}); return
+
+        # First update game state to prevent new answers during reset
+        state.game_started = False
+        
+        try:
+            # Clear database entries within a transaction
+            db.session.begin_nested()  # Create savepoint
+            PairQuestionRounds.query.delete()
+            Answers.query.delete()
+            db.session.commit()
+        except Exception as db_error:
+            db.session.rollback()
+            print(f"Database error during game reset: {str(db_error)}")
+            import traceback
+            traceback.print_exc()
+            emit('error', {'message': 'Database error during reset'}); return
+        
+        # Reset team state after successful database clear
+        for team_name, team_info in state.active_teams.items():
+            if team_info:  # Validate team info exists
+                team_info['current_round_number'] = 0
+                team_info['current_db_round_id'] = None
+                team_info['p1_answered_current_round'] = False
+                team_info['p2_answered_current_round'] = False
+                team_info['combo_tracker'] = {}
+        
+        # Notify all teams about the reset
+        for team_name in state.active_teams.keys():
+            socketio.emit('game_reset', room=team_name)
+        
+        # Ensure all clients are notified of the state change
+        socketio.emit('game_state_changed', {'game_started': False})
+        
+        # Update dashboard with reset state
+        emit_dashboard_full_update()
+            
+    except Exception as e:
+        print(f"Error in on_restart_game: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': f'Error restarting game: {str(e)}'})
 
 @app.route('/api/dashboard/data', methods=['GET'])
 def get_dashboard_data():

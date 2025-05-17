@@ -32,6 +32,12 @@
         .metric-card button:hover {
             background-color: #003d82;
         }
+        .metric-card button.reset-game {
+            background-color: #6c757d;
+        }
+        .metric-card button.confirm-reset {
+            background-color: #dc3545;
+        }
     </style>
 </head>
 <body>
@@ -57,7 +63,7 @@
                 <button id="download-data-btn" onclick="downloadData()">Download CSV</button>
             </div>
             <div class="metric-card">
-                <h3>Game Control</h3>
+                <h3 id="game-control-text">Game Control</h3>
                 <button id="start-game-btn" onclick="startGame()">Start Game</button>
             </div>
         </div>
@@ -83,8 +89,28 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        const socket = io(window.location.origin);
+        // Initialize socket with ping timeout settings
+        const socket = io(window.location.origin, {
+            pingTimeout: 60000, // Increase ping timeout to 60 seconds
+            pingInterval: 25000 // Ping every 25 seconds
+        });
         const connectionStatusDiv = document.getElementById("connection-status-dash");
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                console.log('Page became visible - requesting update');
+                // Request fresh data when page becomes visible
+                socket.emit('dashboard_join');
+            }
+        });
+
+        // Keep socket alive and handle background state
+        setInterval(() => {
+            if (socket.connected) {
+                socket.emit('keep_alive');
+            }
+        }, 30000); // Send keep-alive ping every 30 seconds
         
         const activeTeamsCountEl = document.getElementById("active-teams-count");
         const totalParticipantsCountEl = document.getElementById("total-participants-count");
@@ -100,19 +126,83 @@
         socket.on("connect", () => {
             connectionStatusDiv.textContent = "Connected to server";
             connectionStatusDiv.className = "status-connected";
+            // Reset game button state on reconnect
+            const startBtn = document.getElementById("start-game-btn");
+            startBtn.disabled = false;
+            startBtn.textContent = "Start Game";
             socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
         });
 
         socket.on("disconnect", () => {
             connectionStatusDiv.textContent = "Disconnected from server";
             connectionStatusDiv.className = "status-disconnected";
+            // Clear current state
+            activeTeamsTableBody.innerHTML = "";
+            noActiveTeamsMsg.style.display = "block";
+            activeTeamsCountEl.textContent = "0";
+            totalParticipantsCountEl.textContent = "0";
+            currentAnswersCount = 0;
+            totalAnswersCountEl.textContent = "0";
         });
 
+        let confirmingStop = false;
+        
         socket.on("game_started", () => {
             const startBtn = document.getElementById("start-game-btn");
-            startBtn.disabled = true;
-            startBtn.textContent = "Game In Progress";
+            const gameControlText = document.getElementById("game-control-text");
+            gameControlText.textContent = "Game in progress";
+            startBtn.disabled = false;
+            startBtn.textContent = "Reset game stats";
+            startBtn.className = "reset-game";
+            startBtn.onclick = handleResetGame;
         });
+
+        function handleResetGame() {
+            const startBtn = document.getElementById("start-game-btn");
+            if (!startBtn || startBtn.disabled) {
+                console.error("Invalid button state");
+                return;
+            }
+
+            if (!confirmingStop) {
+                startBtn.textContent = "Are you sure?";
+                startBtn.className = "confirm-reset";
+                confirmingStop = true;
+                
+                // Create reset timeout
+                const resetTimeout = setTimeout(() => {
+                    if (confirmingStop) {
+                        startBtn.textContent = "Reset game stats";
+                        startBtn.className = "reset-game";
+                        confirmingStop = false;
+                    }
+                }, 3000);
+
+                // Clear timeout if user leaves page
+                window.addEventListener('beforeunload', () => {
+                    clearTimeout(resetTimeout);
+                }, { once: true });
+            } else {
+                // Prevent double-click during processing
+                startBtn.disabled = true;
+                
+                // Restart game logic
+                socket.emit("restart_game");
+                const gameControlText = document.getElementById("game-control-text");
+                gameControlText.textContent = "Game Control";
+                confirmingStop = false;
+                answerLogTableBody.innerHTML = "";
+                noAnswersLogMsg.style.display = "block";
+                currentAnswersCount = 0;
+                totalAnswersCountEl.textContent = "0";
+                // Reset game state locally
+                startBtn.textContent = "Start Game";
+                startBtn.className = "";
+                startBtn.onclick = startGame;
+                // Reset game control text
+                document.getElementById("game-control-text").textContent = "Game Control";
+            }
+        }
 
         socket.on("error", (data) => {
             console.error("Socket Error:", data);
@@ -126,11 +216,15 @@
             updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
             updateMetrics(data.active_teams, data.total_answers_count);
             
-            // Update game state
-            if (data.game_state && data.game_state.started) {
+            // Update game state if not in stopping state
+            if (data.game_state && data.game_state.started && !confirmingStop) {
                 const startBtn = document.getElementById("start-game-btn");
-                startBtn.disabled = true;
-                startBtn.textContent = "Game In Progress";
+                if (startBtn.textContent === "Start Game") {
+                    startBtn.disabled = false;
+                    startBtn.textContent = "Reset game stats";
+                    startBtn.className = "reset-game";
+                    startBtn.onclick = handleResetGame;
+                }
             }
         });
         
@@ -204,8 +298,11 @@
         }
 
         function startGame() {
-            socket.emit("start_game");
-            document.getElementById("start-game-btn").disabled = true;
+            const startBtn = document.getElementById("start-game-btn");
+            if (startBtn && !startBtn.disabled) {
+                startBtn.disabled = true;  // Prevent double-click
+                socket.emit("start_game");
+            }
         }
 
         async function downloadData() {
