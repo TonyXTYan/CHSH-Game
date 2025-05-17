@@ -73,7 +73,7 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <script>
         // Participant App Logic will go here
-        const socket = io("http://" + window.location.hostname + ":5000");
+        const socket = io(window.location.origin);
 
         const connectionStatusDiv = document.getElementById("connection-status");
         const teamManagementArea = document.getElementById("team-management-area");
