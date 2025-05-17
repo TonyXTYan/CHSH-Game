@@ -55,7 +55,7 @@
         <!-- Question Area -->
         <div id="question-area" class="hidden">
             <h2>Question <span id="round-number"></span></h2>
-            <p>Your item is:</p>
+            <p id="question-text">Your item is:</p>
             <div id="question-item"></div>
             <div class="answer-buttons">
                 <button id="answer-true-btn">TRUE</button>
@@ -157,14 +157,21 @@
             inTeamArea.classList.add("hidden");
             questionArea.classList.remove("hidden");
             waitingArea.classList.add("hidden");
+            document.getElementById("question-text").textContent = "Your item is:";
             roundNumberSpan.textContent = roundNum;
             questionItemDiv.textContent = item;
+            answerTrueBtn.disabled = false;
+            answerFalseBtn.disabled = false;
             currentRoundId = roundId;
             currentAssignedItem = item;
         }
 
         function showWaitingView(message) {
-            questionArea.classList.add("hidden");
+            // Don't hide question area, just disable buttons and update text
+            const questionText = document.querySelector("#question-area p");
+            questionText.textContent = "Waiting for partner response";
+            answerTrueBtn.disabled = true;
+            answerFalseBtn.disabled = true;
             waitingArea.classList.remove("hidden");
             waitingMessage.textContent = message;
             waitingMessage.className = "status-message status-info";
