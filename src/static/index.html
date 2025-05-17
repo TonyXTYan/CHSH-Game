@@ -99,6 +99,7 @@
         const waitingMessage = document.getElementById("waiting-message");
 
         let currentTeam = null;
+        let isProcessingTeamAction = false; // Flag to prevent duplicate team actions
         let currentRoundId = null;
         let currentAssignedItem = null;
 
@@ -109,14 +110,20 @@
 
         function updateTeamListView(teams) {
             availableTeamsList.innerHTML = "";
-            if (teams && teams.length > 0) {
+            if (teams && teams.length > 0 && !currentTeam) {
                 noTeamsMessage.classList.add("hidden");
                 teams.forEach(team => {
                     const li = document.createElement("li");
                     li.textContent = team.team_name;
                     const joinBtn = document.createElement("button");
                     joinBtn.textContent = "Join";
-                    joinBtn.onclick = () => socket.emit("join_team", { team_name: team.team_name });
+                    joinBtn.onclick = () => {
+                        if (!isProcessingTeamAction) {
+                            isProcessingTeamAction = true;
+                            joinBtn.disabled = true;
+                            socket.emit("join_team", { team_name: team.team_name });
+                        }
+                    };
                     li.appendChild(joinBtn);
                     availableTeamsList.appendChild(li);
                 });
@@ -175,24 +182,23 @@
         });
 
         socket.on("error", (data) => {
+            isProcessingTeamAction = false;
+            createTeamBtn.disabled = false;
             showStatus(`Error: ${data.message}`, "error");
-            // Potentially revert to a previous state or show specific error UI
         });
 
         socket.on("available_teams", (teams) => {
-            if (!currentTeam) { // Only update if not in a team
-                 updateTeamListView(teams);
-            }
+            updateTeamListView(teams);
         });
 
         socket.on("teams_updated", (teams) => {
-             if (!currentTeam) { // Only update if not in a team
-                updateTeamListView(teams);
-            }
+            updateTeamListView(teams);
         });
 
         socket.on("team_created", (data) => {
             currentTeam = data.team_name;
+            isProcessingTeamAction = false;
+            createTeamBtn.disabled = false;
             showInTeamView(data.team_name, "Team created! Waiting for a partner.");
             showStatus(`Team '${data.team_name}' created. Waiting for partner.`, "success");
         });
@@ -268,10 +274,14 @@
         });
 
         // Event Listeners for UI elements
-        createTeamBtn.addEventListener("click", () => {
+        createTeamBtn.addEventListener("click", async () => {
+            if (isProcessingTeamAction) return; // Prevent duplicate actions
             const teamName = teamNameInput.value.trim();
             if (teamName) {
+                isProcessingTeamAction = true;
+                createTeamBtn.disabled = true;
                 socket.emit("create_team", { team_name: teamName });
+                teamNameInput.value = ""; // Clear input after submission
             } else {
                 showStatus("Please enter a team name.", "error");
             }
