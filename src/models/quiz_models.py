@@ -12,7 +12,8 @@ class ItemEnum(enum.Enum):
 class Teams(db.Model):
     __tablename__ = 'teams'
     team_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    team_name = db.Column(db.String(100), unique=True, nullable=False)
+    team_name = db.Column(db.String(100), nullable=False)
+    __table_args__ = (db.UniqueConstraint('team_name', 'is_active', name='_team_name_active_uc'),)
     participant1_session_id = db.Column(db.String(100), nullable=True) # Stores WebSocket SID
     participant2_session_id = db.Column(db.String(100), nullable=True) # Stores WebSocket SID
     is_active = db.Column(db.Boolean, default=True, nullable=False)
@@ -45,4 +46,3 @@ class PairQuestionRounds(db.Model):
 
     # Unique constraint for team_id and round_number_for_team
     __table_args__ = (db.UniqueConstraint('team_id', 'round_number_for_team', name='_team_round_uc'),)
-

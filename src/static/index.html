@@ -10,7 +10,8 @@
         h1, h2 { text-align: center; color: #333; }
         .hidden { display: none; }
         button { padding: 10px 15px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; background-color: #007bff; color: white; font-size: 16px; }
-        button:hover { background-color: #0056b3; }
+        button:hover:not(:disabled) { background-color: #0056b3; }
+        button:disabled { background-color: #6c757d; cursor: not-allowed; opacity: 0.65; }
         input[type="text"] { padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 4px; width: calc(100% - 22px); }
         ul { list-style-type: none; padding: 0; }
         li { background: #eee; padding: 10px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
@@ -171,10 +172,16 @@
             document.getElementById("question-text").textContent = "Your item is:";
             roundNumberSpan.textContent = roundNum;
             questionItemDiv.textContent = item;
-            answerTrueBtn.disabled = false;
-            answerFalseBtn.disabled = false;
+            answerTrueBtn.disabled = true;
+            answerFalseBtn.disabled = true;
             currentRoundId = roundId;
             currentAssignedItem = item;
+            
+            // Add delay before enabling buttons
+            setTimeout(() => {
+                answerTrueBtn.disabled = false;
+                answerFalseBtn.disabled = false;
+            }, 100); // 0.1ms delay
         }
 
         function showWaitingView(message) {
