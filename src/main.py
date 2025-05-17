@@ -134,40 +134,66 @@ def handle_connect():
 def handle_disconnect():
     sid = request.sid
     print(f'Client disconnected: {request.sid}')
-    if sid in state.dashboard_clients:
-        state.dashboard_clients.remove(sid)
-        print(f"Dashboard client disconnected: {sid}")
+    try:
+        if sid in state.dashboard_clients:
+            state.dashboard_clients.remove(sid)
+            print(f"Dashboard client disconnected: {sid}")
 
-    if sid in state.participant_to_team:
-        team_name = state.participant_to_team[sid]
-        team_info = state.active_teams.get(team_name)
-        if team_info:
-            db_team = Teams.query.get(team_info['team_id'])
-            if db_team:
-                creator_left = team_info['creator_sid'] == sid
-                partner_left = team_info.get('participant2_sid') == sid
+        if sid in state.participant_to_team:
+            team_name = state.participant_to_team[sid]
+            team_info = state.active_teams.get(team_name)
+            if team_info:
+                db_team = Teams.query.get(team_info['team_id'])
+                if db_team:
+                    creator_left = team_info['creator_sid'] == sid
+                    partner_left = team_info.get('participant2_sid') == sid
 
-                if creator_left:
-                    if team_info.get('participant2_sid'):
-                        emit('partner_left', {'message': 'Your partner (creator) has disconnected.'}, room=team_info['participant2_sid'])
-                        del state.participant_to_team[team_info['participant2_sid']]
-                        leave_room(team_name, sid=team_info['participant2_sid'])
-                    del state.active_teams[team_name]
-                    db_team.is_active = False
-                    print(f"Team {team_name} deactivated as creator disconnected.")
-                elif partner_left:
-                    emit('partner_left', {'message': 'Your partner has disconnected.'}, room=team_info['creator_sid'])
-                    team_info['participant2_sid'] = None
-                    db_team.participant2_session_id = None
-                    print(f"Participant 2 left team {team_name}.")
-                
-                if creator_left or partner_left:
-                    db.session.commit()
-                    emit_dashboard_team_update()
-                    emit('teams_updated', get_available_teams_list(), broadcast=True)
-                    if not creator_left and team_info.get('creator_sid'):
-                         emit('team_status_update', {'team_name': team_name, 'status': 'waiting_for_partner', 'members': get_team_members(team_name)}, room=team_info['creator_sid'])
-            del state.participant_to_team[sid]
+                    if creator_left:
+                        if team_info.get('participant2_sid'):
+                            try:
+                                emit('partner_left', {'message': 'Your partner (creator) has disconnected.'}, room=team_info['participant2_sid'])
+                                leave_room(team_name, sid=team_info['participant2_sid'])
+                                del state.participant_to_team[team_info['participant2_sid']]
+                            except Exception as e:
+                                print(f"Error notifying partner of creator disconnect: {str(e)}")
+                        
+                        del state.active_teams[team_name]
+                        # Check if there's already an inactive team with same name
+                        existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+                        if existing_inactive:
+                            # If exists, we need to give this team a unique name before deactivating
+                            db_team.team_name = f"{team_name}_{db_team.team_id}"
+                        db_team.is_active = False
+                        print(f"Team {team_name} deactivated as creator disconnected.")
+                    
+                    elif partner_left:
+                        try:
+                            emit('partner_left', {'message': 'Your partner has disconnected.'}, room=team_info['creator_sid'])
+                        except Exception as e:
+                            print(f"Error notifying creator of partner disconnect: {str(e)}")
+                        team_info['participant2_sid'] = None
+                        db_team.participant2_session_id = None
+                        print(f"Participant 2 left team {team_name}.")
+                    
+                    if creator_left or partner_left:
+                        db.session.commit()
+                        try:
+                            emit_dashboard_team_update()
+                            emit('teams_updated', get_available_teams_list(), broadcast=True)
+                            if not creator_left and team_info.get('creator_sid'):
+                                emit('team_status_update', 
+                                    {'team_name': team_name, 'status': 'waiting_for_partner', 'members': get_team_members(team_name)}, 
+                                    room=team_info['creator_sid'])
+                        except Exception as e:
+                            print(f"Error updating team status: {str(e)}")
+
+                try:
+                    leave_room(team_name, sid=sid)
+                except Exception as e:
+                    print(f"Error leaving room: {str(e)}")
+                del state.participant_to_team[sid]
+    except Exception as e:
+        print(f"Disconnect handler error: {str(e)}")
 
 def get_available_teams_list():
     return [{'team_name': name, 'creator_sid': info['creator_sid'], 'team_id': info['team_id']} 
@@ -239,7 +265,13 @@ def on_leave_team(data):
             leave_room(team_name, sid=team_info['participant2_sid'])
             del state.participant_to_team[team_info['participant2_sid']]
         del state.active_teams[team_name]
-        if db_team: db_team.is_active = False
+        if db_team:
+            # Check if there's already an inactive team with same name
+            existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+            if existing_inactive:
+                # If exists, we need to give this team a unique name before deactivating
+                db_team.team_name = f"{team_name}_{db_team.team_id}"
+            db_team.is_active = False
     elif team_info.get('participant2_sid') == sid:
         team_info['participant2_sid'] = None
         if db_team: db_team.participant2_session_id = None
