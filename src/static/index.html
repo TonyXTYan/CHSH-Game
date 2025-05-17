@@ -254,8 +254,8 @@
                 const submissionHistory = matches ? "<br><br>" + matches.join("<br>") : "";
                 
                 if (data.status === "full") {
-                     teamStatusDiv.innerHTML = "Team is full! Ready for questions." + submissionHistory;
-                     teamStatusDiv.className = "status-message status-success";
+                     teamStatusDiv.innerHTML = "Team is full! Waiting for presenter to start the game..." + submissionHistory;
+                     teamStatusDiv.className = "status-message status-info";
                 } else if (data.status === "waiting_for_partner") {
                      teamStatusDiv.innerHTML = "Partner left. Waiting for a new partner." + submissionHistory;
                      teamStatusDiv.className = "status-message status-info";
@@ -306,6 +306,13 @@
             teamStatusDiv.innerHTML = `${currentStatus}<br><br>Round ${roundNum}: Answer submitted successfully`;
         });
         
+        socket.on("game_start", () => {
+            if (currentTeam) {
+                teamStatusDiv.innerHTML = "Game has started! Get ready for questions...";
+                teamStatusDiv.className = "status-message status-success";
+            }
+        });
+
         socket.on("round_complete", (data) => {
             if (currentTeam === data.team_name) {
                 // The new_question event will follow if the game continues
