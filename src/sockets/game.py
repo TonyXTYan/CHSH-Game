@@ -15,7 +15,7 @@ def on_submit_answer(data):
             emit('error', {'message': 'You are not in a team or session expired.'}); return
         team_name = state.participant_to_team[sid]
         team_info = state.active_teams.get(team_name)
-        if not team_info or not team_info.get('participant2_sid'):
+        if not team_info or len(team_info['participants']) != 2:
             emit('error', {'message': 'Team not valid or partner missing.'}); return
 
         round_id = data.get('round_id')
@@ -30,8 +30,8 @@ def on_submit_answer(data):
         except ValueError:
             emit('error', {'message': 'Invalid item in answer.'}); return
 
-        is_p1 = team_info['creator_sid'] == sid
-        if (is_p1 and team_info.get('p1_answered_current_round')) or (not is_p1 and team_info.get('p2_answered_current_round')):
+        participant_idx = team_info['participants'].index(sid)
+        if team_info['answered_current_round'].get(sid):
             emit('error', {'message': 'You have already answered this round.'}); return
 
         new_answer_db = Answers(
@@ -50,11 +50,10 @@ def on_submit_answer(data):
             db.session.rollback()
             return
 
-        if is_p1:
-            team_info['p1_answered_current_round'] = True
+        team_info['answered_current_round'][sid] = True
+        if participant_idx == 0:
             round_db_entry.p1_answered_at = datetime.utcnow()
         else:
-            team_info['p2_answered_current_round'] = True
             round_db_entry.p2_answered_at = datetime.utcnow()
 
         db.session.commit()
@@ -74,7 +73,7 @@ def on_submit_answer(data):
             socketio.emit('new_answer_for_dashboard', answer_for_dash, room=dash_sid)
         emit_dashboard_full_update()
 
-        if team_info.get('p1_answered_current_round') and team_info.get('p2_answered_current_round'):
+        if len(team_info['answered_current_round']) == 2:
             print(f"Both participants in team {team_name} answered round {team_info['current_round_number']}.")
             socketio.emit('round_complete', {
                 'team_name': team_name,
@@ -114,14 +113,16 @@ def on_verify_team_membership(data):
                     # Team exists in DB but not in memory, recreate it
                     team_name = db_team.team_name
                     team_info = {
-                        'creator_sid': db_team.participant1_session_id,
-                        'participant2_sid': db_team.participant2_session_id,
+                        'participants': [],
                         'team_id': db_team.team_id,
                         'current_round_number': 0,
                         'combo_tracker': {},
-                        'p1_answered_current_round': False,
-                        'p2_answered_current_round': False
+                        'answered_current_round': {}
                     }
+                    if db_team.participant1_session_id:
+                        team_info['participants'].append(db_team.participant1_session_id)
+                    if db_team.participant2_session_id:
+                        team_info['participants'].append(db_team.participant2_session_id)
                     state.active_teams[team_name] = team_info
                     state.team_id_to_name[db_team.team_id] = team_name
                     print(f"Recreated team {team_name} from database")
@@ -130,42 +131,50 @@ def on_verify_team_membership(data):
             else:
                 emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
             
-        # Check if previous_sid matches creator or participant2 directly
-        is_creator = team_info['creator_sid'] == previous_sid
-        is_participant2 = team_info.get('participant2_sid') == previous_sid
-        
-        # If no direct match, check previous session mapping chain
-        if not is_creator and not is_participant2:
-            # Check if previous_sid is in our mapping chain
+        # Check team membership in database first
+        db_team = Teams.query.get(team_info['team_id'])
+        is_db_member = (db_team.participant1_session_id == previous_sid or
+                       db_team.participant2_session_id == previous_sid)
+
+        # Then check in-memory state
+        participant_idx = None
+        if previous_sid in team_info['participants']:
+            participant_idx = team_info['participants'].index(previous_sid)
+        else:
+            # Check previous session mapping chain
             for old_sid, mapped_sid in state.previous_sessions.items():
-                if team_info['creator_sid'] == mapped_sid:
-                    is_creator = True
+                if mapped_sid in team_info['participants']:
+                    participant_idx = team_info['participants'].index(mapped_sid)
                     break
-                elif team_info.get('participant2_sid') == mapped_sid:
-                    is_participant2 = True
-                    break
-        
-        if not is_creator and not is_participant2:
+                # Also check if this old session was in the database
+                if (db_team.participant1_session_id == old_sid or
+                    db_team.participant2_session_id == old_sid):
+                    is_db_member = True
+
+        # If not found in memory but found in DB, assign to first available slot
+        if participant_idx is None and is_db_member:
+            if len(team_info['participants']) == 0:
+                participant_idx = 0
+            elif len(team_info['participants']) == 1:
+                participant_idx = 1
+                
+        if participant_idx is None and not is_db_member:
             emit('rejoin_team_failed', {'message': 'You were not a member of this team'}); return
-            
+
         # Update session mapping
         state.previous_sessions[previous_sid] = current_sid
         
         # Update team info with new sid
-        if is_creator:
-            team_info['creator_sid'] = current_sid
-            # Update in database
-            db_team = Teams.query.get(team_info['team_id'])
-            if db_team: 
+        team_info['participants'][participant_idx] = current_sid
+        
+        # Update in database
+        db_team = Teams.query.get(team_info['team_id'])
+        if db_team:
+            if participant_idx == 0:
                 db_team.participant1_session_id = current_sid
-                db.session.commit()
-        elif is_participant2:
-            team_info['participant2_sid'] = current_sid
-            # Update in database
-            db_team = Teams.query.get(team_info['team_id'])
-            if db_team: 
+            else:
                 db_team.participant2_session_id = current_sid
-                db.session.commit()
+            db.session.commit()
                 
         # Update participant_to_team mapping
         state.participant_to_team[current_sid] = team_name
@@ -181,39 +190,36 @@ def on_verify_team_membership(data):
         if team_info.get('current_db_round_id'):
             round_db = PairQuestionRounds.query.get(team_info['current_db_round_id'])
             if round_db:
-                item = round_db.participant1_item.value if is_creator else round_db.participant2_item.value
+                item = round_db.participant1_item.value if participant_idx == 0 else round_db.participant2_item.value
                 current_round_data = {
                     'round_id': team_info['current_db_round_id'],
                     'round_number': team_info['current_round_number'],
                     'item': item
                 }
                 # Check if already answered
-                if is_creator and team_info.get('p1_answered_current_round'):
-                    already_answered = True
-                elif not is_creator and team_info.get('p2_answered_current_round'):
+                if team_info['answered_current_round'].get(current_sid):
                     already_answered = True
         
         # Send success response
-        status_message = "Team created! Waiting for a partner." if is_creator else "You have joined the team!"
-        if team_info.get('participant2_sid') and is_creator:
-            status_message = "Your team is full! Waiting for game to start."
-            if state.game_started:
-                status_message = "Game has started! Get ready for questions."
+        if len(team_info['participants']) < 2:
+            status_message = "Team joined! Waiting for a partner."
+        else:
+            status_message = "Team is full!" + (" Game has started!" if state.game_started else " Waiting for game to start.")
             
         emit('rejoin_team_success', {
             'team_name': team_name,
             'status_message': status_message,
-            'is_creator': is_creator,
+            'participant_idx': participant_idx,
             'current_round': current_round_data,
             'already_answered': already_answered,
             'game_started': state.game_started
         })
         
         # Notify other team member if exists
-        other_sid = team_info.get('participant2_sid') if is_creator else team_info['creator_sid']
-        if other_sid and other_sid != current_sid:
+        other_sids = [sid for sid in team_info['participants'] if sid != current_sid]
+        for other_sid in other_sids:
             emit('partner_reconnected', {
-                'message': 'Your partner has reconnected!'
+                'message': 'A team member has reconnected!'
             }, room=other_sid)
             
         # Update dashboard
@@ -252,14 +258,16 @@ def on_rejoin_team(data):
                     # Team exists in DB but not in memory, recreate it
                     team_name = db_team.team_name
                     team_info = {
-                        'creator_sid': db_team.participant1_session_id,
-                        'participant2_sid': db_team.participant2_session_id,
+                        'participants': [],
                         'team_id': db_team.team_id,
                         'current_round_number': 0,
                         'combo_tracker': {},
-                        'p1_answered_current_round': False,
-                        'p2_answered_current_round': False
+                        'answered_current_round': {}
                     }
+                    if db_team.participant1_session_id:
+                        team_info['participants'].append(db_team.participant1_session_id)
+                    if db_team.participant2_session_id:
+                        team_info['participants'].append(db_team.participant2_session_id)
                     state.active_teams[team_name] = team_info
                     state.team_id_to_name[db_team.team_id] = team_name
                     print(f"Recreated team {team_name} from database")
@@ -269,35 +277,59 @@ def on_rejoin_team(data):
                 emit('rejoin_team_failed', {'message': 'Team not found or no longer active'}); return
             
         # Rest of rejoin logic is identical to verify_team_membership
-        is_creator = team_info['creator_sid'] == previous_sid
-        is_participant2 = team_info.get('participant2_sid') == previous_sid
-        
-        if not is_creator and not is_participant2:
+        # Check team membership in database first
+        db_team = Teams.query.get(team_info['team_id'])
+        is_db_member = (db_team.participant1_session_id == previous_sid or
+                       db_team.participant2_session_id == previous_sid)
+
+        # Then check in-memory state
+        participant_idx = None
+        if previous_sid in team_info['participants']:
+            participant_idx = team_info['participants'].index(previous_sid)
+        else:
+            # Check previous session mapping chain
             for old_sid, mapped_sid in state.previous_sessions.items():
-                if team_info['creator_sid'] == mapped_sid:
-                    is_creator = True
+                if mapped_sid in team_info['participants']:
+                    participant_idx = team_info['participants'].index(mapped_sid)
                     break
-                elif team_info.get('participant2_sid') == mapped_sid:
-                    is_participant2 = True
-                    break
-        
-        if not is_creator and not is_participant2:
+                # Also check if this old session was in the database
+                if (db_team.participant1_session_id == old_sid or
+                    db_team.participant2_session_id == old_sid):
+                    is_db_member = True
+
+        # If not found in memory but found in DB, assign to first available slot
+        if participant_idx is None and is_db_member:
+            if len(team_info['participants']) == 0:
+                participant_idx = 0
+            elif len(team_info['participants']) == 1:
+                participant_idx = 1
+
+        if participant_idx is None and not is_db_member:
             emit('rejoin_team_failed', {'message': 'You were not a member of this team'}); return
             
         state.previous_sessions[previous_sid] = current_sid
         
-        if is_creator:
-            team_info['creator_sid'] = current_sid
-            db_team = Teams.query.get(team_info['team_id'])
-            if db_team: 
+        # Update session mapping
+        state.previous_sessions[previous_sid] = current_sid
+        
+        # Update team info with new sid
+        if participant_idx is not None:
+            if participant_idx >= len(team_info['participants']):
+                team_info['participants'].append(current_sid)
+            else:
+                team_info['participants'][participant_idx] = current_sid
+        else:
+            # New slot for db member
+            team_info['participants'].append(current_sid)
+            participant_idx = len(team_info['participants']) - 1
+
+        # Update database
+        if db_team:
+            if participant_idx == 0:
                 db_team.participant1_session_id = current_sid
-                db.session.commit()
-        elif is_participant2:
-            team_info['participant2_sid'] = current_sid
-            db_team = Teams.query.get(team_info['team_id'])
-            if db_team: 
+            else:
                 db_team.participant2_session_id = current_sid
-                db.session.commit()
+            db.session.commit()
                 
         state.participant_to_team[current_sid] = team_name
         if previous_sid in state.participant_to_team:
@@ -310,36 +342,33 @@ def on_rejoin_team(data):
         if team_info.get('current_db_round_id'):
             round_db = PairQuestionRounds.query.get(team_info['current_db_round_id'])
             if round_db:
-                item = round_db.participant1_item.value if is_creator else round_db.participant2_item.value
+                item = round_db.participant1_item.value if participant_idx == 0 else round_db.participant2_item.value
                 current_round_data = {
                     'round_id': team_info['current_db_round_id'],
                     'round_number': team_info['current_round_number'],
                     'item': item
                 }
-                if is_creator and team_info.get('p1_answered_current_round'):
-                    already_answered = True
-                elif not is_creator and team_info.get('p2_answered_current_round'):
+                if team_info['answered_current_round'].get(current_sid):
                     already_answered = True
         
-        status_message = "Team created! Waiting for a partner." if is_creator else "You have joined the team!"
-        if team_info.get('participant2_sid') and is_creator:
-            status_message = "Your team is full! Waiting for game to start."
-            if state.game_started:
-                status_message = "Game has started! Get ready for questions."
+        if len(team_info['participants']) < 2:
+            status_message = "Team joined! Waiting for a partner."
+        else:
+            status_message = "Team is full!" + (" Game has started!" if state.game_started else " Waiting for game to start.")
             
         emit('rejoin_team_success', {
             'team_name': team_name,
             'status_message': status_message,
-            'is_creator': is_creator,
+            'participant_idx': participant_idx,
             'current_round': current_round_data,
             'already_answered': already_answered,
             'game_started': state.game_started
         })
         
-        other_sid = team_info.get('participant2_sid') if is_creator else team_info['creator_sid']
-        if other_sid and other_sid != current_sid:
+        other_sids = [sid for sid in team_info['participants'] if sid != current_sid]
+        for other_sid in other_sids:
             emit('partner_reconnected', {
-                'message': 'Your partner has reconnected!'
+                'message': 'A team member has reconnected!'
             }, room=other_sid)
             
         emit_dashboard_team_update()

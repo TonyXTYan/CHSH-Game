@@ -1,6 +1,6 @@
 class AppState:
     def __init__(self):
-        self.active_teams = {}  # {team_name: {'creator_sid': sid, 'participant2_sid': None, 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'p1_answered_current_round': False, 'p2_answered_current_round': False}}
+        self.active_teams = {}  # {team_name: {'participants': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}}}
         self.participant_to_team = {}  # {sid: team_name}
         self.dashboard_clients = set() # Stores SIDs of connected dashboard clients
         self.game_started = False # Track if game has started

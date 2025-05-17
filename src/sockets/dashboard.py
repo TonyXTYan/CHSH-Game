@@ -26,11 +26,12 @@ def get_serialized_active_teams():
     try:
         teams_list = []
         for name, info in state.active_teams.items():
+            participants = info['participants']
             teams_list.append({
                 'team_name': name,
                 'team_id': info['team_id'],
-                'participant1_sid': info['creator_sid'],
-                'participant2_sid': info.get('participant2_sid'),
+                'participant1_sid': participants[0] if len(participants) > 0 else None,
+                'participant2_sid': participants[1] if len(participants) > 1 else None,
                 'current_round_number': info.get('current_round_number', 0)
             })
         return teams_list
@@ -94,7 +95,7 @@ def on_start_game():
             state.game_started = True
             # Notify teams and dashboard that game has started
             for team_name, team_info in state.active_teams.items():
-                if team_info.get('participant2_sid'):  # Only notify full teams
+                if len(team_info['participants']) == 2:  # Only notify full teams
                     socketio.emit('game_start', {'game_started': True}, room=team_name)
             
             # Notify dashboard
@@ -106,7 +107,7 @@ def on_start_game():
                 
             # Start first round for all full teams
             for team_name, team_info in state.active_teams.items():
-                if team_info.get('participant2_sid'): # If team is full
+                if len(team_info['participants']) == 2: # If team is full
                     start_new_round_for_pair(team_name)
     except Exception as e:
         print(f"Error in on_start_game: {str(e)}")
@@ -159,8 +160,7 @@ def on_restart_game():
             if team_info:  # Validate team info exists
                 team_info['current_round_number'] = 0
                 team_info['current_db_round_id'] = None
-                team_info['p1_answered_current_round'] = False
-                team_info['p2_answered_current_round'] = False
+                team_info['answered_current_round'] = {}
                 team_info['combo_tracker'] = {}
         
         # Notify all teams about the reset
