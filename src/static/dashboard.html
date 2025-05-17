@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Quiz - Presenter Dashboard</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
+        .dashboard-container { display: flex; flex-direction: column; gap: 20px; }
+        .panel { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        h1, h2 { color: #1c1e21; margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+        th, td { text-align: left; padding: 8px; border-bottom: 1px solid #ddd; }
+        th { background-color: #f7f7f7; }
+        .status-connected { color: green; }
+        .status-disconnected { color: red; }
+        #connection-status-dash { font-weight: bold; margin-bottom: 10px; }
+        .metrics { display: flex; gap: 20px; margin-bottom: 20px; }
+        .metric-card { flex: 1; background-color: #e7f3ff; padding: 15px; border-radius: 5px; text-align: center; }
+        .metric-card h3 { margin: 0 0 10px 0; font-size: 1.2em; color: #0056b3; }
+        .metric-card p { margin: 0; font-size: 1.5em; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Presenter Dashboard</h1>
+    <div id="connection-status-dash">Connecting...</div>
+
+    <div class="dashboard-container">
+        <div class="panel metrics">
+            <div class="metric-card">
+                <h3>Active Teams</h3>
+                <p id="active-teams-count">0</p>
+            </div>
+            <div class="metric-card">
+                <h3>Total Participants</h3>
+                <p id="total-participants-count">0</p>
+            </div>
+            <div class="metric-card">
+                <h3>Total Answers</h3>
+                <p id="total-answers-count">0</p>
+            </div>
+        </div>
+
+        <div class="panel">
+            <h2>Active Teams</h2>
+            <table id="active-teams-table">
+                <thead><tr><th>Team Name</th><th>Team ID</th><th>Participant 1 SID</th><th>Participant 2 SID</th><th>Current Round</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <p id="no-active-teams">No active teams yet.</p>
+        </div>
+
+        <div class="panel">
+            <h2>Live Answer Log</h2>
+            <table id="answer-log-table">
+                <thead><tr><th>Timestamp</th><th>Team Name</th><th>Participant SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
+                <tbody></tbody>
+            </table>
+            <p id="no-answers-log">No answers recorded yet.</p>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        const socket = io("http://" + window.location.hostname + ":5000");
+        const connectionStatusDiv = document.getElementById("connection-status-dash");
+        
+        const activeTeamsCountEl = document.getElementById("active-teams-count");
+        const totalParticipantsCountEl = document.getElementById("total-participants-count");
+        const totalAnswersCountEl = document.getElementById("total-answers-count");
+
+        const activeTeamsTableBody = document.querySelector("#active-teams-table tbody");
+        const noActiveTeamsMsg = document.getElementById("no-active-teams");
+        const answerLogTableBody = document.querySelector("#answer-log-table tbody");
+        const noAnswersLogMsg = document.getElementById("no-answers-log");
+
+        let currentAnswersCount = 0;
+
+        socket.on("connect", () => {
+            connectionStatusDiv.textContent = "Connected to server";
+            connectionStatusDiv.className = "status-connected";
+            socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
+        });
+
+        socket.on("disconnect", () => {
+            connectionStatusDiv.textContent = "Disconnected from server";
+            connectionStatusDiv.className = "status-disconnected";
+        });
+
+        socket.on("error", (data) => {
+            console.error("Socket Error:", data);
+            connectionStatusDiv.textContent = `Error: ${data.message}`;
+            connectionStatusDiv.className = "status-disconnected";
+        });
+
+        socket.on("dashboard_update", (data) => {
+            console.log("Dashboard update received:", data);
+            updateActiveTeams(data.active_teams);
+            updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
+            updateMetrics(data.active_teams, data.total_answers_count);
+        });
+        
+        socket.on("new_answer_for_dashboard", (answer) => {
+            console.log("New answer for dashboard:", answer);
+            addAnswerToLog(answer);
+            currentAnswersCount++;
+            totalAnswersCountEl.textContent = currentAnswersCount;
+            // Potentially request a full dashboard_update if needed, or update specific team info
+        });
+
+        socket.on("team_status_changed_for_dashboard", (teams_data) => {
+            console.log("Team status changed for dashboard:", teams_data);
+            updateActiveTeams(teams_data);
+            updateMetrics(teams_data, currentAnswersCount);
+        });
+
+        function updateMetrics(teams, totalAnswers) {
+            if (teams) {
+                activeTeamsCountEl.textContent = teams.length;
+                let participantCount = 0;
+                teams.forEach(team => {
+                    if(team.participant1_sid) participantCount++;
+                    if(team.participant2_sid) participantCount++;
+                });
+                totalParticipantsCountEl.textContent = participantCount;
+            }
+            if (totalAnswers !== undefined) {
+                currentAnswersCount = totalAnswers;
+                totalAnswersCountEl.textContent = currentAnswersCount;
+            }
+        }
+
+        function updateActiveTeams(teams) {
+            activeTeamsTableBody.innerHTML = ""; // Clear existing rows
+            if (teams && teams.length > 0) {
+                noActiveTeamsMsg.style.display = "none";
+                teams.forEach(team => {
+                    const row = activeTeamsTableBody.insertRow();
+                    row.insertCell().textContent = team.team_name;
+                    row.insertCell().textContent = team.team_id;
+                    row.insertCell().textContent = team.participant1_sid || 'N/A';
+                    row.insertCell().textContent = team.participant2_sid || 'N/A';
+                    row.insertCell().textContent = team.current_round_number || 0;
+                });
+            } else {
+                noActiveTeamsMsg.style.display = "block";
+            }
+        }
+
+        function addAnswerToLog(answer) {
+            noAnswersLogMsg.style.display = "none";
+            const row = answerLogTableBody.insertRow(0); // Add to top
+            row.insertCell().textContent = new Date(answer.timestamp).toLocaleTimeString();
+            row.insertCell().textContent = answer.team_name; // Need to get team_name from team_id
+            row.insertCell().textContent = answer.participant_session_id;
+            row.insertCell().textContent = answer.question_round_id;
+            row.insertCell().textContent = answer.assigned_item;
+            row.insertCell().textContent = answer.response_value;
+            // Limit log size if needed
+            if (answerLogTableBody.rows.length > 100) { // Keep last 100 answers
+                answerLogTableBody.deleteRow(-1);
+            }
+        }
+        
+        function updateAnswerLog(answers) {
+            if (answers && answers.length > 0) {
+                noAnswersLogMsg.style.display = "none";
+                answers.forEach(addAnswerToLog);
+            }
+        }
+
+    </script>
+</body>
+</html>

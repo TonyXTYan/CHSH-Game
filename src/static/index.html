@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Quiz - Participant</title>
+    <style>
+        body { font-family: sans-serif; margin: 20px; background-color: #f4f4f4; color: #333; }
+        .container { max-width: 600px; margin: auto; background: white; padding: 20px; border-radius: 8px; box-shadow: 0 0 10px rgba(0,0,0,0.1); }
+        h1, h2 { text-align: center; color: #333; }
+        .hidden { display: none; }
+        button { padding: 10px 15px; margin: 5px; border: none; border-radius: 4px; cursor: pointer; background-color: #007bff; color: white; font-size: 16px; }
+        button:hover { background-color: #0056b3; }
+        input[type="text"] { padding: 10px; margin: 5px 0 15px 0; border: 1px solid #ddd; border-radius: 4px; width: calc(100% - 22px); }
+        ul { list-style-type: none; padding: 0; }
+        li { background: #eee; padding: 10px; margin-bottom: 5px; border-radius: 4px; display: flex; justify-content: space-between; align-items: center; }
+        .status-message { margin-top: 15px; padding: 10px; border-radius: 4px; text-align: center; }
+        .status-info { background-color: #e7f3fe; border-left: 6px solid #2196F3; }
+        .status-error { background-color: #ffebee; border-left: 6px solid #f44336; }
+        .status-success { background-color: #e8f5e9; border-left: 6px solid #4CAF50; }
+        #question-area, #waiting-area { text-align: center; margin-top: 20px; }
+        #question-item { font-size: 2em; font-weight: bold; margin-bottom: 20px; }
+        .answer-buttons button { font-size: 1.2em; padding: 15px 30px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Live Quiz</h1>
+
+        <div id="connection-status" class="status-message status-info">Connecting to server...</div>
+
+        <!-- Team Management Area -->
+        <div id="team-management-area">
+            <h2>Team Up!</h2>
+            <div id="create-team-section">
+                <h3>Create a New Team</h3>
+                <input type="text" id="team-name-input" placeholder="Enter Team Name">
+                <button id="create-team-btn">Create Team</button>
+            </div>
+            
+            <div id="join-team-section">
+                <h3>Join an Existing Team</h3>
+                <ul id="available-teams-list"></ul>
+                <p id="no-teams-message" class="hidden">No teams available to join currently. Create one or wait!</p>
+            </div>
+        </div>
+
+        <!-- In Team Area -->
+        <div id="in-team-area" class="hidden">
+            <h2 id="current-team-name"></h2>
+            <p id="team-status" class="status-message status-info">Waiting for partner...</p>
+            <button id="leave-team-btn">Leave Team</button>
+        </div>
+
+        <!-- Question Area -->
+        <div id="question-area" class="hidden">
+            <h2>Question <span id="round-number"></span></h2>
+            <p>Your item is:</p>
+            <div id="question-item"></div>
+            <div class="answer-buttons">
+                <button id="answer-true-btn">TRUE</button>
+                <button id="answer-false-btn">FALSE</button>
+            </div>
+        </div>
+
+        <!-- Waiting for Partner/Next Question Area -->
+        <div id="waiting-area" class="hidden">
+            <p id="waiting-message" class="status-message status-info">Answer submitted. Waiting for your partner...</p>
+        </div>
+
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <script>
+        // Participant App Logic will go here
+        const socket = io("http://" + window.location.hostname + ":5000");
+
+        const connectionStatusDiv = document.getElementById("connection-status");
+        const teamManagementArea = document.getElementById("team-management-area");
+        const createTeamSection = document.getElementById("create-team-section");
+        const teamNameInput = document.getElementById("team-name-input");
+        const createTeamBtn = document.getElementById("create-team-btn");
+        const joinTeamSection = document.getElementById("join-team-section");
+        const availableTeamsList = document.getElementById("available-teams-list");
+        const noTeamsMessage = document.getElementById("no-teams-message");
+        
+        const inTeamArea = document.getElementById("in-team-area");
+        const currentTeamNameHeader = document.getElementById("current-team-name");
+        const teamStatusDiv = document.getElementById("team-status");
+        const leaveTeamBtn = document.getElementById("leave-team-btn");
+
+        const questionArea = document.getElementById("question-area");
+        const roundNumberSpan = document.getElementById("round-number");
+        const questionItemDiv = document.getElementById("question-item");
+        const answerTrueBtn = document.getElementById("answer-true-btn");
+        const answerFalseBtn = document.getElementById("answer-false-btn");
+
+        const waitingArea = document.getElementById("waiting-area");
+        const waitingMessage = document.getElementById("waiting-message");
+
+        let currentTeam = null;
+        let currentRoundId = null;
+        let currentAssignedItem = null;
+
+        function showStatus(message, type = "info") {
+            connectionStatusDiv.textContent = message;
+            connectionStatusDiv.className = `status-message status-${type}`;
+        }
+
+        function updateTeamListView(teams) {
+            availableTeamsList.innerHTML = "";
+            if (teams && teams.length > 0) {
+                noTeamsMessage.classList.add("hidden");
+                teams.forEach(team => {
+                    const li = document.createElement("li");
+                    li.textContent = team.team_name;
+                    const joinBtn = document.createElement("button");
+                    joinBtn.textContent = "Join";
+                    joinBtn.onclick = () => socket.emit("join_team", { team_name: team.team_name });
+                    li.appendChild(joinBtn);
+                    availableTeamsList.appendChild(li);
+                });
+            } else {
+                noTeamsMessage.classList.remove("hidden");
+            }
+        }
+
+        function showTeamManagement() {
+            teamManagementArea.classList.remove("hidden");
+            inTeamArea.classList.add("hidden");
+            questionArea.classList.add("hidden");
+            waitingArea.classList.add("hidden");
+            currentTeam = null;
+            currentRoundId = null;
+            currentAssignedItem = null;
+        }
+
+        function showInTeamView(teamName, statusMessage) {
+            teamManagementArea.classList.add("hidden");
+            inTeamArea.classList.remove("hidden");
+            questionArea.classList.add("hidden");
+            waitingArea.classList.add("hidden");
+            currentTeamNameHeader.textContent = `Team: ${teamName}`;
+            teamStatusDiv.textContent = statusMessage;
+            teamStatusDiv.className = "status-message status-info";
+        }
+        
+        function showQuestionView(roundId, roundNum, item) {
+            teamManagementArea.classList.add("hidden");
+            inTeamArea.classList.add("hidden");
+            questionArea.classList.remove("hidden");
+            waitingArea.classList.add("hidden");
+            roundNumberSpan.textContent = roundNum;
+            questionItemDiv.textContent = item;
+            currentRoundId = roundId;
+            currentAssignedItem = item;
+        }
+
+        function showWaitingView(message) {
+            questionArea.classList.add("hidden");
+            waitingArea.classList.remove("hidden");
+            waitingMessage.textContent = message;
+            waitingMessage.className = "status-message status-info";
+        }
+
+        // SocketIO Event Handlers
+        socket.on("connect", () => {
+            showStatus("Connected to server!", "success");
+            showTeamManagement(); // Show team management on fresh connect
+        });
+
+        socket.on("disconnect", () => {
+            showStatus("Disconnected from server.", "error");
+            showTeamManagement(); // Reset to team management
+        });
+
+        socket.on("error", (data) => {
+            showStatus(`Error: ${data.message}`, "error");
+            // Potentially revert to a previous state or show specific error UI
+        });
+
+        socket.on("available_teams", (teams) => {
+            if (!currentTeam) { // Only update if not in a team
+                 updateTeamListView(teams);
+            }
+        });
+
+        socket.on("teams_updated", (teams) => {
+             if (!currentTeam) { // Only update if not in a team
+                updateTeamListView(teams);
+            }
+        });
+
+        socket.on("team_created", (data) => {
+            currentTeam = data.team_name;
+            showInTeamView(data.team_name, "Team created! Waiting for a partner.");
+            showStatus(`Team '${data.team_name}' created. Waiting for partner.`, "success");
+        });
+
+        socket.on("team_joined", (data) => {
+            currentTeam = data.team_name;
+            showInTeamView(data.team_name, "You have joined the team! Waiting for game to start or partner if they were first.");
+            showStatus(`Successfully joined team '${data.team_name}'.`, "success");
+        });
+
+        socket.on("partner_joined", (data) => {
+            if (currentTeam === data.team_name) {
+                teamStatusDiv.textContent = "Partner has joined! Quiz will start soon.";
+                teamStatusDiv.className = "status-message status-success";
+                showStatus(`Partner joined team '${data.team_name}'.`, "info");
+            }
+        });
+        
+        socket.on("team_status_update", (data) => {
+            if (currentTeam === data.team_name) {
+                if (data.status === "full") {
+                     teamStatusDiv.textContent = "Team is full! Ready for questions.";
+                     teamStatusDiv.className = "status-message status-success";
+                } else if (data.status === "waiting_for_partner") {
+                     teamStatusDiv.textContent = "Partner left. Waiting for a new partner.";
+                     teamStatusDiv.className = "status-message status-info";
+                } else if (data.status === "partner_left") {
+                    teamStatusDiv.textContent = "Your partner has left. Waiting for a new one or the team might disband.";
+                    teamStatusDiv.className = "status-message status-info";
+                    // If quiz was active, might need to go to a waiting state for questions
+                    questionArea.classList.add("hidden");
+                    waitingArea.classList.add("hidden");
+                }
+            }
+        });
+
+        socket.on("partner_left", (data) => {
+            if (currentTeam) { // Check if the user is in a team
+                teamStatusDiv.textContent = data.message + " Waiting for a new partner.";
+                teamStatusDiv.className = "status-message status-info";
+                questionArea.classList.add("hidden"); // Stop questions if partner leaves
+                waitingArea.classList.add("hidden");
+                showStatus(data.message, "info");
+                // The backend should also send a teams_updated so the join list becomes accurate
+            }
+        });
+
+        socket.on("team_disbanded", (data) => {
+            showStatus(data.message, "info");
+            showTeamManagement();
+        });
+        
+        socket.on("left_team_success", (data) => {
+            showStatus(data.message, "success");
+            showTeamManagement();
+        });
+
+        socket.on("new_question", (data) => {
+            showQuestionView(data.round_id, data.round_number, data.item);
+        });
+
+        socket.on("answer_confirmed", (data) => {
+            showWaitingView("Answer confirmed. Waiting for partner and next question...");
+        });
+        
+        socket.on("round_complete", (data) => {
+            if (currentTeam === data.team_name) {
+                // The new_question event will follow if the game continues
+                // For now, just acknowledge. Can add more specific UI later.
+                console.log(`Round ${data.round_number} complete for team ${data.team_name}`);
+                // The waiting view is likely already shown from answer_confirmed
+            }
+        });
+
+        // Event Listeners for UI elements
+        createTeamBtn.addEventListener("click", () => {
+            const teamName = teamNameInput.value.trim();
+            if (teamName) {
+                socket.emit("create_team", { team_name: teamName });
+            } else {
+                showStatus("Please enter a team name.", "error");
+            }
+        });
+
+        leaveTeamBtn.addEventListener("click", () => {
+            if (currentTeam) {
+                socket.emit("leave_team", {}); // No data needed, SID is used by backend
+            }
+        });
+
+        answerTrueBtn.addEventListener("click", () => {
+            if (currentRoundId && currentAssignedItem) {
+                socket.emit("submit_answer", { round_id: currentRoundId, item: currentAssignedItem, answer: true });
+            }
+        });
+
+        answerFalseBtn.addEventListener("click", () => {
+            if (currentRoundId && currentAssignedItem) {
+                socket.emit("submit_answer", { round_id: currentRoundId, item: currentAssignedItem, answer: false });
+            }
+        });
+
+        // Initial state
+        showTeamManagement();
+
+    </script>
+</body>
+</html>
