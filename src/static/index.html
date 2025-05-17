@@ -206,12 +206,16 @@
         socket.on("team_joined", (data) => {
             currentTeam = data.team_name;
             showInTeamView(data.team_name, "You have joined the team! Waiting for game to start or partner if they were first.");
+            teamStatusDiv.innerHTML = "You have joined the team! Waiting for game to start or partner if they were first.";
             showStatus(`Successfully joined team '${data.team_name}'.`, "success");
         });
 
         socket.on("partner_joined", (data) => {
             if (currentTeam === data.team_name) {
-                teamStatusDiv.textContent = "Partner has joined! Quiz will start soon.";
+                const currentStatus = teamStatusDiv.innerHTML;
+                const matches = currentStatus.match(/Round \d+: Answer submitted successfully/g);
+                const submissionHistory = matches ? "<br><br>" + matches.join("<br>") : "";
+                teamStatusDiv.innerHTML = "Partner has joined! Quiz will start soon." + submissionHistory;
                 teamStatusDiv.className = "status-message status-success";
                 showStatus(`Partner joined team '${data.team_name}'.`, "info");
             }
@@ -219,14 +223,18 @@
         
         socket.on("team_status_update", (data) => {
             if (currentTeam === data.team_name) {
+                const currentStatus = teamStatusDiv.innerHTML;
+                const matches = currentStatus.match(/Round \d+: Answer submitted successfully/g);
+                const submissionHistory = matches ? "<br><br>" + matches.join("<br>") : "";
+                
                 if (data.status === "full") {
-                     teamStatusDiv.textContent = "Team is full! Ready for questions.";
+                     teamStatusDiv.innerHTML = "Team is full! Ready for questions." + submissionHistory;
                      teamStatusDiv.className = "status-message status-success";
                 } else if (data.status === "waiting_for_partner") {
-                     teamStatusDiv.textContent = "Partner left. Waiting for a new partner.";
+                     teamStatusDiv.innerHTML = "Partner left. Waiting for a new partner." + submissionHistory;
                      teamStatusDiv.className = "status-message status-info";
                 } else if (data.status === "partner_left") {
-                    teamStatusDiv.textContent = "Your partner has left. Waiting for a new one or the team might disband.";
+                    teamStatusDiv.innerHTML = "Your partner has left. Waiting for a new one or the team might disband." + submissionHistory;
                     teamStatusDiv.className = "status-message status-info";
                     // If quiz was active, might need to go to a waiting state for questions
                     questionArea.classList.add("hidden");
@@ -237,7 +245,11 @@
 
         socket.on("partner_left", (data) => {
             if (currentTeam) { // Check if the user is in a team
-                teamStatusDiv.textContent = data.message + " Waiting for a new partner.";
+                const currentStatus = teamStatusDiv.innerHTML;
+                const matches = currentStatus.match(/Round \d+: Answer submitted successfully/g);
+                const submissionHistory = matches ? "<br><br>" + matches.join("<br>") : "";
+                
+                teamStatusDiv.innerHTML = data.message + " Waiting for a new partner." + submissionHistory;
                 teamStatusDiv.className = "status-message status-info";
                 questionArea.classList.add("hidden"); // Stop questions if partner leaves
                 waitingArea.classList.add("hidden");
@@ -262,6 +274,10 @@
 
         socket.on("answer_confirmed", (data) => {
             showWaitingView("Answer confirmed. Waiting for partner and next question...");
+            // Update team status with submission info
+            const currentStatus = teamStatusDiv.textContent;
+            const roundNum = roundNumberSpan.textContent;
+            teamStatusDiv.innerHTML = `${currentStatus}<br><br>Round ${roundNum}: Answer submitted successfully`;
         });
         
         socket.on("round_complete", (data) => {
