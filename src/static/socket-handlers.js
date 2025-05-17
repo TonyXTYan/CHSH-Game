@@ -50,11 +50,24 @@ function initializeSocketHandlers(socket, callbacks) {
     });
 
     socket.on('team_status_update', (data) => {
+        console.log('Team status update:', data);
+        if (data.status === 'creator_rejoined') {
+            callbacks.showStatus('Team creator has rejoined the team!', 'success');
+        } else if (data.status === 'partner_rejoined') {
+            callbacks.showStatus('Your partner has rejoined the team!', 'success');
+        }
         callbacks.onTeamStatusUpdate(data);
     });
 
     socket.on('teams_updated', (data) => {
         console.log('Teams updated:', data);
+        
+        // First check for rejoinable teams before updating list
+        const rejoinableTeam = data.teams.find(team => team.rejoinable);
+        if (rejoinableTeam) {
+            callbacks.showStatus('Your team is still active - click "Join Team" to rejoin.', 'info');
+        }
+        
         callbacks.updateGameState(data.game_started);
         callbacks.updateTeamsList(data.teams);
     });
@@ -84,9 +97,9 @@ function initializeSocketHandlers(socket, callbacks) {
     socket.on('partner_left', (data) => {
         callbacks.showStatus(data.message, 'warning');
     });
-
-    socket.on('team_disbanded', (data) => {
-        callbacks.onTeamDisbanded(data);
+    
+    socket.on('partner_rejoined', (data) => {
+        callbacks.showStatus(data.message, 'success');
     });
 
     socket.on('left_team_success', (data) => {
