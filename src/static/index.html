@@ -19,6 +19,7 @@
         .status-info { background-color: #e7f3fe; border-left: 6px solid #2196F3; }
         .status-error { background-color: #ffebee; border-left: 6px solid #f44336; }
         .status-success { background-color: #e8f5e9; border-left: 6px solid #4CAF50; }
+        .status-warning { background-color: #fff9e6; border-left: 6px solid #ff9800; }
         #question-area, #waiting-area { text-align: center; margin-top: 20px; }
         #question-item { font-size: 2em; font-weight: bold; margin-bottom: 20px; }
         .answer-buttons button { 
@@ -32,9 +33,22 @@
             text-align: center;
             margin-top: 20px;
         }
+        #reconnecting-indicator {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background-color: #ff9800;
+            color: white;
+            text-align: center;
+            padding: 5px;
+            font-weight: bold;
+            z-index: 1000;
+        }
     </style>
 </head>
 <body>
+    <div id="reconnecting-indicator" class="hidden">Reconnecting to server...</div>
     <div class="container">
         <h1>Live Quiz</h1>
 
@@ -84,8 +98,21 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <script>
-        // Participant App Logic will go here
-        const socket = io(window.location.origin);
+        // Session persistence and robustness improvements
+        const SESSION_STORAGE_KEY = 'chsh_game_session';
+        const reconnectingIndicator = document.getElementById("reconnecting-indicator");
+        let reconnectionAttempts = 0;
+        let maxReconnectionAttempts = 5;
+        let reconnectionDelay = 1000; // Start with 1 second
+        
+        // Participant App Logic
+        const socket = io(window.location.origin, {
+            reconnection: true,
+            reconnectionAttempts: 10,
+            reconnectionDelay: 1000,
+            reconnectionDelayMax: 5000,
+            timeout: 20000
+        });
 
         const connectionStatusDiv = document.getElementById("connection-status");
         const teamManagementArea = document.getElementById("team-management-area");
@@ -114,6 +141,114 @@
         let isProcessingTeamAction = false; // Flag to prevent duplicate team actions
         let currentRoundId = null;
         let currentAssignedItem = null;
+        let sessionData = null;
+        let isReconnecting = false;
+
+        // Session persistence functions
+        function saveSessionData() {
+            if (!currentTeam) return;
+            
+            const data = {
+                socketId: socket.id,
+                teamName: currentTeam,
+                isCreator: teamStatusDiv.innerHTML.includes("Team created") || 
+                           (sessionData && sessionData.isCreator),
+                roundId: currentRoundId,
+                assignedItem: currentAssignedItem,
+                timestamp: new Date().getTime()
+            };
+            
+            try {
+                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(data));
+                console.log("Session data saved:", data);
+            } catch (e) {
+                console.error("Failed to save session data:", e);
+            }
+        }
+
+        function loadSessionData() {
+            try {
+                const data = localStorage.getItem(SESSION_STORAGE_KEY);
+                if (data) {
+                    sessionData = JSON.parse(data);
+                    console.log("Session data loaded:", sessionData);
+                    
+                    // Check if session data is too old (e.g., more than 1 hour)
+                    const now = new Date().getTime();
+                    const sessionAge = now - sessionData.timestamp;
+                    if (sessionAge > 3600000) { // 1 hour in milliseconds
+                        console.log("Session data is too old, clearing");
+                        clearSessionData();
+                        return null;
+                    }
+                    
+                    return sessionData;
+                }
+            } catch (e) {
+                console.error("Failed to load session data:", e);
+                clearSessionData();
+            }
+            return null;
+        }
+
+        function clearSessionData() {
+            try {
+                localStorage.removeItem(SESSION_STORAGE_KEY);
+                sessionData = null;
+                console.log("Session data cleared");
+            } catch (e) {
+                console.error("Failed to clear session data:", e);
+            }
+        }
+
+        function attemptReconnection() {
+            if (!sessionData || isReconnecting) return;
+            
+            isReconnecting = true;
+            showStatus("Attempting to reconnect to your previous session...", "warning");
+            reconnectingIndicator.classList.remove("hidden");
+            
+            console.log("Attempting to reconnect to team:", sessionData.teamName);
+            
+            // Wait for socket to be connected before attempting to rejoin
+            if (socket.connected) {
+                performReconnection();
+            } else {
+                socket.once('connect', performReconnection);
+            }
+        }
+
+        function performReconnection() {
+            if (!sessionData) {
+                isReconnecting = false;
+                reconnectingIndicator.classList.add("hidden");
+                return;
+            }
+            
+            if (sessionData.isCreator) {
+                // If user was a team creator, we need special handling
+                // since we can't directly recreate the team (it might still exist)
+                socket.emit('verify_team_membership', { 
+                    team_name: sessionData.teamName,
+                    previous_sid: sessionData.socketId
+                });
+            } else {
+                // If user was a team member, attempt to rejoin
+                socket.emit('rejoin_team', { 
+                    team_name: sessionData.teamName,
+                    previous_sid: sessionData.socketId
+                });
+            }
+            
+            // Set a timeout to clear reconnection state if no response
+            setTimeout(() => {
+                if (isReconnecting) {
+                    isReconnecting = false;
+                    reconnectingIndicator.classList.add("hidden");
+                    showStatus("Reconnection attempt timed out. Please join or create a team manually.", "error");
+                }
+            }, 5000);
+        }
 
         function showStatus(message, type = "info") {
             connectionStatusDiv.textContent = message;
@@ -121,26 +256,30 @@
         }
 
         function updateTeamListView(teams) {
-            availableTeamsList.innerHTML = "";
-            if (teams && teams.length > 0 && !currentTeam) {
-                noTeamsMessage.classList.add("hidden");
-                teams.forEach(team => {
-                    const li = document.createElement("li");
-                    li.textContent = team.team_name;
-                    const joinBtn = document.createElement("button");
-                    joinBtn.textContent = "Join";
-                    joinBtn.onclick = () => {
-                        if (!isProcessingTeamAction) {
-                            isProcessingTeamAction = true;
-                            joinBtn.disabled = true;
-                            socket.emit("join_team", { team_name: team.team_name });
-                        }
-                    };
-                    li.appendChild(joinBtn);
-                    availableTeamsList.appendChild(li);
-                });
-            } else {
-                noTeamsMessage.classList.remove("hidden");
+            try {
+                availableTeamsList.innerHTML = "";
+                if (teams && teams.length > 0 && !currentTeam) {
+                    noTeamsMessage.classList.add("hidden");
+                    teams.forEach(team => {
+                        const li = document.createElement("li");
+                        li.textContent = team.team_name;
+                        const joinBtn = document.createElement("button");
+                        joinBtn.textContent = "Join";
+                        joinBtn.onclick = () => {
+                            if (!isProcessingTeamAction) {
+                                isProcessingTeamAction = true;
+                                joinBtn.disabled = true;
+                                socket.emit("join_team", { team_name: team.team_name });
+                            }
+                        };
+                        li.appendChild(joinBtn);
+                        availableTeamsList.appendChild(li);
+                    });
+                } else {
+                    noTeamsMessage.classList.remove("hidden");
+                }
+            } catch (e) {
+                console.error("Error updating team list:", e);
             }
         }
 
@@ -152,6 +291,7 @@
             currentTeam = null;
             currentRoundId = null;
             currentAssignedItem = null;
+            clearSessionData();
         }
 
         function showInTeamView(teamName, statusMessage) {
@@ -162,6 +302,8 @@
             currentTeamNameHeader.textContent = `Team: ${teamName}`;
             teamStatusDiv.textContent = statusMessage;
             teamStatusDiv.className = "status-message status-info";
+            currentTeam = teamName;
+            saveSessionData();
         }
         
         function showQuestionView(roundId, roundNum, item) {
@@ -182,6 +324,8 @@
                 answerTrueBtn.disabled = false;
                 answerFalseBtn.disabled = false;
             }, 100); // 0.1ms delay
+            
+            saveSessionData();
         }
 
         function showWaitingView(message) {
@@ -198,19 +342,62 @@
         // SocketIO Event Handlers
         socket.on("connect", () => {
             showStatus("Connected to server!", "success");
-            showTeamManagement(); // Show team management on fresh connect
+            reconnectingIndicator.classList.add("hidden");
+            reconnectionAttempts = 0;
             document.getElementById("sid-display").textContent = `Session ID: ${socket.id}`;
+            
+            // Check for existing session
+            const existingSession = loadSessionData();
+            if (existingSession && !currentTeam) {
+                attemptReconnection();
+            } else if (!currentTeam) {
+                showTeamManagement(); // Show team management on fresh connect
+            }
         });
 
         socket.on("disconnect", () => {
-            showStatus("Disconnected from server.", "error");
-            showTeamManagement(); // Reset to team management
+            showStatus("Disconnected from server. Attempting to reconnect...", "error");
+            reconnectingIndicator.classList.remove("hidden");
+        });
+
+        socket.on("reconnect_attempt", (attemptNumber) => {
+            reconnectionAttempts = attemptNumber;
+            showStatus(`Reconnection attempt ${attemptNumber}...`, "warning");
+            reconnectingIndicator.classList.remove("hidden");
+            reconnectingIndicator.textContent = `Reconnecting to server (attempt ${attemptNumber})...`;
+        });
+
+        socket.on("reconnect", () => {
+            showStatus("Reconnected to server!", "success");
+            reconnectingIndicator.classList.add("hidden");
+            
+            // If we were in a team before, attempt to rejoin
+            if (sessionData && sessionData.teamName) {
+                attemptReconnection();
+            }
+        });
+
+        socket.on("reconnect_error", (error) => {
+            console.error("Reconnection error:", error);
+            showStatus(`Reconnection error: ${error.message || "Unknown error"}`, "error");
+        });
+
+        socket.on("reconnect_failed", () => {
+            showStatus("Failed to reconnect after multiple attempts. Please refresh the page.", "error");
+            reconnectingIndicator.classList.add("hidden");
         });
 
         socket.on("error", (data) => {
             isProcessingTeamAction = false;
             createTeamBtn.disabled = false;
             showStatus(`Error: ${data.message}`, "error");
+            
+            // If reconnecting, stop and show team management
+            if (isReconnecting) {
+                isReconnecting = false;
+                reconnectingIndicator.classList.add("hidden");
+                showTeamManagement();
+            }
         });
 
         socket.on("available_teams", (teams) => {
@@ -227,6 +414,18 @@
             createTeamBtn.disabled = false;
             showInTeamView(data.team_name, "Team created! Waiting for a partner.");
             showStatus(`Team '${data.team_name}' created. Waiting for partner.`, "success");
+            
+            // Update session data with creator status
+            if (sessionData) {
+                sessionData.isCreator = true;
+                saveSessionData();
+            }
+            
+            // End reconnection process if active
+            if (isReconnecting) {
+                isReconnecting = false;
+                reconnectingIndicator.classList.add("hidden");
+            }
         });
 
         socket.on("team_joined", (data) => {
@@ -234,6 +433,52 @@
             showInTeamView(data.team_name, "You have joined the team! Waiting for game to start or partner if they were first.");
             teamStatusDiv.innerHTML = "You have joined the team! Waiting for game to start or partner if they were first.";
             showStatus(`Successfully joined team '${data.team_name}'.`, "success");
+            
+            // Update session data
+            if (sessionData) {
+                sessionData.isCreator = false;
+                saveSessionData();
+            }
+            
+            // End reconnection process if active
+            if (isReconnecting) {
+                isReconnecting = false;
+                reconnectingIndicator.classList.add("hidden");
+            }
+        });
+
+        socket.on("rejoin_team_success", (data) => {
+            currentTeam = data.team_name;
+            showInTeamView(data.team_name, data.status_message || "Successfully rejoined team!");
+            showStatus(`Successfully rejoined team '${data.team_name}'.`, "success");
+            
+            // If there's an active round, show it
+            if (data.current_round) {
+                showQuestionView(
+                    data.current_round.round_id, 
+                    data.current_round.round_number, 
+                    data.current_round.item
+                );
+                
+                // If already answered, show waiting view
+                if (data.already_answered) {
+                    showWaitingView("You've already answered this round. Waiting for partner and next question...");
+                }
+            }
+            
+            // End reconnection process
+            isReconnecting = false;
+            reconnectingIndicator.classList.add("hidden");
+        });
+
+        socket.on("rejoin_team_failed", (data) => {
+            showStatus(`Failed to rejoin team: ${data.message}`, "error");
+            showTeamManagement();
+            clearSessionData();
+            
+            // End reconnection process
+            isReconnecting = false;
+            reconnectingIndicator.classList.add("hidden");
         });
 
         socket.on("partner_joined", (data) => {
@@ -244,6 +489,7 @@
                 teamStatusDiv.innerHTML = "Partner has joined! Quiz will start soon." + submissionHistory;
                 teamStatusDiv.className = "status-message status-success";
                 showStatus(`Partner joined team '${data.team_name}'.`, "info");
+                saveSessionData();
             }
         });
         
@@ -266,6 +512,7 @@
                     questionArea.classList.add("hidden");
                     waitingArea.classList.add("hidden");
                 }
+                saveSessionData();
             }
         });
 
@@ -280,6 +527,7 @@
                 questionArea.classList.add("hidden"); // Stop questions if partner leaves
                 waitingArea.classList.add("hidden");
                 showStatus(data.message, "info");
+                saveSessionData();
                 // The backend should also send a teams_updated so the join list becomes accurate
             }
         });
@@ -287,11 +535,13 @@
         socket.on("team_disbanded", (data) => {
             showStatus(data.message, "info");
             showTeamManagement();
+            clearSessionData();
         });
         
         socket.on("left_team_success", (data) => {
             showStatus(data.message, "success");
             showTeamManagement();
+            clearSessionData();
         });
 
         socket.on("new_question", (data) => {
@@ -304,12 +554,14 @@
             const currentStatus = teamStatusDiv.textContent;
             const roundNum = roundNumberSpan.textContent;
             teamStatusDiv.innerHTML = `${currentStatus}<br><br>Round ${roundNum}: Answer submitted successfully`;
+            saveSessionData();
         });
         
         socket.on("game_start", () => {
             if (currentTeam) {
                 teamStatusDiv.innerHTML = "Game has started! Get ready for questions...";
                 teamStatusDiv.className = "status-message status-success";
+                saveSessionData();
             }
         });
 
@@ -332,31 +584,69 @@
                 socket.emit("create_team", { team_name: teamName });
                 teamNameInput.value = ""; // Clear input after submission
             } else {
-                showStatus("Please enter a team name.", "error");
+                showStatus("Please enter a team name", "error");
             }
         });
 
         leaveTeamBtn.addEventListener("click", () => {
-            if (currentTeam) {
-                socket.emit("leave_team", {}); // No data needed, SID is used by backend
+            if (confirm("Are you sure you want to leave this team?")) {
+                socket.emit("leave_team", {});
             }
         });
 
         answerTrueBtn.addEventListener("click", () => {
             if (currentRoundId && currentAssignedItem) {
-                socket.emit("submit_answer", { round_id: currentRoundId, item: currentAssignedItem, answer: true });
+                answerTrueBtn.disabled = true;
+                answerFalseBtn.disabled = true;
+                socket.emit("submit_answer", {
+                    round_id: currentRoundId,
+                    item: currentAssignedItem,
+                    answer: true
+                });
             }
         });
 
         answerFalseBtn.addEventListener("click", () => {
             if (currentRoundId && currentAssignedItem) {
-                socket.emit("submit_answer", { round_id: currentRoundId, item: currentAssignedItem, answer: false });
+                answerTrueBtn.disabled = true;
+                answerFalseBtn.disabled = true;
+                socket.emit("submit_answer", {
+                    round_id: currentRoundId,
+                    item: currentAssignedItem,
+                    answer: false
+                });
             }
         });
 
-        // Initial state
-        showTeamManagement();
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') {
+                console.log("Page is now visible, checking connection status");
+                if (!socket.connected && currentTeam) {
+                    showStatus("Reconnecting after page was hidden...", "warning");
+                    socket.connect();
+                }
+            }
+        });
 
+        // Handle beforeunload to warn about leaving during active game
+        window.addEventListener('beforeunload', (e) => {
+            if (currentTeam && questionArea.classList.contains('hidden') === false) {
+                // User is in active question, show warning
+                const message = "You're in the middle of a question. Are you sure you want to leave?";
+                e.returnValue = message;
+                return message;
+            }
+        });
+
+        // Initialize - check for existing session on page load
+        window.addEventListener('load', () => {
+            const existingSession = loadSessionData();
+            if (existingSession) {
+                showStatus("Found previous session. Attempting to reconnect...", "info");
+                // Actual reconnection will happen after socket connects
+            }
+        });
     </script>
 </body>
 </html>
