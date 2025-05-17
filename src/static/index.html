@@ -20,7 +20,17 @@
         .status-success { background-color: #e8f5e9; border-left: 6px solid #4CAF50; }
         #question-area, #waiting-area { text-align: center; margin-top: 20px; }
         #question-item { font-size: 2em; font-weight: bold; margin-bottom: 20px; }
-        .answer-buttons button { font-size: 1.2em; padding: 15px 30px; }
+        .answer-buttons button { 
+            font-size: 1.2em; 
+            padding: 15px 30px;
+            touch-action: manipulation; /* Prevents double-tap zoom on iOS */
+        }
+        .sid-text {
+            color: #999;
+            font-size: 0.8em;
+            text-align: center;
+            margin-top: 20px;
+        }
     </style>
 </head>
 <body>
@@ -68,6 +78,7 @@
             <p id="waiting-message" class="status-message status-info">Answer submitted. Waiting for your partner...</p>
         </div>
 
+        <div id="sid-display" class="sid-text"></div>
     </div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
@@ -181,6 +192,7 @@
         socket.on("connect", () => {
             showStatus("Connected to server!", "success");
             showTeamManagement(); // Show team management on fresh connect
+            document.getElementById("sid-display").textContent = `Session ID: ${socket.id}`;
         });
 
         socket.on("disconnect", () => {
