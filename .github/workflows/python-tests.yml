@@ -36,3 +36,58 @@ jobs:
       with:
         fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
+        
+  release:
+    needs: test
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+          
+      - name: Get latest release version and increment
+        id: get_version
+        run: |
+          # Get latest release or set default
+          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
+            "https://api.github.com/repos/${{ github.repository }}/releases")
+          
+          # Check if there are any releases
+          if [ "$(echo "$LATEST_RELEASE" | jq length)" = "0" ]; then
+            LATEST_VERSION="v0.0.0"
+          else
+            LATEST_VERSION=$(echo "$LATEST_RELEASE" | jq -r '.[0].tag_name')
+            if [ "$LATEST_VERSION" = "null" ] || [ -z "$LATEST_VERSION" ]; then
+              LATEST_VERSION="v0.0.0"
+            fi
+          fi
+          echo "Current version: $LATEST_VERSION"
+          
+          # Parse version and increment patch number
+          if [[ $LATEST_VERSION =~ v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
+            MAJOR="${BASH_REMATCH[1]}"
+            MINOR="${BASH_REMATCH[2]}"
+            PATCH="${BASH_REMATCH[3]}"
+            NEW_PATCH=$((PATCH + 1))
+            NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
+          else
+            NEW_VERSION="v0.0.1"
+          fi
+          echo "New version: $NEW_VERSION"
+          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
+          
+      - name: Create GitHub Pre-release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.new_version }}
+          name: Release ${{ steps.get_version.outputs.new_version }}
+          draft: false
+          prerelease: true
+          body: |
+            Automated pre-release for version ${{ steps.get_version.outputs.new_version }}
+            
+            Changes in this release:
+            ${{ github.event.head_commit.message }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
