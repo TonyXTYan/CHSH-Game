@@ -104,6 +104,7 @@ def emit_dashboard_full_update(client_sid=None):
             'connected_players_count': len(state.connected_players),
             'game_state': {
                 'started': state.game_started,
+                'paused': state.game_paused,
                 'streaming_enabled': state.answer_stream_enabled
             }
         }
@@ -183,6 +184,33 @@ def on_start_game(data=None):
         import traceback
         traceback.print_exc()
         emit('error', {'message': f'Error starting game: {str(e)}'})
+
+@socketio.on('pause_game')
+def on_pause_game():
+    try:
+        from flask import request
+        if request.sid not in state.dashboard_clients:
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})
+            return
+
+        state.game_paused = not state.game_paused  # Toggle pause state
+        pause_status = "paused" if state.game_paused else "resumed"
+        print(f"Game {pause_status} by {request.sid}")
+
+        # Notify all clients about pause state change
+        for team_name in state.active_teams.keys():
+            socketio.emit('game_state_update', {
+                'paused': state.game_paused
+            }, room=team_name)
+
+        # Update dashboard state
+        emit_dashboard_full_update()
+
+    except Exception as e:
+        print(f"Error in on_pause_game: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': f'Error toggling game pause: {str(e)}'})
 
 @socketio.on('disconnect')
 def on_disconnect():

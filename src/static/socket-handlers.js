@@ -82,6 +82,33 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.updateGameState(data.game_started);
     });
 
+    socket.on('game_state_update', (data) => {
+        console.log('Game state update:', data);
+        if (data.hasOwnProperty('paused')) {
+            if (data.paused) {
+                callbacks.showStatus('Game is paused', 'warning');
+                // Disable answer buttons when game is paused
+                if (typeof callbacks.setAnswerButtonsEnabled === 'function') {
+                    callbacks.setAnswerButtonsEnabled(false);
+                }
+            } else {
+                // Get current round info from app.js
+                if (typeof callbacks.getCurrentRoundInfo === 'function') {
+                    const roundInfo = callbacks.getCurrentRoundInfo();
+                    if (roundInfo) {
+                        callbacks.showStatus(`Game resumed, current round is: ${roundInfo.round_number}`, 'success');
+                    } else {
+                        callbacks.showStatus('Game resumed', 'success');
+                    }
+                }
+                // Re-enable answer buttons when game is resumed
+                if (typeof callbacks.setAnswerButtonsEnabled === 'function') {
+                    callbacks.setAnswerButtonsEnabled(true);
+                }
+            }
+        }
+    });
+
     socket.on('new_question', (data) => {
         callbacks.onNewQuestion(data);
     });
@@ -151,10 +178,20 @@ function initializeSocketHandlers(socket, callbacks) {
         if (typeof callbacks.updateGameState === 'function') {
             callbacks.updateGameState(data.game_started);
         }
-        // Show appropriate status message
-        callbacks.showStatus(
-            data.game_started ? 'Game has started!' : 'Game has been stopped.',
-            'info'
-        );
+        // Show appropriate status message based on game state
+        if (data.game_started) {
+            if (data.paused) {
+                callbacks.showStatus('Game is paused', 'warning');
+            } else {
+                callbacks.showStatus('Game has started!', 'info');
+            }
+        } else {
+            callbacks.showStatus('Game has been stopped.', 'info');
+        }
+        
+        // Update answer buttons state
+        if (typeof callbacks.setAnswerButtonsEnabled === 'function') {
+            callbacks.setAnswerButtonsEnabled(data.game_started && !data.paused);
+        }
     });
 }

@@ -13,6 +13,9 @@ def on_submit_answer(data):
         sid = request.sid
         if sid not in state.player_to_team:
             emit('error', {'message': 'You are not in a team or session expired.'}); return
+            
+        if state.game_paused:
+            emit('error', {'message': 'Game is currently paused.'}); return
         team_name = state.player_to_team[sid]
         team_info = state.active_teams.get(team_name)
         if not team_info or len(team_info['players']) != 2:
@@ -206,7 +209,12 @@ def on_verify_team_membership(data):
         if len(team_info['players']) < 2:
             status_message = "Team joined! Waiting for another player."
         else:
-            status_message = "Team is full!" + (" Game has started!" if state.game_started else " Waiting for game to start.")
+            game_status = ""
+            if state.game_started:
+                game_status = " Game has started!" if not state.game_paused else " Game is paused!"
+            else:
+                game_status = " Waiting for game to start."
+            status_message = "Team is full!" + game_status
             
         emit('rejoin_team_success', {
             'team_name': team_name,
@@ -356,7 +364,12 @@ def on_rejoin_team(data):
         if len(team_info['players']) < 2:
             status_message = "Team joined! Waiting for another player."
         else:
-            status_message = "Team is full!" + (" Game has started!" if state.game_started else " Waiting for game to start.")
+            game_status = ""
+            if state.game_started:
+                game_status = " Game has started!" if not state.game_paused else " Game is paused!"
+            else:
+                game_status = " Waiting for game to start."
+            status_message = "Team is full!" + game_status
             
         emit('rejoin_team_success', {
             'team_name': team_name,

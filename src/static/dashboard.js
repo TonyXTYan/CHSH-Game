@@ -79,6 +79,7 @@ function clearAllUITables() {
     readyPlayersCountEl.textContent = "0";
     connectedPlayersCountEl.textContent = "0";
     totalResponsesCountEl.textContent = "0";
+    document.getElementById("pause-game-btn").style.display = "none";
 }
 
 socket.on("disconnect", () => {
@@ -112,9 +113,48 @@ socket.on("server_shutdown", () => {
     localStorage.removeItem('chsh_game_state');
 });
 
-// Handle page load - clear any stale state
+// Handle page load - restore game state from localStorage
 window.addEventListener('load', () => {
-    localStorage.removeItem('chsh_game_state');
+    // Clear any stale state but preserve game state
+    const gameStarted = localStorage.getItem('game_started') === 'true';
+    const gamePaused = localStorage.getItem('game_paused') === 'true';
+    // const lastUpdate = parseInt(localStorage.getItem('game_state_last_update') || '0'); // Not strictly needed for initial UI render
+    
+    // Clear old storage format if present
+    localStorage.removeItem('chsh_game_state'); // Keep this if migrating from an old format
+    
+    const startBtn = document.getElementById("start-game-btn");
+    const pauseBtn = document.getElementById("pause-game-btn");
+    const gameControlText = document.getElementById("game-control-text");
+
+    if (gameStarted) {
+        if (startBtn) {
+            startBtn.disabled = false;
+            startBtn.textContent = "Reset game stats";
+            startBtn.className = "reset-game";
+            startBtn.onclick = handleResetGame;
+        }
+        
+        if (pauseBtn) {
+            pauseBtn.style.display = "inline-block";
+            updatePauseButtonState(gamePaused); // Use the existing function to set text and class
+        }
+        
+        if (gameControlText) {
+            gameControlText.textContent = gamePaused ? "Game paused" : "Game in progress";
+        }
+    } else {
+        // If game not started, ensure pause button is hidden and start button is in initial state
+        if (startBtn) {
+             resetButtonToInitialState(startBtn); // Resets text, class, onclick
+        }
+        if (pauseBtn) {
+            pauseBtn.style.display = "none";
+        }
+        if (gameControlText) {
+            gameControlText.textContent = "Game Control";
+        }
+    }
 });
 
 let confirmingStop = false;
@@ -153,10 +193,15 @@ socket.on("game_started", () => {
     cleanupResetConfirmation(startBtn); // Ensure any prior confirmation state is cleared
 
     gameControlText.textContent = "Game in progress";
+    document.getElementById("pause-game-btn").style.display = "inline-block";
     startBtn.disabled = false;
     startBtn.textContent = "Reset game stats";
     startBtn.className = "reset-game";
     startBtn.onclick = handleResetGame;
+
+    // Persist game started state
+    localStorage.setItem('game_started', 'true');
+    localStorage.setItem('game_state_last_update', Date.now().toString());
 });
 
 socket.on("game_reset_complete", () => {
@@ -177,11 +222,17 @@ socket.on("game_reset_complete", () => {
     startBtn.className = "";
     startBtn.onclick = startGame;
     gameControlText.textContent = "Game Control";
+    document.getElementById("pause-game-btn").style.display = "none";
     
     answerLogTableBody.innerHTML = "";
     noAnswersLogMsg.style.display = "block";
     currentAnswersCount = 0;
     totalResponsesCountEl.textContent = "0";
+
+    // Clear game state from localStorage
+    localStorage.removeItem('game_started');
+    localStorage.removeItem('game_paused');
+    localStorage.removeItem('game_state_last_update');
     
     socket.emit('dashboard_join');
 });
@@ -288,7 +339,25 @@ socket.on("error", (data) => {
 socket.on("dashboard_update", (data) => {
     console.log("Dashboard update received:", data);
     if (data.game_state) {
-        console.log(`Game state update - started: ${data.game_state.started}, streaming: ${data.game_state.streaming_enabled}`);
+        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}`);
+        
+        // Persist full game state from server
+        localStorage.setItem('game_started', data.game_state.started.toString());
+        localStorage.setItem('game_paused', data.game_state.paused.toString());
+        localStorage.setItem('game_state_last_update', Date.now().toString());
+
+        // Update pause button visibility and state
+        const pauseBtn = document.getElementById("pause-game-btn");
+        if (data.game_state.started) {
+            pauseBtn.style.display = "inline-block";
+            updatePauseButtonState(data.game_state.paused);
+            document.getElementById("game-control-text").textContent =
+                data.game_state.paused ? "Game paused" : "Game in progress";
+        } else {
+            pauseBtn.style.display = "none";
+            // Also ensure game control text is reset if game is not started
+            document.getElementById("game-control-text").textContent = "Game Control";
+        }
     }
     updateActiveTeams(data.active_teams);
     updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
@@ -445,6 +514,41 @@ function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
 }
+
+function togglePause() {
+    const pauseBtn = document.getElementById("pause-game-btn");
+    if (pauseBtn && !pauseBtn.disabled) {
+        pauseBtn.disabled = true;  // Prevent double-click
+        socket.emit("pause_game");
+    }
+}
+
+function updatePauseButtonState(isPaused) {
+    const pauseBtn = document.getElementById("pause-game-btn");
+    if (pauseBtn) {
+        pauseBtn.disabled = false;
+        if (isPaused) {
+            pauseBtn.textContent = "Resume";
+            pauseBtn.classList.add("resume");
+        } else {
+            pauseBtn.textContent = "Pause";
+            pauseBtn.classList.remove("resume");
+        }
+    }
+}
+
+socket.on("game_state_update", (data) => {
+    console.log("Game state update received:", data);
+    if (data.hasOwnProperty('paused')) {
+        updatePauseButtonState(data.paused);
+        document.getElementById("game-control-text").textContent =
+            data.paused ? "Game paused" : "Game in progress";
+        
+        // Persist the current state
+        localStorage.setItem('game_paused', data.paused.toString());
+        localStorage.setItem('game_state_last_update', Date.now().toString());
+    }
+});
 
 function startGame() {
     const startBtn = document.getElementById("start-game-btn");

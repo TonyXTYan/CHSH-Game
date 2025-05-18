@@ -3,6 +3,8 @@ let currentTeam = null;
 let isCreator = false;
 let currentRound = null;
 let gameStarted = false;
+let gamePaused = false;
+let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 
@@ -86,11 +88,15 @@ function tryRestoreSession() {
 function updateGameState(newGameStarted = null, isReset = false) {
     if (newGameStarted !== null) {
         gameStarted = newGameStarted;
+        if (!newGameStarted) {
+            gamePaused = false; // Reset pause state when game stops
+        }
     }
 
     if (isReset) {
         // Ensure all controls are in their initial state after reset
         currentRound = null;
+        lastClickedButton = null;  // Reset on game reset
         trueBtn.disabled = false;
         falseBtn.disabled = false;
         waitingMessage.classList.remove('visible');
@@ -115,9 +121,15 @@ function updateGameState(newGameStarted = null, isReset = false) {
             falseBtn.disabled = true;
             waitingMessage.classList.add('visible');
         } else {
-            trueBtn.disabled = false;
-            falseBtn.disabled = false;
+            trueBtn.disabled = gamePaused;
+            falseBtn.disabled = gamePaused;
             waitingMessage.classList.remove('visible');
+            if (gamePaused) {
+                waitingMessage.textContent = "Game is paused";
+                waitingMessage.classList.add('visible');
+            } else {
+                waitingMessage.textContent = "Waiting for next round...";
+            }
         }
     } else if (gameStarted) {
         // Game started but waiting for first question
@@ -191,6 +203,9 @@ function submitAnswer(answer) {
         answer: answer
     });
     
+    // Track which button was clicked
+    lastClickedButton = answer ? trueBtn : falseBtn;
+    
     trueBtn.disabled = true;
     falseBtn.disabled = true;
     waitingMessage.classList.add('visible');
@@ -211,6 +226,48 @@ function updateTeamStatus(status) {
     }
 }
 
+// Enable or disable answer buttons
+function setAnswerButtonsEnabled(enabled) {
+    gamePaused = !enabled;
+    
+    if (currentRound?.alreadyAnswered) {
+        // Keep both buttons disabled if round was answered
+        trueBtn.disabled = true;
+        falseBtn.disabled = true;
+        trueBtn.classList.remove('paused');
+        falseBtn.classList.remove('paused');
+    } else if (gamePaused) {
+        // If game is paused, keep last clicked button disabled
+        trueBtn.classList.add('paused');
+        falseBtn.classList.add('paused');
+        if (lastClickedButton) {
+            lastClickedButton.disabled = true;
+            // Enable other button in case it was disabled
+            (lastClickedButton === trueBtn ? falseBtn : trueBtn).disabled = true;
+        } else {
+            // If no button was clicked, disable both
+            trueBtn.disabled = true;
+            falseBtn.disabled = true;
+        }
+    } else {
+        // Normal state - enable both buttons unless round was answered
+        trueBtn.disabled = false;
+        falseBtn.disabled = false;
+        trueBtn.classList.remove('paused');
+        falseBtn.classList.remove('paused');
+    }
+    
+    if (gamePaused) {
+        waitingMessage.textContent = "Game is paused";
+        waitingMessage.classList.add('visible');
+    } else {
+        waitingMessage.textContent = "Waiting for next round...";
+        if (!currentRound?.alreadyAnswered) {
+            waitingMessage.classList.remove('visible');
+        }
+    }
+}
+
 // Socket.io event handlers callbacks
 const callbacks = {
     updateTeamStatus,
@@ -220,6 +277,8 @@ const callbacks = {
     updateTeamsList,
     resetGameControls,
     updateSessionInfo: (id) => sessionInfo.innerHTML = `Session ID: <span class="session-id">${id}</span>`,
+    setAnswerButtonsEnabled,
+    getCurrentRoundInfo: () => currentRound,
     tryRestoreSession,
 
     onTeamCreated: (data) => {
@@ -284,6 +343,7 @@ const callbacks = {
         console.log('New question received:', data);
         currentRound = data;
         currentRound.alreadyAnswered = false;
+        lastClickedButton = null; // Reset last clicked button for new round
         showStatus(`Round ${data.round_number}`, 'info');
         updateGameState();
     },
@@ -297,6 +357,7 @@ const callbacks = {
         currentTeam = null;
         isCreator = false;
         currentRound = null;
+        lastClickedButton = null;  // Reset when rejoin fails
         localStorage.removeItem('quizSessionData');
         showStatus(data.message, 'error');
         updateGameState();

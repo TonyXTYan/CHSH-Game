@@ -15,6 +15,13 @@ body {
 }
 
 @media screen and (max-height: 600px) {
+    /* Disabled button styles */
+    .button-container button:disabled {
+        background-color: #6c757d;
+        cursor: not-allowed;
+        opacity: 0.65;
+    }
+    
     body {
         padding-bottom: 40px;
     }
@@ -93,6 +100,7 @@ button:hover {
 button:disabled {
     background-color: #b0bec5;
     cursor: not-allowed;
+    transition: opacity 0.3s ease;
 }
 .team-list {
     margin-top: 20px;
@@ -170,18 +178,36 @@ button:disabled {
     font-weight: bold;
     text-transform: uppercase;
     margin: 0;
+    transition: opacity 0.3s ease, background-color 0.3s ease;
+}
+
+.answer-button:disabled {
+    opacity: 0.65;
+    transition: opacity 0.3s ease, background-color 0.3s ease;
 }
 .true-button {
     background-color: #4caf50;
+    transition: opacity 0.3s ease;
 }
 .true-button:hover {
     background-color: #388e3c;
+    transition: opacity 0.3s ease;
 }
 .false-button {
     background-color: #f44336;
+    transition: opacity 0.3s ease;
 }
 .false-button:hover {
     background-color: #d32f2f;
+    transition: opacity 0.3s ease;
+}
+.true-button.paused {
+    background-color: #6c757d;
+    transition: opacity 0.3s ease;
+}
+.false-button.paused {
+    background-color: #6c757d;
+    transition: opacity 0.3s ease;
 }
 #questionSection {
     touch-action: manipulation;
