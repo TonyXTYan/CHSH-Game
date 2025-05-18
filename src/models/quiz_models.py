@@ -6,8 +6,8 @@ db = SQLAlchemy()
 class ItemEnum(enum.Enum):
     A = 'A'
     B = 'B'
-    C = 'C'
-    D = 'D'
+    X = 'X'
+    Y = 'Y'
 
 class Teams(db.Model):
     __tablename__ = 'teams'

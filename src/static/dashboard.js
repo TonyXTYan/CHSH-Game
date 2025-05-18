@@ -454,7 +454,7 @@ async function downloadData() {
         
         // Convert data to CSV
         const csvRows = [];
-        csvRows.push(['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/C/D)', 'Answer (True/False)']);
+        csvRows.push(['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/X/Y)', 'Answer (True/False)']);
         
         data.answers.forEach(answer => {
             csvRows.push([
