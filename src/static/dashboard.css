@@ -30,6 +30,21 @@ table {
     margin-top: 10px; 
 }
 
+#active-teams-table th,
+#active-teams-table td {
+    width: 12.5%; /* Since there are 8 columns, each should take up 12.5% */
+    text-align: center;
+}
+
+/* Monospace font for numeric columns */
+#active-teams-table td:nth-child(2),  /* Current Round */
+#active-teams-table td:nth-child(4),  /* Trace Avg */
+#active-teams-table td:nth-child(5),  /* Balance */
+#active-teams-table td:nth-child(6),  /* Balanced Random */
+#active-teams-table td:nth-child(7) { /* CHSH Value */
+    font-family: 'Courier New', monospace;
+}
+
 th, td { 
     text-align: left; 
     padding: 8px; 
@@ -189,6 +204,16 @@ th {
 
 .modal-section {
     margin-bottom: 20px;
+}
+
+.details-container {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    background-color: #f7f7f7;
+    padding: 10px;
+    border-radius: 4px;
+    font-size: 14px;
 }
 
 .hash-container {

@@ -80,6 +80,9 @@ def compute_correlation_matrix(team_id):
         pair_counts = {(i, j): 0 for i in item_values for j in item_values}
         correlation_sums = {(i, j): 0 for i in item_values for j in item_values}
         
+        # Track same-item responses for the new metric
+        same_item_responses = {}  # Will track {item: {'true': count, 'false': count}}
+        
         # Analyze each round that has both player answers
         for round_id, round_answers in answers_by_round.items():
             # Skip if we don't have exactly 2 answers (one from each player)
@@ -112,6 +115,14 @@ def compute_correlation_matrix(team_id):
                 if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item: # Or p2_item, they are the same
                     p1_answer = ans_A.response_value
                     p2_answer = ans_B.response_value
+                    
+                    # Track responses for same-item balance metric
+                    if p1_item not in same_item_responses:
+                        same_item_responses[p1_item] = {'true': 0, 'false': 0}
+                    
+                    # Count each response separately
+                    same_item_responses[p1_item]['true' if p1_answer else 'false'] += 1
+                    same_item_responses[p1_item]['true' if p2_answer else 'false'] += 1
                 # If assigned_item values don't match, p1_answer/p2_answer might remain None,
                 # and the round will be skipped by the check below, which is appropriate for inconsistent data.
             else:
@@ -150,28 +161,44 @@ def compute_correlation_matrix(team_id):
                 else:
                     corr_matrix[i][j] = 0
         
-        return corr_matrix, item_values
+        # Calculate the same-item balance metric
+        same_item_balance = {}
+        for item, counts in same_item_responses.items():
+            total = counts['true'] + counts['false']
+            if total == 0:
+                same_item_balance[item] = 0.0
+            else:
+                diff = abs(counts['true'] - counts['false'])
+                same_item_balance[item] = 1.0 - diff / total
+        
+        # Calculate the average balance across all same items
+        if same_item_responses:
+            avg_same_item_balance = sum(same_item_balance.values()) / len(same_item_balance)
+        else:
+            avg_same_item_balance = 0.0  # Default if no same-item responses
+        
+        return corr_matrix, item_values, avg_same_item_balance, same_item_balance
     except Exception as e:
         print(f"Error computing correlation matrix: {str(e)}")
         import traceback
         traceback.print_exc()
-        return [[0 for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y']
+        return [[0 for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}
 
-def compute_correlation_stats(team_id):
+def compute_correlation_stats(team_id): # NOT USED
     try:
-        # Get the correlation matrix
-        corr_matrix, item_values = compute_correlation_matrix(team_id)
+        # Get the correlation matrix and new metrics
+        corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(team_id)
         
         # Validate matrix dimensions and contents
         if not all(isinstance(row, list) and len(row) == 4 for row in corr_matrix) or len(corr_matrix) != 4:
             print(f"Invalid correlation matrix dimensions for team_id {team_id}")
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
             
         # Validate expected item values
         expected_items = ['A', 'B', 'X', 'Y']
         if not all(item in item_values for item in expected_items):
             print(f"Missing expected items in correlation matrix for team_id {team_id}")
-            return 0.0, 0.0
+            return 0.0, 0.0, 0.0
             
         # Calculate first statistic: Trace(corr_matrix) / 4
         try:
@@ -200,12 +227,12 @@ def compute_correlation_stats(team_id):
             print(f"Error calculating CHSH statistic: {e}")
             stat2 = 0.0
         
-        return stat1, stat2
+        return stat1, stat2, same_item_balance_avg
     except Exception as e:
         print(f"Error computing correlation statistics: {str(e)}")
         import traceback
         traceback.print_exc()
-        return 0.0, 0.0
+        return 0.0, 0.0, 0.0
 
 
 def get_serialized_active_teams():
@@ -221,11 +248,35 @@ def get_serialized_active_teams():
             min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS 
                             for combo in all_combos)
             
-            # Compute correlation matrix for the team
-            correlation_matrix, item_labels = compute_correlation_matrix(info['team_id'])
+            # Compute correlation matrix and metrics - Single function call
+            corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(info['team_id'])
             
-            # Compute correlation statistics
-            stat1, stat2 = compute_correlation_stats(info['team_id'])
+            # Calculate first statistic: Trace(corr_matrix) / 4
+            try:
+                trace_sum = sum(corr_matrix[i][i] for i in range(4))
+                stat1 = abs(trace_sum) / 4
+                # stat1 = (stat1 + same_item_balance_avg) / 2
+            except (TypeError, IndexError) as e:
+                print(f"Error calculating trace statistic: {e}")
+                stat1 = 0.0
+            
+            # Calculate second statistic using CHSH game formula
+            try:
+                # Get indices for A, B, X, Y from item_values
+                A_idx = item_values.index('A')
+                B_idx = item_values.index('B')
+                X_idx = item_values.index('X')
+                Y_idx = item_values.index('Y')
+                
+                stat2 = (
+                    corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] + 
+                    corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
+                    corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
+                    corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
+                )/2
+            except (ValueError, IndexError, TypeError) as e:
+                print(f"Error calculating CHSH statistic: {e}")
+                stat2 = 0.0
             
             teams_list.append({
                 'team_name': name,
@@ -236,12 +287,13 @@ def get_serialized_active_teams():
                 'history_hash1': hash1,
                 'history_hash2': hash2,
                 'min_stats_sig': min_stats_sig,
-                'correlation_matrix': correlation_matrix,
-                'correlation_labels': item_labels,
+                'correlation_matrix': corr_matrix,
+                'correlation_labels': item_values,
                 'correlation_stats': {
                     'trace_avg': stat1,
-                    'chsh_value': stat2
-                }
+                    'chsh_value': stat2,
+                    'same_item_balance': same_item_balance_avg
+                },
             })
         return teams_list
     except Exception as e:

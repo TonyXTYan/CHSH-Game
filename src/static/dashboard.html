@@ -56,12 +56,11 @@
             <table id="active-teams-table">
                 <thead><tr>
                     <th>Team Name</th>
-                    <th>Team ID</th>
-                    <th>Player 1 SID</th>
-                    <th>Player 2 SID</th>
                     <th>Current Round</th>
                     <th>Stats Sig</th>
                     <th>Trace Avg</th>
+                    <th>Balance</th>
+                    <th>Balanced Random</th>
                     <th>CHSH Value</th>
                     <th>Details</th>
                 </tr></thead>
@@ -75,6 +74,23 @@
             <div class="modal-content">
                 <span class="close-modal">&times;</span>
                 <h3><span>Team: </span><span id="modal-team-name"></span></h3>
+                <div class="modal-section">
+                    <h4>Team Details</h4>
+                    <div class="details-container">
+                        <div>
+                            <strong>Team ID:</strong>
+                            <span id="modal-team-id" style="font-family: monospace;"></span>
+                        </div>
+                        <div>
+                            <strong>Player 1 SID:</strong>
+                            <span id="modal-player1-sid" style="font-family: monospace;"></span>
+                        </div>
+                        <div>
+                            <strong>Player 2 SID:</strong>
+                            <span id="modal-player2-sid" style="font-family: monospace;"></span>
+                        </div>
+                    </div>
+                </div>
                 <div class="modal-section">
                     <h4>History Hashes</h4>
                     <div class="hash-container">
