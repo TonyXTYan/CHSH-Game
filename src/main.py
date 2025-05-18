@@ -2,6 +2,8 @@ import os
 import sys
 import signal
 import uuid
+import threading
+import time
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -73,6 +75,37 @@ with app.app_context():
         # Always clear memory state
         state.reset()
         print("Server initialization complete")
+        
+    # Setup periodic team validation
+    try:
+        from src.sockets.team_validation import validate_all_teams
+        
+        # Function to run validation periodically
+        def periodic_validation():
+            while True:
+                time.sleep(60)  # Run every 60 seconds
+                try:
+                    print("Running periodic team validation...")
+                    with app.app_context():
+                        validate_all_teams()
+                except Exception as e:
+                    print(f"Error in periodic validation: {e}")
+        
+        # Initial validation on first client connect
+        @socketio.on('connect')
+        def run_initial_validation():
+            # Perform validation when the first client connects
+            if not hasattr(state, 'validation_performed'):
+                print("Running initial team validation...")
+                validate_all_teams()
+                state.validation_performed = True
+                
+                # Start the periodic validation thread
+                validation_thread = threading.Thread(target=periodic_validation, daemon=True)
+                validation_thread.start()
+                print("Started periodic validation thread")
+    except ImportError:
+        print("Warning: Team validation module not available")
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve

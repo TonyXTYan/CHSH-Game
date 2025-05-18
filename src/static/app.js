@@ -92,17 +92,20 @@ function updateGameState(newGameStarted = null, isReset = false) {
         gameStarted = newGameStarted;
         if (!newGameStarted) {
             gamePaused = false; // Reset pause state when game stops
+            currentRound = null;
+            lastClickedButton = null;
         }
     }
 
     if (isReset) {
         // Ensure all controls are in their initial state after reset
         currentRound = null;
-        lastClickedButton = null;  // Reset on game reset
+        lastClickedButton = null;
         trueBtn.disabled = false;
         falseBtn.disabled = false;
         waitingMessage.classList.remove('visible');
         questionItem.textContent = '';
+        gamePaused = false;
     }
 
     if (!currentTeam) {
@@ -341,6 +344,8 @@ const callbacks = {
         teamId = data.team_id;
         isCreator = true;
         gameStarted = data.game_started;
+        currentRound = null;
+        lastClickedButton = null;
         
         // Hide both create and join team sections when creating a new team
         document.getElementById('joinTeamSection').style.display = 'none';
@@ -351,7 +356,10 @@ const callbacks = {
         
         showStatus(data.message, 'success');
         saveSessionData();
-        updateGameState();
+        
+        // Force reset game controls and update state
+        resetGameControls();
+        updateGameState(true);
     },
 
     onTeamJoined: (data) => {

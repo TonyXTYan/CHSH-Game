@@ -81,25 +81,43 @@ def handle_disconnect():
                 if db_team:
                     # Remove player from team
                     if sid in team_info['players']:
-                        team_info['players'].remove(sid)
+                        # Get the player's index BEFORE removing them from the array
+                        player_index = team_info['players'].index(sid)
+                        print(f"Player {sid} was at index {player_index} in team {team_name}")
                         
-                        # Update the database
-                        if db_team.player1_session_id == sid:
-                            db_team.player1_session_id = None
-                        elif db_team.player2_session_id == sid:
-                            db_team.player2_session_id = None
+                        # Update the database based on their position
+                        if player_index == 0:
+                            # Only clear if the SID matches what we're removing
+                            if db_team.player1_session_id == sid:
+                                db_team.player1_session_id = None
+                                print(f"Removed player1 session ID: {sid}")
+                            else:
+                                print(f"Warning: player1_session_id {db_team.player1_session_id} doesn't match disconnected SID {sid}")
+                        elif player_index == 1:
+                            # Only clear if the SID matches what we're removing
+                            if db_team.player2_session_id == sid:
+                                db_team.player2_session_id = None
+                                print(f"Removed player2 session ID: {sid}")
+                            else:
+                                print(f"Warning: player2_session_id {db_team.player2_session_id} doesn't match disconnected SID {sid}")
+                        
+                        # Now remove the player from the team's players list
+                        team_info['players'].remove(sid)
                             
                         # Notify remaining players
                         remaining_players = team_info['players']
                         if remaining_players:
                             emit('player_left', {'message': 'A team member has disconnected.'}, room=team_name)
                             # Keep team active with remaining player
+                            # Update team status and notify all clients
+                            team_info['status'] = 'waiting_pair'
                             emit('team_status_update', {
                                 'team_name': team_name,
                                 'status': 'waiting_for_player',
                                 'members': remaining_players,
                                 'game_started': state.game_started
                             }, room=team_name)
+                            emit_dashboard_team_update()  # Force immediate dashboard update
                         else:
                             # If no players left, mark team as inactive
                             existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
@@ -111,6 +129,17 @@ def handle_disconnect():
                                 del state.team_id_to_name[team_info['team_id']]
                         
                         db.session.commit()
+                        
+                        # Ensure database and memory are consistent
+                        if team_name in state.active_teams:
+                            try:
+                                from src.sockets.game import validate_team_sessions, sync_team_state
+                                # First validate to fix any duplicate SIDs
+                                validate_team_sessions(team_name)
+                                # Then sync to ensure consistency
+                                sync_team_state(team_name)
+                            except ImportError:
+                                print("Warning: Could not import sync_team_state function")
                         
                         # Update all clients
                         emit_dashboard_team_update()
@@ -179,6 +208,23 @@ def on_join_team(data):
         sid = request.sid
         if not team_name or team_name not in state.active_teams:
             emit('error', {'message': 'Team not found or invalid team name'}); return
+        
+        # Pre-validate team state before joining to ensure integrity
+        try:
+            from src.sockets.team_validation import validate_all_teams
+            validate_all_teams()
+        except ImportError:
+            # If validation module not available, try to directly validate just this team
+            try:
+                from src.sockets.game import validate_team_sessions
+                validate_team_sessions(team_name)
+            except ImportError:
+                print("Warning: Team validation functions not available")
+        
+        # Get fresh team info after validation
+        if team_name not in state.active_teams:
+            emit('error', {'message': 'Team not found after validation'}); return
+            
         team_info = state.active_teams[team_name]
         if len(team_info['players']) >= 2:
             emit('error', {'message': 'Team is already full'}); return
@@ -191,11 +237,58 @@ def on_join_team(data):
         
         db_team = Teams.query.get(team_info['team_id'])
         if db_team:
-            if not db_team.player1_session_id:
+            # Clean up the players array to remove any None values
+            team_info['players'] = [p for p in team_info['players'] if p is not None]
+            
+            # Verify the player is actually in the array before proceeding
+            if sid not in team_info['players']:
+                print(f"Warning: Player {sid} not found in players array, adding them")
+                team_info['players'].append(sid)
+            
+            # Ensure the player is assigned to the correct position corresponding to the players array
+            player_index = team_info['players'].index(sid)
+            print(f"New player {sid} joined at index {player_index} in team {team_name}")
+            
+            # First check if both positions have the same SID (a previous error condition)
+            if db_team.player1_session_id is not None and db_team.player1_session_id == db_team.player2_session_id:
+                print(f"ERROR: Same SID {db_team.player1_session_id} found in both player positions in database")
+                # Clear both to be safe, we'll set the correct one next
+                db_team.player1_session_id = None
+                db_team.player2_session_id = None
+            
+            # Check if this SID is already used in either position and clear it to avoid duplicates
+            if db_team.player1_session_id == sid:
+                if player_index != 0:  # Only clear if we're not supposed to be in this position
+                    print(f"Clearing duplicate player1_session_id {sid}")
+                    db_team.player1_session_id = None
+                    
+            if db_team.player2_session_id == sid:
+                if player_index != 1:  # Only clear if we're not supposed to be in this position
+                    print(f"Clearing duplicate player2_session_id {sid}")
+                    db_team.player2_session_id = None
+            
+            # Make sure we don't assign the same SID to both positions
+            if player_index == 0:
+                if db_team.player2_session_id == sid:
+                    print(f"Clearing player2_session_id {sid} to avoid duplicate")
+                    db_team.player2_session_id = None
                 db_team.player1_session_id = sid
-            else:
+                print(f"Set player1_session_id to {sid}")
+            elif player_index == 1:
+                if db_team.player1_session_id == sid:
+                    print(f"Clearing player1_session_id {sid} to avoid duplicate")
+                    db_team.player1_session_id = None
                 db_team.player2_session_id = sid
+                print(f"Set player2_session_id to {sid}")
+            
             db.session.commit()
+            
+            # Double-check that we don't have the same SID in both positions
+            if db_team.player1_session_id is not None and db_team.player1_session_id == db_team.player2_session_id:
+                print(f"CRITICAL ERROR: Same SID still in both positions after update. Fixing...")
+                # Clear player2 as a last resort
+                db_team.player2_session_id = None
+                db.session.commit()
 
         emit('team_joined', {
             'team_name': team_name,
@@ -215,6 +308,10 @@ def on_join_team(data):
             'game_started': state.game_started
         })
         
+        # Update the team status
+        if len(team_info['players']) < 2:
+            team_info['status'] = 'waiting_pair'
+        
         emit('team_status_update', {
             'team_name': team_name,
             'status': 'full' if len(team_info['players']) == 2 else 'waiting_for_player',
@@ -222,9 +319,26 @@ def on_join_team(data):
             'game_started': state.game_started
         }, room=team_name)
         if len(team_info['players']) == 2:
-            emit('team_status_update', {'status': 'paired'}, room=team_name)
+            team_info['status'] = 'paired'
+            emit('team_status_update', {
+                'team_name': team_name,
+                'status': 'paired',
+                'members': get_team_members(team_name),
+                'game_started': state.game_started
+            }, room=team_name)
+            emit_dashboard_team_update()  # Force immediate dashboard update
         
         emit_dashboard_team_update()
+        
+        # Ensure database and memory are consistent
+        try:
+            from src.sockets.game import validate_team_sessions, sync_team_state
+            # First validate to fix any duplicate SIDs
+            validate_team_sessions(team_name)
+            # Then sync to ensure consistency
+            sync_team_state(team_name)
+        except ImportError:
+            print("Warning: Could not import sync_team_state function")
         
         if state.game_started and len(team_info['players']) == 2:
             socketio.emit('game_start', {'game_started': True}, room=team_name)
@@ -258,13 +372,15 @@ def on_reactivate_team(data):
             team.player1_session_id = sid
             db.session.commit()
             
-            # Set up team state
+            # Set up team state with proper game initialization
             state.active_teams[team_name] = {
                 'players': [sid],
                 'team_id': team.team_id,
                 'current_round_number': 0,
+                'current_db_round_id': None,
                 'combo_tracker': {},
-                'answered_current_round': {}
+                'answered_current_round': {},
+                'status': 'waiting_pair'
             }
             state.player_to_team[sid] = team_name
             state.team_id_to_name[team.team_id] = team_name
@@ -286,6 +402,14 @@ def on_reactivate_team(data):
                 'game_started': state.game_started
             })
             
+            # Ensure team state is valid
+            try:
+                from src.sockets.game import validate_team_sessions, sync_team_state
+                validate_team_sessions(team_name)
+                sync_team_state(team_name)
+            except ImportError:
+                print("Warning: Could not import validation functions")
+                
             # Update dashboard
             emit_dashboard_team_update()
             
@@ -309,18 +433,34 @@ def on_leave_team(data):
 
         db_team = Teams.query.get(team_info['team_id'])
         if sid in team_info['players']:
-            team_info['players'].remove(sid)
+            # Get the player's index BEFORE removing them from the array
+            player_index = team_info['players'].index(sid)
+            print(f"Player {sid} was at index {player_index} in team {team_name}")
             
-            # Update database
+            # Update database based on player position
             if db_team:
-                if db_team.player1_session_id == sid:
-                    db_team.player1_session_id = None
-                elif db_team.player2_session_id == sid:
-                    db_team.player2_session_id = None
+                if player_index == 0:
+                    # Only clear if the SID matches what we're removing
+                    if db_team.player1_session_id == sid:
+                        db_team.player1_session_id = None
+                        print(f"Removed player1 session ID: {sid}")
+                    else:
+                        print(f"Warning: player1_session_id {db_team.player1_session_id} doesn't match leaving SID {sid}")
+                elif player_index == 1:
+                    # Only clear if the SID matches what we're removing
+                    if db_team.player2_session_id == sid:
+                        db_team.player2_session_id = None
+                        print(f"Removed player2 session ID: {sid}")
+                    else:
+                        print(f"Warning: player2_session_id {db_team.player2_session_id} doesn't match leaving SID {sid}")
+            
+            # Now remove the player from the team's players list
+            team_info['players'].remove(sid)
 
             # Handle team state
             if len(team_info['players']) > 0:
                 # Team still has players
+                team_info['status'] = 'waiting_pair'
                 emit('player_left', {'message': 'A team member has left.'}, room=team_name)
                 emit('team_status_update', {
                     'team_name': team_name,
@@ -345,6 +485,17 @@ def on_leave_team(data):
             
             if db_team:
                 db.session.commit()
+                
+            # Ensure database and memory are consistent if team still exists
+            if team_name in state.active_teams:
+                try:
+                    from src.sockets.game import validate_team_sessions, sync_team_state
+                    # First validate to fix any duplicate SIDs
+                    validate_team_sessions(team_name)
+                    # Then sync to ensure consistency
+                    sync_team_state(team_name)
+                except ImportError:
+                    print("Warning: Could not import sync_team_state function")
                 
             socketio.emit('teams_updated', {
                 'teams': get_available_teams_list(),
