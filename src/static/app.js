@@ -85,7 +85,7 @@ function saveSessionData() {
             isCreator: isCreator,
             teamId: teamId
         };
-        localStorage.setItem('quizSessionData', JSON.stringify(sessionData));
+        localStorage.setItem('gameSessionData', JSON.stringify(sessionData));
         console.log('Session data saved:', sessionData);
     }
 }
@@ -93,7 +93,7 @@ function saveSessionData() {
 // Try to restore session from localStorage
 function tryRestoreSession() {
     try {
-        const sessionData = localStorage.getItem('quizSessionData');
+        const sessionData = localStorage.getItem('gameSessionData');
         if (sessionData) {
             const data = JSON.parse(sessionData);
             console.log('Found previous session:', data);
@@ -454,7 +454,7 @@ const callbacks = {
         isCreator = false;
         currentRound = null;
         lastClickedButton = null;  // Reset when rejoin fails
-        localStorage.removeItem('quizSessionData');
+        localStorage.removeItem('gameSessionData');
         // Reset header
         gameHeader.textContent = 'CHSH Game';
         showStatus(data.message, 'error');
@@ -465,7 +465,7 @@ const callbacks = {
         currentTeam = null;
         isCreator = false;
         currentRound = null;
-        localStorage.removeItem('quizSessionData');
+        localStorage.removeItem('gameSessionData');
         // Reset header
         gameHeader.textContent = 'CHSH Game';
         showStatus(data.message, 'success');
@@ -493,7 +493,7 @@ const callbacks = {
 
     onRejoinTeamFailed: (data) => {
         console.log('Failed to rejoin team:', data);
-        localStorage.removeItem('quizSessionData');
+        localStorage.removeItem('gameSessionData');
         showStatus(data.message, 'error');
         currentTeam = null;
         isCreator = false;

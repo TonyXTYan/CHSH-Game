@@ -7,8 +7,8 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.updateSessionInfo(socket.id);
         
         // For a 'connect' event (fresh page load/refresh), always start fresh.
-        // Clear any previous session data from localStorage.
-        localStorage.removeItem('chshGameSession'); 
+        // Clear any previous session data from localStorage using the correct key.
+        localStorage.removeItem('gameSessionData'); 
         
         // Reset client-side state variables in app.js
         if (typeof callbacks.resetClientState === 'function') {
@@ -47,7 +47,7 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.updateConnectionStatus('Reconnected to server!');
         // On a successful transport-level reconnect, also treat as a fresh start
         // to align with the "fresh start on refresh" philosophy and simplify state.
-        localStorage.removeItem('chshGameSession');
+        localStorage.removeItem('gameSessionData'); // Use the correct key here as well
         if (typeof callbacks.resetClientState === 'function') {
             callbacks.resetClientState();
         }

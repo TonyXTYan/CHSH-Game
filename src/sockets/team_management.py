@@ -9,18 +9,23 @@ from src.game_logic import start_new_round_for_pair
 
 def get_available_teams_list():
     try:
+        print(f"DEBUG: get_available_teams_list called. Current state.active_teams: {state.active_teams}") # Log current state
         # Get active teams that aren't full
-        active_teams = [{'team_name': name, 'team_id': info['team_id'], 'is_active': True}
+        active_teams_data = [{'team_name': name, 'team_id': info['team_id'], 'is_active': True, 'players_count': len(info['players']), 'status': info.get('status')}
                        for name, info in state.active_teams.items() if len(info['players']) < 2]
+        print(f"DEBUG: active_teams_data (joinable from state.active_teams): {active_teams_data}")
         
         # Get inactive teams from database
+        inactive_teams_list = [] # Initialize to ensure it's a list
         with app.app_context():
-            inactive_teams = Teams.query.filter_by(is_active=False).all()
+            inactive_teams_db = Teams.query.filter_by(is_active=False).all()
             inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
-                                 for team in inactive_teams]
+                                 for team in inactive_teams_db]
+        print(f"DEBUG: inactive_teams_list (from DB): {inactive_teams_list}")
         
-        # Combine and return all teams
-        return active_teams + inactive_teams_list
+        combined_list = active_teams_data + inactive_teams_list
+        print(f"DEBUG: get_available_teams_list returning: {combined_list}") # Log returned list
+        return combined_list
     except Exception as e:
         print(f"Error in get_available_teams_list: {str(e)}")
         import traceback
@@ -62,80 +67,97 @@ def handle_connect():
 def handle_disconnect():
     sid = request.sid
     print(f'Client disconnected: {sid}')
+    team_name_affected = None
+    team_info_affected = None # Use a different name to avoid conflict with team_info from loop
+
     try:
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
             print(f"Dashboard client disconnected: {sid}")
+            # No further team list updates needed if it was just a dashboard client
 
-        # Remove from connected players list regardless of team status
         if sid in state.connected_players:
             state.connected_players.remove(sid)
-            emit_dashboard_full_update()  # Update dashboard with new player count
+            # This might trigger a full dashboard update if player counts are global
 
-        # Handle team-related disconnection
         if sid in state.player_to_team:
-            team_name = state.player_to_team[sid]
-            team_info = state.active_teams.get(team_name)
-            if team_info:
-                db_team = Teams.query.get(team_info['team_id'])
-                if db_team:
-                    # Check if the team was full before this player disconnected
-                    was_full_team = len(team_info['players']) == 2
+            team_name = state.player_to_team.pop(sid) # Remove mapping
+            team_name_affected = team_name
+            current_team_info = state.active_teams.get(team_name) # Use current_team_info
 
-                    # Remove player from team
-                    if sid in team_info['players']:
-                        team_info['players'].remove(sid)
-                        
-                        # If the team was full and now has one player, update status
-                        if was_full_team and len(team_info['players']) == 1:
-                            team_info['status'] = 'waiting_pair'
-                        
-                        # Update the database
-                        if db_team.player1_session_id == sid:
-                            db_team.player1_session_id = None
-                        elif db_team.player2_session_id == sid:
-                            db_team.player2_session_id = None
-                            
-                        # Notify remaining players
-                        remaining_players = team_info['players']
-                        if remaining_players:
-                            emit('player_left', {'message': 'A team member has disconnected.'}, room=team_name)
-                            # Keep team active with remaining player
-                            emit('team_status_update', {
-                                'team_name': team_name,
-                                'status': 'waiting_pair',  # Changed from waiting_for_player
-                                'members': remaining_players,
-                                'game_started': state.game_started
-                            }, room=team_name)
-                        else:
-                            # If no players left, mark team as inactive
-                            existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
-                            if existing_inactive:
-                                db_team.team_name = f"{team_name}_{db_team.team_id}"
-                            db_team.is_active = False
-                            # Remove from active_teams state only if it exists
-                            if team_name in state.active_teams:
-                                del state.active_teams[team_name]
-                            if team_info['team_id'] in state.team_id_to_name:
-                                del state.team_id_to_name[team_info['team_id']]
-                        
-                        db.session.commit()
-                        
-                        # Update all clients
-                        emit_dashboard_team_update() # This will now send the updated status
-                        socketio.emit('teams_updated', {
-                            'teams': get_available_teams_list(),
-                            'game_started': state.game_started
-                        })
-                        
-                        try:
-                            leave_room(team_name, sid=sid)
-                        except Exception as e:
-                            print(f"Error leaving room: {str(e)}")
-                        del state.player_to_team[sid]
-    except Exception as e:
-        print(f"Disconnect handler error: {str(e)}")
+            if current_team_info: # Check if current_team_info exists
+                team_info_affected = current_team_info # For logging outside
+                db_team = Teams.query.get(current_team_info['team_id'])
+
+                if sid in current_team_info['players']:
+                    current_team_info['players'].remove(sid)
+
+                if db_team:
+                    if db_team.player1_session_id == sid:
+                        db_team.player1_session_id = None
+                    elif db_team.player2_session_id == sid:
+                        db_team.player2_session_id = None
+                    # No commit yet, will do it after state update
+
+                if not current_team_info['players']:  # No players left in the team
+                    print(f"Team {team_name} is now empty. Marking inactive.")
+                    if team_name in state.active_teams:
+                        del state.active_teams[team_name]
+                    if current_team_info['team_id'] in state.team_id_to_name:
+                        del state.team_id_to_name[current_team_info['team_id']]
+                    if db_team:
+                        db_team.is_active = False
+                else:  # One player remains
+                    print(f"Team {team_name} has one player remaining. Status: waiting_pair.")
+                    current_team_info['status'] = 'waiting_pair' # Explicitly update server state
+                    if db_team:
+                        db_team.is_active = True # Ensure DB reflects it's active but waiting
+
+                    # Notify the remaining player in the team
+                    emit('player_left', {'message': 'The other player has disconnected.'}, room=team_name)
+                    emit('team_status_update', {
+                        'team_name': team_name,
+                        'status': 'waiting_pair',
+                        'members': current_team_info['players'],
+                        'game_started': state.game_started
+                    }, room=team_name)
+                
+                if db_team:
+                    db.session.commit()
+            
+            try:
+                leave_room(team_name, sid=sid)
+            except Exception as e: # pragma: no cover
+                print(f"Error leaving room {team_name} for sid {sid}: {str(e)}")
+
+        # Always emit updates that refresh lists for all clients,
+        # as a team's availability might have changed.
+        # These functions should correctly fetch the current state.
+        print(f"DEBUG: Disconnect affecting team: {team_name_affected}, info from disconnect: {team_info_affected}")
+        print(f"DEBUG: state.active_teams before final emits (in disconnect): {state.active_teams}")
+        
+        current_available_teams = get_available_teams_list() # Call it once
+        print(f"DEBUG: Teams list generated by get_available_teams_list for 'teams_updated' event: {current_available_teams}")
+
+        emit_dashboard_full_update() # Ensures dashboard has the latest overall state
+        socketio.emit('teams_updated', {
+            'teams': current_available_teams, # Use the fetched list
+            'game_started': state.game_started
+        })
+
+    except Exception as e: # pragma: no cover
+        print(f"Error in handle_disconnect for SID {sid}: {str(e)}")
+        import traceback
         traceback.print_exc()
+        # Attempt to emit updates even if there was an error partway through
+        try:
+            emit_dashboard_full_update()
+            socketio.emit('teams_updated', {
+                'teams': get_available_teams_list(),
+                'game_started': state.game_started
+            })
+        except Exception as e_final:
+            print(f"Error during final emit in disconnect handler: {str(e_final)}")
 
 @socketio.on('create_team')
 def on_create_team(data):
