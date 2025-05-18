@@ -92,11 +92,10 @@ table {
 }
 
 /* Monospace font for numeric columns */
-#active-teams-table td:nth-child(2),  /* Current Round */
-#active-teams-table td:nth-child(4),  /* Trace Avg */
-#active-teams-table td:nth-child(5),  /* Balance */
-#active-teams-table td:nth-child(6),  /* Balanced Random */
-#active-teams-table td:nth-child(7) { /* CHSH Value */
+#active-teams-table td:nth-child(5),  /* Trace Avg */
+#active-teams-table td:nth-child(6),  /* Balance */
+#active-teams-table td:nth-child(7),  /* Balanced Random */
+#active-teams-table td:nth-child(8) { /* CHSH Value */
     font-family: 'Courier New', monospace;
 }
 

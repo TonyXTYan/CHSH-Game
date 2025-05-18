@@ -3,7 +3,7 @@
 [![Codecov](https://img.shields.io/codecov/c/github/TonyXTYan/CHSH-Game?token=4A0LZVD95V&logo=codecov&logoColor=white)](https://app.codecov.io/gh/TonyXTYan/CHSH-Game/)
 
 
-## How to play 
+## How to play (as of 2025 May)
 
 
 ## The Physics
@@ -32,4 +32,8 @@ gunicorn wsgi:app --worker-class eventlet
 
 # TODO
 - [ ] details stats shouldn't stream, should be on request, it also needs auto update upon team stats change
-
+- [ ] clear past teams
+- [ ] perhaps use cookies to store game state?
+- [ ] compact rows 
+- [ ] ± statistics  
+- [ ] Bug, sometimes after reforming (reactivating) a team then inputs are disabled??
