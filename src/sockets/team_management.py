@@ -79,9 +79,16 @@ def handle_disconnect():
             if team_info:
                 db_team = Teams.query.get(team_info['team_id'])
                 if db_team:
+                    # Check if the team was full before this player disconnected
+                    was_full_team = len(team_info['players']) == 2
+
                     # Remove player from team
                     if sid in team_info['players']:
                         team_info['players'].remove(sid)
+                        
+                        # If the team was full and now has one player, update status
+                        if was_full_team and len(team_info['players']) == 1:
+                            team_info['status'] = 'waiting_pair'
                         
                         # Update the database
                         if db_team.player1_session_id == sid:
@@ -96,7 +103,7 @@ def handle_disconnect():
                             # Keep team active with remaining player
                             emit('team_status_update', {
                                 'team_name': team_name,
-                                'status': 'waiting_for_player',
+                                'status': 'waiting_pair',  # Changed from waiting_for_player
                                 'members': remaining_players,
                                 'game_started': state.game_started
                             }, room=team_name)
@@ -106,14 +113,16 @@ def handle_disconnect():
                             if existing_inactive:
                                 db_team.team_name = f"{team_name}_{db_team.team_id}"
                             db_team.is_active = False
-                            del state.active_teams[team_name]
+                            # Remove from active_teams state only if it exists
+                            if team_name in state.active_teams:
+                                del state.active_teams[team_name]
                             if team_info['team_id'] in state.team_id_to_name:
                                 del state.team_id_to_name[team_info['team_id']]
                         
                         db.session.commit()
                         
                         # Update all clients
-                        emit_dashboard_team_update()
+                        emit_dashboard_team_update() # This will now send the updated status
                         socketio.emit('teams_updated', {
                             'teams': get_available_teams_list(),
                             'game_started': state.game_started
@@ -178,12 +187,15 @@ def on_join_team(data):
         team_name = data.get('team_name')
         sid = request.sid
         if not team_name or team_name not in state.active_teams:
-            emit('error', {'message': 'Team not found or invalid team name'}); return
+            emit('error', {'message': 'Team not found or invalid team name.'})
+            return
         team_info = state.active_teams[team_name]
         if len(team_info['players']) >= 2:
-            emit('error', {'message': 'Team is already full'}); return
+            emit('error', {'message': 'Team is already full.'})
+            return
         if sid in team_info['players']:
-            emit('error', {'message': 'You are already in this team'}); return
+            emit('error', {'message': 'You are already in this team.'})
+            return
 
         team_info['players'].append(sid)
         state.player_to_team[sid] = team_name
@@ -193,9 +205,20 @@ def on_join_team(data):
         if db_team:
             if not db_team.player1_session_id:
                 db_team.player1_session_id = sid
-            else:
+            elif not db_team.player2_session_id:
                 db_team.player2_session_id = sid
+            db_team.is_active = True # Ensure team is marked active in DB
             db.session.commit()
+
+        # Update team status if now full
+        if len(team_info['players']) == 2:
+            team_info['status'] = 'active'
+            # Potentially start the first round if game has started and team is ready
+            # This logic might be elsewhere or need to be added if auto-start is desired
+            # For now, just updating status for dashboard
+            if state.game_started:
+                start_new_round_for_pair(team_name, team_info)
+
 
         emit('team_joined', {
             'team_name': team_name,
@@ -217,7 +240,7 @@ def on_join_team(data):
         
         emit('team_status_update', {
             'team_name': team_name,
-            'status': 'full' if len(team_info['players']) == 2 else 'waiting_for_player',
+            'status': 'full' if len(team_info['players']) == 2 else 'waiting_pair',
             'members': get_team_members(team_name),
             'game_started': state.game_started
         }, room=team_name)
@@ -264,7 +287,8 @@ def on_reactivate_team(data):
                 'team_id': team.team_id,
                 'current_round_number': 0,
                 'combo_tracker': {},
-                'answered_current_round': {}
+                'answered_current_round': {},
+                'status': 'waiting_pair'  # Ensure this is waiting_pair
             }
             state.player_to_team[sid] = team_name
             state.team_id_to_name[team.team_id] = team_name
@@ -324,7 +348,7 @@ def on_leave_team(data):
                 emit('player_left', {'message': 'A team member has left.'}, room=team_name)
                 emit('team_status_update', {
                     'team_name': team_name,
-                    'status': 'waiting_for_player',
+                    'status': 'waiting_pair', # Changed from waiting_for_player
                     'members': get_team_members(team_name),
                     'game_started': state.game_started
                 }, room=team_name)

@@ -272,9 +272,9 @@ function updateTeamStatus(status) {
     const header = document.getElementById('teamStatusHeader');
     if (status === 'created') {
         header.textContent = 'Team Created!';
-    } else if (status === 'paired') {
+    } else if (status === 'full') {
         header.textContent = 'Team Paired Up!';
-    } else if (status === 'waiting_for_player') {
+    } else if (status === 'waiting_pair') { // Changed from waiting_for_player
         header.textContent = 'Waiting for Player...';
     } else {
         header.textContent = 'Team Up!';
@@ -387,7 +387,7 @@ const callbacks = {
             } else {
                 showStatus('Your team is paired up! Waiting for game to start.', 'success');
             }
-        } else if (data.status === 'waiting_for_player') {
+        } else if (data.status === 'waiting_pair') { // Changed from waiting_for_player
             showStatus('Waiting for another player to join...', 'info');
         }
         

@@ -175,11 +175,19 @@ def on_verify_team_membership(data):
         # Update in database
         db_team = Teams.query.get(team_info['team_id'])
         if db_team:
-            if player_idx == 0:
-                db_team.player1_session_id = current_sid
-            else:
-                db_team.player2_session_id = current_sid
-            db.session.commit()
+            made_change_to_db = False
+            if db_team.player1_session_id == previous_sid:
+                if db_team.player1_session_id != current_sid:
+                    db_team.player1_session_id = current_sid
+                    made_change_to_db = True
+            elif db_team.player2_session_id == previous_sid:
+                if db_team.player2_session_id != current_sid:
+                    db_team.player2_session_id = current_sid
+                    made_change_to_db = True
+            
+            # If a change was made, commit it.
+            if made_change_to_db:
+                db.session.commit()
                 
         # Update player_to_team mapping
         state.player_to_team[current_sid] = team_name
