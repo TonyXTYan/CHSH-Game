@@ -45,8 +45,8 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onTeamJoined(data);
     });
 
-    socket.on('partner_joined', (data) => {
-        callbacks.onPartnerJoined(data);
+    socket.on('player_joined', (data) => {
+        callbacks.onPlayerJoined(data);
     });
 
     socket.on('team_status_update', (data) => {
@@ -81,7 +81,7 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.showStatus(`Round ${data.round_number} complete! Next round coming up...`, 'success');
     });
 
-    socket.on('partner_left', (data) => {
+    socket.on('player_left', (data) => {
         callbacks.showStatus(data.message, 'warning');
     });
 
@@ -93,7 +93,7 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onLeftTeam(data);
     });
 
-    socket.on('partner_reconnected', (data) => {
+    socket.on('player_reconnected', (data) => {
         callbacks.showStatus(data.message, 'success');
     });
 

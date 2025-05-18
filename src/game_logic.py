@@ -10,7 +10,7 @@ TARGET_COMBO_REPEATS = 3
 def start_new_round_for_pair(team_name):
     try:
         team_info = state.active_teams.get(team_name)
-        if not team_info or len(team_info['participants']) != 2:
+        if not team_info or len(team_info['players']) != 2:
             return
 
         team_info['current_round_number'] += 1
@@ -25,18 +25,18 @@ def start_new_round_for_pair(team_name):
         combo_tracker[combo_key] = combo_tracker.get(combo_key, 0) + 1
         team_info['combo_tracker'] = combo_tracker
 
-        new_round_db = PairQuestionRounds(team_id=team_info['team_id'], round_number_for_team=round_number, participant1_item=p1_item, participant2_item=p2_item)
+        new_round_db = PairQuestionRounds(team_id=team_info['team_id'], round_number_for_team=round_number, player1_item=p1_item, player2_item=p2_item)
         db.session.add(new_round_db)
         db.session.commit()
 
         team_info['current_db_round_id'] = new_round_db.round_id
         team_info['answered_current_round'] = {}
 
-        # Send questions to participants
-        participant1, participant2 = team_info['participants']
-        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=participant1)
-        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=participant2)
-        print(f"Team {team_name} round {round_number}: P1({participant1}) gets {p1_item.value}, P2({participant2}) gets {p2_item.value}")
+        # Send questions to players
+        player1, player2 = team_info['players']
+        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1)
+        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2)
+        print(f"Team {team_name} round {round_number}: P1({player1}) gets {p1_item.value}, P2({player2}) gets {p2_item.value}")
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
     except Exception as e:

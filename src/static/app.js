@@ -197,8 +197,23 @@ function submitAnswer(answer) {
     showStatus(`Round ${currentRound.round_number} answer received`, 'success');
 }
 
+// Update team status header text
+function updateTeamStatus(status) {
+    const header = document.getElementById('teamStatusHeader');
+    if (status === 'created') {
+        header.textContent = 'Team Created!';
+    } else if (status === 'paired') {
+        header.textContent = 'Team Paired Up!';
+    } else if (status === 'waiting_for_player') {
+        header.textContent = 'Waiting for Player...';
+    } else {
+        header.textContent = 'Team Up!';
+    }
+}
+
 // Socket.io event handlers callbacks
 const callbacks = {
+    updateTeamStatus,
     updateConnectionStatus,
     showStatus,
     updateGameState,
@@ -236,7 +251,7 @@ const callbacks = {
         updateGameState();
     },
 
-    onPartnerJoined: (data) => {
+    onPlayerJoined: (data) => {
         showStatus(data.message, 'success');
         gameStarted = data.game_started;
         updateGameState();
@@ -248,12 +263,12 @@ const callbacks = {
         
         if (data.status === 'full') {
             if (gameStarted) {
-                showStatus('Your team is full! Game has started!', 'success');
+                showStatus('Your team is paired up! Game has started!', 'success');
             } else {
-                showStatus('Your team is full! Waiting for game to start.', 'success');
+                showStatus('Your team is paired up! Waiting for game to start.', 'success');
             }
-        } else if (data.status === 'waiting_for_partner') {
-            showStatus('Waiting for a partner to join...', 'info');
+        } else if (data.status === 'waiting_for_player') {
+            showStatus('Waiting for another player to join...', 'info');
         }
         
         updateGameState();
@@ -326,6 +341,14 @@ const callbacks = {
 // Initialize Socket.io
 const socket = io();
 initializeSocketHandlers(socket, callbacks);
+
+// Debug socket events
+socket.on('team_status_update', (data) => {
+    console.log('Received team_status_update:', data);
+    if (callbacks.updateTeamStatus) {
+        callbacks.updateTeamStatus(data.status);
+    }
+});
 
 // Event listeners
 createTeamBtn.addEventListener('click', createTeam);

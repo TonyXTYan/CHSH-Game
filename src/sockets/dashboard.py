@@ -32,8 +32,8 @@ def compute_team_hashes(team_id):
         # Create history string containing both questions and answers
         history = []
         for round in rounds:
-            history.append(f"P1:{round.participant1_item.value if round.participant1_item else 'None'}")
-            history.append(f"P2:{round.participant2_item.value if round.participant2_item else 'None'}")
+            history.append(f"P1:{round.player1_item.value if round.player1_item else 'None'}")
+            history.append(f"P2:{round.player2_item.value if round.player2_item else 'None'}")
         for answer in answers:
             history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
         
@@ -52,14 +52,14 @@ def get_serialized_active_teams():
     try:
         teams_list = []
         for name, info in state.active_teams.items():
-            participants = info['participants']
+            players = info['players']
             # Compute hashes for the team
             hash1, hash2 = compute_team_hashes(info['team_id'])
             teams_list.append({
                 'team_name': name,
                 'team_id': info['team_id'],
-                'participant1_sid': participants[0] if len(participants) > 0 else None,
-                'participant2_sid': participants[1] if len(participants) > 1 else None,
+                'player1_sid': players[0] if len(players) > 0 else None,
+                'player2_sid': players[1] if len(players) > 1 else None,
                 'current_round_number': info.get('current_round_number', 0),
                 'history_hash1': hash1,
                 'history_hash2': hash2
@@ -125,7 +125,7 @@ def on_start_game():
             state.game_started = True
             # Notify teams and dashboard that game has started
             for team_name, team_info in state.active_teams.items():
-                if len(team_info['participants']) == 2:  # Only notify full teams
+                if len(team_info['players']) == 2:  # Only notify paired teams
                     socketio.emit('game_start', {'game_started': True}, room=team_name)
             
             # Notify dashboard
@@ -135,9 +135,9 @@ def on_start_game():
             # Notify all clients about game state change
             socketio.emit('game_state_changed', {'game_started': True})
                 
-            # Start first round for all full teams
+            # Start first round for all paired teams
             for team_name, team_info in state.active_teams.items():
-                if len(team_info['participants']) == 2: # If team is full
+                if len(team_info['players']) == 2: # If team is paired
                     start_new_round_for_pair(team_name)
     except Exception as e:
         print(f"Error in on_start_game: {str(e)}")
@@ -231,7 +231,7 @@ def get_dashboard_data():
                 'answer_id': ans.answer_id,
                 'team_id': ans.team_id,
                 'team_name': Teams.query.get(ans.team_id).team_name if Teams.query.get(ans.team_id) else 'N/A',
-                'participant_session_id': ans.participant_session_id,
+                'player_session_id': ans.player_session_id,
                 'question_round_id': ans.question_round_id,
                 'assigned_item': ans.assigned_item.value,
                 'response_value': ans.response_value,

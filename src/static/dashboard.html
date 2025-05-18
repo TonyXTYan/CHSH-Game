@@ -51,8 +51,8 @@
                 <p id="active-teams-count">0</p>
             </div>
             <div class="metric-card">
-                <h3>Total Participants</h3>
-                <p id="total-participants-count">0</p>
+                <h3>Total Players</h3>
+                <p id="total-players-count">0</p>
             </div>
             <div class="metric-card">
                 <h3>Total Answers</h3>
@@ -71,7 +71,7 @@
         <div class="panel">
             <h2>Active Teams</h2>
             <table id="active-teams-table">
-                <thead><tr><th>Team Name</th><th>Team ID</th><th>Participant 1 SID</th><th>Participant 2 SID</th><th>Current Round</th><th>History Hash 1 (SHA-256)</th><th>History Hash 2 (MD5)</th></tr></thead>
+                <thead><tr><th>Team Name</th><th>Team ID</th><th>Player 1 SID</th><th>Player 2 SID</th><th>Current Round</th><th>History Hash 1 (SHA-256)</th><th>History Hash 2 (MD5)</th></tr></thead>
                 <tbody></tbody>
             </table>
             <p id="no-active-teams">No active teams yet.</p>
@@ -80,10 +80,10 @@
         <div class="panel">
             <h2>Live Answer Log</h2>
             <table id="answer-log-table">
-                <thead><tr><th>Timestamp</th><th>Team Name</th><th>Participant SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
+                <thead><tr><th>Timestamp</th><th>Team Name</th><th>Player SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
                 <tbody></tbody>
             </table>
-            <p id="no-answers-log">No answers recorded yet.</p>
+            <p id="no-answers-log">No answers streamed yet.</p>
         </div>
     </div>
 
@@ -113,7 +113,7 @@
         }, 30000); // Send keep-alive ping every 30 seconds
         
         const activeTeamsCountEl = document.getElementById("active-teams-count");
-        const totalParticipantsCountEl = document.getElementById("total-participants-count");
+        const totalPlayersCountEl = document.getElementById("total-players-count");
         const totalAnswersCountEl = document.getElementById("total-answers-count");
 
         const activeTeamsTableBody = document.querySelector("#active-teams-table tbody");
@@ -150,7 +150,7 @@
             activeTeamsTableBody.innerHTML = "";
             noActiveTeamsMsg.style.display = "block";
             activeTeamsCountEl.textContent = "0";
-            totalParticipantsCountEl.textContent = "0";
+            totalPlayersCountEl.textContent = "0";
             currentAnswersCount = 0;
             totalAnswersCountEl.textContent = "0";
         });
@@ -278,12 +278,12 @@
         function updateMetrics(teams, totalAnswers) {
             if (teams) {
                 activeTeamsCountEl.textContent = teams.length;
-                let participantCount = 0;
+                let playerCount = 0;
                 teams.forEach(team => {
-                    if(team.participant1_sid) participantCount++;
-                    if(team.participant2_sid) participantCount++;
+                    if(team.player1_sid) playerCount++;
+                    if(team.player2_sid) playerCount++;
                 });
-                totalParticipantsCountEl.textContent = participantCount;
+                totalPlayersCountEl.textContent = playerCount;
             }
             if (totalAnswers !== undefined) {
                 currentAnswersCount = totalAnswers;
@@ -299,8 +299,8 @@
                     const row = activeTeamsTableBody.insertRow();
                     row.insertCell().textContent = team.team_name;
                     row.insertCell().textContent = team.team_id;
-                    row.insertCell().textContent = team.participant1_sid ? team.participant1_sid.substring(0, 8) + "..." : 'N/A';
-                    row.insertCell().textContent = team.participant2_sid ? team.participant2_sid.substring(0, 8) + "..." : 'N/A';
+                    row.insertCell().textContent = team.player1_sid ? team.player1_sid.substring(0, 8) + "..." : 'N/A';
+                    row.insertCell().textContent = team.player2_sid ? team.player2_sid.substring(0, 8) + "..." : 'N/A';
                     row.insertCell().textContent = team.current_round_number || 0;
                     const hash1Cell = row.insertCell();
                     hash1Cell.textContent = team.history_hash1;
@@ -319,7 +319,7 @@
             const row = answerLogTableBody.insertRow(0); // Add to top
             row.insertCell().textContent = new Date(answer.timestamp).toLocaleTimeString();
             row.insertCell().textContent = answer.team_name; // Need to get team_name from team_id
-            row.insertCell().textContent = answer.participant_session_id.substring(0, 8) + "...";
+            row.insertCell().textContent = answer.player_session_id.substring(0, 8) + "...";
             row.insertCell().textContent = answer.question_round_id;
             row.insertCell().textContent = answer.assigned_item;
             row.insertCell().textContent = answer.response_value;
@@ -354,14 +354,14 @@
                 
                 // Convert data to CSV
                 const csvRows = [];
-                csvRows.push(['Timestamp', 'Team Name', 'Team ID', 'Participant ID', 'Round ID', 'Question Item (A/B/C/D)', 'Answer (True/False)']);
+                csvRows.push(['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/C/D)', 'Answer (True/False)']);
                 
                 data.answers.forEach(answer => {
                     csvRows.push([
                         new Date(answer.timestamp).toLocaleString(),
                         answer.team_name,
                         answer.team_id,
-                        answer.participant_session_id, // Use full SID for CSV export
+                        answer.player_session_id, // Use full SID for CSV export
                         answer.question_round_id,
                         answer.assigned_item,
                         answer.response_value
