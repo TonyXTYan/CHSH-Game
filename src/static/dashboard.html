@@ -45,10 +45,45 @@
         <div class="panel">
             <h2>Active Teams</h2>
             <table id="active-teams-table">
-                <thead><tr><th>Team Name</th><th>Team ID</th><th>Player 1 SID</th><th>Player 2 SID</th><th>Current Round</th><th>Stats Sig</th><th>History Hash 1 (SHA-256)</th><th>History Hash 2 (MD5)</th></tr></thead>
+                <thead><tr>
+                    <th>Team Name</th>
+                    <th>Team ID</th>
+                    <th>Player 1 SID</th>
+                    <th>Player 2 SID</th>
+                    <th>Current Round</th>
+                    <th>Stats Sig</th>
+                    <th>Trace Avg</th>
+                    <th>CHSH Value</th>
+                    <th>Details</th>
+                </tr></thead>
                 <tbody></tbody>
             </table>
             <p id="no-active-teams">No active teams yet.</p>
+        </div>
+        
+        <!-- Modal/popup for team details -->
+        <div id="team-details-modal" class="modal">
+            <div class="modal-content">
+                <span class="close-modal">&times;</span>
+                <h3 id="modal-team-name"></h3>
+                <div class="modal-section">
+                    <h4>History Hashes</h4>
+                    <div class="hash-container">
+                        <div>
+                            <strong>SHA-256:</strong>
+                            <span id="modal-hash1"></span>
+                        </div>
+                        <div>
+                            <strong>MD5:</strong>
+                            <span id="modal-hash2"></span>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-section">
+                    <h4>Correlation Matrix</h4>
+                    <table id="correlation-matrix-table"></table>
+                </div>
+            </div>
         </div>
 
         <div class="panel">

@@ -138,24 +138,43 @@ def compute_correlation_stats(team_id):
         # Get the correlation matrix
         corr_matrix, item_values = compute_correlation_matrix(team_id)
         
+        # Validate matrix dimensions and contents
+        if not all(isinstance(row, list) and len(row) == 4 for row in corr_matrix) or len(corr_matrix) != 4:
+            print(f"Invalid correlation matrix dimensions for team_id {team_id}")
+            return 0.0, 0.0
+            
+        # Validate expected item values
+        expected_items = ['A', 'B', 'X', 'Y']
+        if not all(item in item_values for item in expected_items):
+            print(f"Missing expected items in correlation matrix for team_id {team_id}")
+            return 0.0, 0.0
+            
         # Calculate first statistic: Trace(corr_matrix) / 4
-        trace_sum = sum(corr_matrix[i][i] for i in range(4))
-        stat1 = trace_sum / 4
+        try:
+            trace_sum = sum(corr_matrix[i][i] for i in range(4))
+            stat1 = trace_sum / 4
+        except (TypeError, IndexError) as e:
+            print(f"Error calculating trace statistic: {e}")
+            stat1 = 0.0
         
         # Calculate second statistic using CHSH game formula
         # corrAX + corrAY + corrBX - corrBY + corrXA + corrXB + corrYA - corrYB
         # Get indices for A, B, X, Y from item_values
-        A_idx = item_values.index('A')
-        B_idx = item_values.index('B')
-        X_idx = item_values.index('X')
-        Y_idx = item_values.index('Y')
-        
-        stat2 = (
-            corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] + 
-            corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
-            corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
-            corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
-        )
+        try:
+            A_idx = item_values.index('A')
+            B_idx = item_values.index('B')
+            X_idx = item_values.index('X')
+            Y_idx = item_values.index('Y')
+            
+            stat2 = (
+                corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] + 
+                corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
+                corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
+                corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
+            )
+        except (ValueError, IndexError, TypeError) as e:
+            print(f"Error calculating CHSH statistic: {e}")
+            stat2 = 0.0
         
         return stat1, stat2
     except Exception as e:

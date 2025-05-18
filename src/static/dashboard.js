@@ -450,15 +450,60 @@ function updateActiveTeams(teams) {
             sid2Cell.textContent = team.player2_sid ? team.player2_sid.substring(0, 8) + "..." : 'N/A';
             sid2Cell.style.fontFamily = 'monospace';
             row.insertCell().textContent = team.current_round_number || 0;
+            
+            // Statistics significance column
             const statsCell = row.insertCell();
             statsCell.textContent = team.min_stats_sig ? '✅' : '⏳';
             statsCell.style.textAlign = 'center';
-            const hash1Cell = row.insertCell();
-            hash1Cell.textContent = team.history_hash1;
-            hash1Cell.style.fontFamily = 'monospace';
-            const hash2Cell = row.insertCell();
-            hash2Cell.textContent = team.history_hash2;
-            hash2Cell.style.fontFamily = 'monospace';
+            
+            // Add trace_avg column with robust error handling
+            const traceAvgCell = row.insertCell();
+            if (team.correlation_stats && team.correlation_stats.trace_avg !== undefined && 
+                team.correlation_stats.trace_avg !== null && !isNaN(team.correlation_stats.trace_avg)) {
+                try {
+                    const traceAvg = parseFloat(team.correlation_stats.trace_avg);
+                    traceAvgCell.textContent = traceAvg.toFixed(3);
+                    
+                    // Add visual indicator for interesting values
+                    if (Math.abs(traceAvg) > 0.7) {
+                        traceAvgCell.style.fontWeight = "bold";
+                    }
+                } catch (e) {
+                    console.error("Error formatting trace_avg", e);
+                    traceAvgCell.textContent = "Error";
+                }
+            } else {
+                traceAvgCell.textContent = "—";
+            }
+            
+            // Add CHSH value column with robust error handling
+            const chshValueCell = row.insertCell();
+            if (team.correlation_stats && team.correlation_stats.chsh_value !== undefined && 
+                team.correlation_stats.chsh_value !== null && !isNaN(team.correlation_stats.chsh_value)) {
+                try {
+                    const chshValue = parseFloat(team.correlation_stats.chsh_value);
+                    chshValueCell.textContent = chshValue.toFixed(3);
+                    
+                    // Add visual indicator for interesting values (CHSH inequality violation is > 2)
+                    if (Math.abs(chshValue) > 2) {
+                        chshValueCell.style.fontWeight = "bold";
+                        chshValueCell.style.color = Math.abs(chshValue) > 2.8 ? "#cc0000" : "#0066cc";
+                    }
+                } catch (e) {
+                    console.error("Error formatting chsh_value", e);
+                    chshValueCell.textContent = "Error";
+                }
+            } else {
+                chshValueCell.textContent = "—";
+            }
+            
+            // Details button cell
+            const detailsCell = row.insertCell();
+            const detailsBtn = document.createElement('button');
+            detailsBtn.className = 'view-details-btn';
+            detailsBtn.textContent = 'View Details';
+            detailsBtn.onclick = () => showTeamDetails(team);
+            detailsCell.appendChild(detailsBtn);
         });
     } else {
         noActiveTeamsMsg.style.display = "block";
@@ -601,4 +646,118 @@ async function downloadData() {
         console.error('Error downloading data:', error);
         alert('Error downloading data. Please try again.');
     }
+}
+
+// Function to show team details in modal
+function showTeamDetails(team) {
+    const modal = document.getElementById('team-details-modal');
+    const modalTeamName = document.getElementById('modal-team-name');
+    const modalHash1 = document.getElementById('modal-hash1');
+    const modalHash2 = document.getElementById('modal-hash2');
+    const correlationTable = document.getElementById('correlation-matrix-table');
+    
+    // Set team name in modal
+    modalTeamName.textContent = team.team_name;
+    
+    // Set hash values
+    modalHash1.textContent = team.history_hash1 || "—";
+    modalHash2.textContent = team.history_hash2 || "—";
+    
+    // Clear existing correlation matrix
+    correlationTable.innerHTML = '';
+    
+    // Populate correlation matrix table if available with validation
+    if (team.correlation_matrix && team.correlation_labels && 
+        Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
+        team.correlation_matrix.length > 0) {
+        
+        try {
+            // Add header row with labels
+            const headerRow = correlationTable.insertRow();
+            headerRow.insertCell(); // Empty corner cell
+            
+            // Validate and add column headers
+            team.correlation_labels.forEach(label => {
+                const th = document.createElement('th');
+                th.textContent = label || '?'; // Fallback if label is undefined
+                headerRow.appendChild(th);
+            });
+            
+            // Add data rows with row labels - only process rows that match the label count
+            team.correlation_matrix.forEach((row, rowIdx) => {
+                // Skip if we've run out of labels
+                if (rowIdx >= team.correlation_labels.length) {
+                    return;
+                }
+                
+                const tableRow = correlationTable.insertRow();
+                
+                // Add row label
+                const rowLabelCell = document.createElement('th');
+                rowLabelCell.textContent = team.correlation_labels[rowIdx] || '?';
+                tableRow.appendChild(rowLabelCell);
+                
+                // Add correlation values with validation
+                if (Array.isArray(row)) {
+                    row.forEach(value => {
+                        const cell = tableRow.insertCell();
+                        
+                        // Handle potential null/undefined/NaN values gracefully
+                        if (value === null || value === undefined || isNaN(value)) {
+                            cell.textContent = "—";
+                        } else {
+                            // Ensure value is treated as a number and limit to 3 decimal places
+                            const numValue = parseFloat(value);
+                            cell.textContent = numValue.toFixed(3);
+                            
+                            // Color coding for correlation values
+                            if (numValue > 0.5) cell.style.backgroundColor = "rgba(0, 255, 0, 0.2)";
+                            else if (numValue < -0.5) cell.style.backgroundColor = "rgba(255, 0, 0, 0.2)";
+                            else if (numValue === 0) cell.style.backgroundColor = "rgba(200, 200, 200, 0.2)";
+                        }
+                    });
+                }
+            });
+        } catch (error) {
+            console.error("Error rendering correlation matrix:", error);
+            const errorRow = correlationTable.insertRow();
+            const errorCell = errorRow.insertCell();
+            errorCell.colSpan = 5;
+            errorCell.textContent = "Error rendering correlation data";
+            errorCell.style.textAlign = "center";
+            errorCell.style.padding = "10px";
+        }
+    } else {
+        const errorRow = correlationTable.insertRow();
+        const errorCell = errorRow.insertCell();
+        errorCell.colSpan = 5;
+        errorCell.textContent = "No correlation data available";
+        errorCell.style.textAlign = "center";
+        errorCell.style.padding = "10px";
+    }
+    
+    // Show the modal
+    modal.style.display = 'block';
+    
+    // Close button functionality
+    const closeBtn = document.querySelector('.close-modal');
+    closeBtn.onclick = () => {
+        modal.style.display = 'none';
+    };
+    
+    // Close modal when clicking outside of it - using an event listener instead of directly setting window.onclick
+    // Remove previous event listener if exists to avoid duplicate handlers
+    if (window._modalClickHandler) {
+        window.removeEventListener('click', window._modalClickHandler);
+    }
+    
+    // Create and store a reference to the handler so we can remove it later if needed
+    window._modalClickHandler = (event) => {
+        if (event.target === modal) {
+            modal.style.display = 'none';
+        }
+    };
+    
+    // Add the event listener
+    window.addEventListener('click', window._modalClickHandler);
 }
