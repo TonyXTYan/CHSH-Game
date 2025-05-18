@@ -90,4 +90,4 @@ jobs:
             Changes in this release:
             ${{ github.event.head_commit.message }}
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
