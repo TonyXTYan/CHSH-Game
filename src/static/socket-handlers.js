@@ -2,18 +2,27 @@
 function initializeSocketHandlers(socket, callbacks) {
     socket.on('connect', () => {
         callbacks.updateConnectionStatus('Connected to server!');
-        callbacks.sessionId = socket.id;
+        // This is the new session ID for the new connection (fresh page load or reconnect)
+        callbacks.sessionId = socket.id; 
         callbacks.updateSessionInfo(socket.id);
         
-        // If not restoring session, show ready status
-        if (!callbacks.tryRestoreSession()) {
-            callbacks.showStatus('Connected to server!', 'success');
+        // For a 'connect' event (fresh page load/refresh), always start fresh.
+        // Clear any previous session data from localStorage.
+        localStorage.removeItem('chshGameSession'); 
+        
+        // Reset client-side state variables in app.js
+        if (typeof callbacks.resetClientState === 'function') {
+            callbacks.resetClientState(); // This new callback will reset app.js variables
         }
+
+        callbacks.showStatus('Connected! Please create or join a team.', 'success');
+        // The server will send 'connection_established' with game state and teams.
+        // No client-side session restoration attempt here.
     });
 
     socket.on('disconnect', () => {
         callbacks.updateConnectionStatus('Disconnected from server');
-        callbacks.showStatus('Disconnected from server. Attempting to reconnect...', 'error');
+        callbacks.showStatus('Disconnected. Attempting to reconnect...', 'error');
     });
 
     socket.on('server_shutdown', () => {
@@ -31,13 +40,19 @@ function initializeSocketHandlers(socket, callbacks) {
 
     socket.on('reconnecting', () => {
         callbacks.updateConnectionStatus('Reconnecting...');
-        callbacks.showStatus('Reconnecting to server...', 'warning');
+        callbacks.showStatus('Attempting to reconnect to server...', 'warning');
     });
 
     socket.on('reconnect', () => {
-        callbacks.updateConnectionStatus('Connected to server!');
-        callbacks.showStatus('Reconnected to server!', 'success');
-        callbacks.tryRestoreSession();
+        callbacks.updateConnectionStatus('Reconnected to server!');
+        // On a successful transport-level reconnect, also treat as a fresh start
+        // to align with the "fresh start on refresh" philosophy and simplify state.
+        localStorage.removeItem('chshGameSession');
+        if (typeof callbacks.resetClientState === 'function') {
+            callbacks.resetClientState();
+        }
+        callbacks.showStatus('Reconnected! Please create or join a team.', 'success');
+        // Server will send 'connection_established'.
     });
 
     socket.on('connection_established', (data) => {

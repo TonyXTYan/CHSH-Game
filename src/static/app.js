@@ -24,6 +24,34 @@ const waitingMessage = document.getElementById('waitingMessage');
 const sessionInfo = document.getElementById('sessionInfo');
 const connectionStatus = document.getElementById('connectionStatus');
 
+// Function to reset client-side game state variables
+function resetClientState() {
+    currentTeam = null;
+    isCreator = false;
+    currentRound = null;
+    // gameStarted and gamePaused will be updated by server events.
+    lastClickedButton = null;
+    // sessionId is updated by the connect handler in socket-handlers.js.
+    teamId = null; 
+    
+    // Reset UI elements to initial state
+    if (gameHeader) gameHeader.textContent = 'CHSH Game';
+    if (teamSection) teamSection.style.display = 'block'; 
+    if (questionSection) questionSection.style.display = 'none';
+    
+    const joinTeamSection = document.getElementById('joinTeamSection');
+    if (joinTeamSection) joinTeamSection.style.display = 'block';
+    
+    const createTeamSection = document.getElementById('createTeamSection');
+    if (createTeamSection) createTeamSection.style.display = 'block';
+    
+    if (teamNameInput) teamNameInput.value = '';
+    
+    resetGameControls(); 
+    updateTeamsList([]); 
+    // updateGameState(); // This will typically be triggered by 'connection_established'
+}
+
 // Connection status handling
 function updateConnectionStatus(status) {
     connectionStatus.textContent = status;
@@ -331,10 +359,14 @@ const callbacks = {
     updateGameState,
     updateTeamsList,
     resetGameControls,
-    updateSessionInfo: (id) => sessionInfo.innerHTML = `Session ID: <span class="session-id">${id}</span>`,
+    resetClientState, // Added the new callback
+    updateSessionInfo: (id) => {
+        sessionId = id; // Also store it in the global sessionId variable
+        sessionInfo.innerHTML = `Session ID: <span class="session-id">${id}</span>`;
+    },
     setAnswerButtonsEnabled,
     getCurrentRoundInfo: () => currentRound,
-    tryRestoreSession,
+    // tryRestoreSession, // This is no longer called from 'connect' or 'reconnect'
 
     onTeamCreated: (data) => {
         currentTeam = data.team_name;
