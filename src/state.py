@@ -4,6 +4,7 @@ class AppState:
         self.player_to_team = {}  # {sid: team_name}
         self.dashboard_clients = set() # Stores SIDs of connected dashboard clients
         self.game_started = False # Track if game has started
+        self.answer_stream_enabled = False # Track if answer streaming is enabled
         # Store previous session mappings for reconnection
         self.previous_sessions = {} # {previous_sid: current_sid}
         # Store team ID to team name mapping for faster lookups
@@ -16,6 +17,7 @@ class AppState:
         self.previous_sessions.clear()
         self.team_id_to_name.clear()
         self.game_started = False
+        self.answer_stream_enabled = False
 
 # Create singleton instance for state
 state = AppState()

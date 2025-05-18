@@ -1,5 +1,9 @@
 # $\mathbb{CHSH}\text{-}\mathbb{GAME}$
 
+## How to play 
+
+
+## The Physics
 
 
 ## How to deploy

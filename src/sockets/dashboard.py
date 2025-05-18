@@ -2,6 +2,7 @@ from flask import jsonify
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
+from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
 from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
 from time import time
@@ -55,6 +56,12 @@ def get_serialized_active_teams():
             players = info['players']
             # Compute hashes for the team
             hash1, hash2 = compute_team_hashes(info['team_id'])
+            # Check if all combinations have reached target repeats
+            all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
+            combo_tracker = info.get('combo_tracker', {})
+            min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS 
+                            for combo in all_combos)
+            
             teams_list.append({
                 'team_name': name,
                 'team_id': info['team_id'],
@@ -62,7 +69,8 @@ def get_serialized_active_teams():
                 'player2_sid': players[1] if len(players) > 1 else None,
                 'current_round_number': info.get('current_round_number', 0),
                 'history_hash1': hash1,
-                'history_hash2': hash2
+                'history_hash2': hash2,
+                'min_stats_sig': min_stats_sig
             })
         return teams_list
     except Exception as e:
@@ -89,7 +97,8 @@ def emit_dashboard_full_update(client_sid=None):
             'active_teams': get_serialized_active_teams(),
             'total_answers_count': total_answers,
             'game_state': {
-                'started': state.game_started
+                'started': state.game_started,
+                'streaming_enabled': state.answer_stream_enabled
             }
         }
         if client_sid:

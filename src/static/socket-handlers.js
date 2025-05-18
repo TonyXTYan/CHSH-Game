@@ -16,6 +16,19 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.showStatus('Disconnected from server. Attempting to reconnect...', 'error');
     });
 
+    socket.on('server_shutdown', () => {
+        callbacks.updateConnectionStatus('Server is shutting down');
+        callbacks.showStatus('Server is shutting down. Please wait for restart...', 'error');
+        // Clear game state and UI
+        if (typeof callbacks.onGameReset === 'function') {
+            callbacks.onGameReset();
+        }
+        // Reset all controls
+        if (typeof callbacks.resetGameControls === 'function') {
+            callbacks.resetGameControls();
+        }
+    });
+
     socket.on('reconnecting', () => {
         callbacks.updateConnectionStatus('Reconnecting...');
         callbacks.showStatus('Reconnecting to server...', 'warning');

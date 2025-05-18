@@ -71,7 +71,9 @@ def on_submit_answer(data):
         }
         for dash_sid in state.dashboard_clients:
             socketio.emit('new_answer_for_dashboard', answer_for_dash, room=dash_sid)
-        emit_dashboard_full_update()
+        
+        # Only emit team update, not full dashboard refresh
+        emit_dashboard_team_update()
 
         if len(team_info['answered_current_round']) == 2:
             print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")

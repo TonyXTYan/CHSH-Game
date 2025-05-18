@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Live Quiz - Presenter Dashboard</title>
+    <title>CHSH Game - Presenter Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
         .dashboard-container { display: flex; flex-direction: column; gap: 20px; }
@@ -35,13 +35,19 @@
         .metric-card button.reset-game {
             background-color: #6c757d;
         }
+        .metric-card button.toggle-on {
+            background-color: #28a745;
+        }
+        .metric-card button.toggle-off {
+            background-color: #dc3545;
+        }
         .metric-card button.confirm-reset {
             background-color: #dc3545;
         }
     </style>
 </head>
 <body>
-    <h1>Presenter Dashboard</h1>
+    <h1>CHSH Game - Presenter Dashboard</h1>
     <div id="connection-status-dash">Connecting...</div>
 
     <div class="dashboard-container">
@@ -71,14 +77,19 @@
         <div class="panel">
             <h2>Active Teams</h2>
             <table id="active-teams-table">
-                <thead><tr><th>Team Name</th><th>Team ID</th><th>Player 1 SID</th><th>Player 2 SID</th><th>Current Round</th><th>History Hash 1 (SHA-256)</th><th>History Hash 2 (MD5)</th></tr></thead>
+                <thead><tr><th>Team Name</th><th>Team ID</th><th>Player 1 SID</th><th>Player 2 SID</th><th>Current Round</th><th>Min Stats Sig</th><th>History Hash 1 (SHA-256)</th><th>History Hash 2 (MD5)</th></tr></thead>
                 <tbody></tbody>
             </table>
             <p id="no-active-teams">No active teams yet.</p>
         </div>
 
         <div class="panel">
-            <h2>Live Answer Log</h2>
+            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer;" onclick="toggleAnswerStream()">
+                <h2 style="margin: 0;">Live Answer Log</h2>
+                <span id="toggle-chevron" style="font-weight: bold; margin-left: 5px; font-size: 1.1em;">▶</span>
+                <span style="margin-right: 3px;">streaming</span>
+                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off" style="padding: 4px 8px; font-size: 0.9em;">OFF</button>
+            </div>
             <table id="answer-log-table">
                 <thead><tr><th>Timestamp</th><th>Team Name</th><th>Player SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
                 <tbody></tbody>
@@ -134,14 +145,41 @@
             document.getElementById("game-control-text").textContent = "Game Control";
         }
 
-        socket.on("connect", () => {
+        socket.on("connect", async () => {
             connectionStatusDiv.textContent = "Connected to server";
             connectionStatusDiv.className = "status-connected";
+            
+            try {
+                // Get server instance ID
+                const response = await fetch('/api/server/id');
+                const {instance_id} = await response.json();
+                
+                // Check against stored ID
+                const lastId = localStorage.getItem('server_instance_id');
+                if (lastId !== instance_id) {
+                    // New server instance - clear UI
+                    clearAllUITables();
+                    localStorage.setItem('server_instance_id', instance_id);
+                }
+            } catch (error) {
+                console.error('Error checking server ID:', error);
+            }
+            
             // Reset game button state on reconnect
             const startBtn = document.getElementById("start-game-btn");
             resetButtonToInitialState(startBtn);
             socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
         });
+
+        function clearAllUITables() {
+            activeTeamsTableBody.innerHTML = "";
+            answerLogTableBody.innerHTML = "";
+            noActiveTeamsMsg.style.display = "block";
+            noAnswersLogMsg.style.display = "block";
+            activeTeamsCountEl.textContent = "0";
+            totalPlayersCountEl.textContent = "0";
+            totalAnswersCountEl.textContent = "0";
+        }
 
         socket.on("disconnect", () => {
             connectionStatusDiv.textContent = "Disconnected from server";
@@ -153,6 +191,29 @@
             totalPlayersCountEl.textContent = "0";
             currentAnswersCount = 0;
             totalAnswersCountEl.textContent = "0";
+        });
+
+        socket.on("server_shutdown", () => {
+            connectionStatusDiv.textContent = "Server is shutting down";
+            connectionStatusDiv.className = "status-disconnected";
+            // Clear all UI elements
+            activeTeamsTableBody.innerHTML = "";
+            answerLogTableBody.innerHTML = "";
+            noActiveTeamsMsg.style.display = "block";
+            noAnswersLogMsg.style.display = "block";
+            activeTeamsCountEl.textContent = "0";
+            totalPlayersCountEl.textContent = "0";
+            totalAnswersCountEl.textContent = "0";
+            // Reset game button state
+            const startBtn = document.getElementById("start-game-btn");
+            resetButtonToInitialState(startBtn);
+            // Clear any localStorage data
+            localStorage.removeItem('chsh_game_state');
+        });
+
+        // Handle page load - clear any stale state
+        window.addEventListener('load', () => {
+            localStorage.removeItem('chsh_game_state');
         });
 
         let confirmingStop = false;
@@ -249,6 +310,12 @@
             updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
             updateMetrics(data.active_teams, data.total_answers_count);
             
+            // Sync streaming state with server
+            if (data.game_state && data.game_state.streaming_enabled !== undefined) {
+                answerStreamEnabled = data.game_state.streaming_enabled;
+                updateStreamingUI();
+            }
+            
             // Update game state if not in stopping state
             if (data.game_state && data.game_state.started && !confirmingStop) {
                 const startBtn = document.getElementById("start-game-btn");
@@ -263,10 +330,14 @@
         
         socket.on("new_answer_for_dashboard", (answer) => {
             console.log("New answer for dashboard:", answer);
-            addAnswerToLog(answer);
             currentAnswersCount++;
             totalAnswersCountEl.textContent = currentAnswersCount;
-            // Potentially request a full dashboard_update if needed, or update specific team info
+            
+            if (answerStreamEnabled) {
+                addAnswerToLog(answer);
+            } else {
+                console.log("Answer received but streaming is disabled - not showing in log");
+            }
         });
 
         socket.on("team_status_changed_for_dashboard", (teams_data) => {
@@ -302,6 +373,9 @@
                     row.insertCell().textContent = team.player1_sid ? team.player1_sid.substring(0, 8) + "..." : 'N/A';
                     row.insertCell().textContent = team.player2_sid ? team.player2_sid.substring(0, 8) + "..." : 'N/A';
                     row.insertCell().textContent = team.current_round_number || 0;
+                    const statsCell = row.insertCell();
+                    statsCell.textContent = team.min_stats_sig ? '✅' : '⏳';
+                    statsCell.style.textAlign = 'center';
                     const hash1Cell = row.insertCell();
                     hash1Cell.textContent = team.history_hash1;
                     hash1Cell.style.fontFamily = 'monospace';
@@ -334,6 +408,38 @@
                 noAnswersLogMsg.style.display = "none";
                 answers.forEach(addAnswerToLog);
             }
+        }
+
+        let answerStreamEnabled = false;
+        const answerTable = document.getElementById('answer-log-table');
+        const noAnswersMsg = document.getElementById('no-answers-log');
+        const toggleBtn = document.getElementById('toggle-answers-btn');
+        const toggleChevron = document.getElementById('toggle-chevron');
+
+        // Initialize to OFF state
+        toggleBtn.textContent = 'OFF';
+        toggleBtn.className = 'toggle-off';
+        answerTable.style.display = 'none';
+        noAnswersMsg.style.display = 'none';
+        toggleChevron.textContent = '▶';
+
+        function updateStreamingUI() {
+            if (answerStreamEnabled) {
+                toggleBtn.textContent = 'ON';
+                toggleBtn.className = 'toggle-on';
+                answerTable.style.display = 'table';
+                toggleChevron.textContent = '▼';
+            } else {
+                toggleBtn.textContent = 'OFF';
+                toggleBtn.className = 'toggle-off';
+                answerTable.style.display = 'none';
+                toggleChevron.textContent = '▶';
+            }
+        }
+
+        function toggleAnswerStream() {
+            answerStreamEnabled = !answerStreamEnabled;
+            updateStreamingUI();
         }
 
         function startGame() {

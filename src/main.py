@@ -1,7 +1,20 @@
 import os
 import sys
+import signal
+import uuid
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
+
+# Unique ID for server instance
+server_instance_id = str(uuid.uuid4())
+
+def handle_shutdown(signum, frame):
+    print("\nServer shutting down gracefully...")
+    # Notify all clients
+    socketio.emit('server_shutdown')
+    # Clean up resources
+    state.reset()
+    sys.exit(0)
 
 from src.config import app, socketio, db
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -28,6 +41,9 @@ with app.app_context():
             team.is_active = False
             db.session.flush()  # Flush changes for each team individually
         db.session.commit()
+        
+        # Notify dashboard clients of reset
+        socketio.emit('game_reset_complete')
     except Exception as e:
         print(f"Error resetting data: {str(e)}")
         db.session.rollback()
@@ -36,6 +52,10 @@ with app.app_context():
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve
+
+@app.route('/api/server/id')
+def get_server_id():
+    return {'instance_id': server_instance_id}
 from src.sockets.dashboard import on_dashboard_join, on_start_game, get_dashboard_data
 from src.sockets.team_management import (
     handle_connect, 
@@ -51,4 +71,7 @@ from src.sockets.game import (
 )
 
 if __name__ == '__main__':
+    # Register signal handlers
+    signal.signal(signal.SIGINT, handle_shutdown)
+    signal.signal(signal.SIGTERM, handle_shutdown)
     socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=False)
