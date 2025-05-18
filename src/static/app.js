@@ -15,6 +15,7 @@ const questionSection = document.getElementById('questionSection');
 const teamNameInput = document.getElementById('teamNameInput');
 const createTeamBtn = document.getElementById('createTeamBtn');
 const availableTeams = document.getElementById('availableTeams');
+const gameHeader = document.getElementById('gameHeader');
 const questionItem = document.getElementById('questionItem');
 const trueBtn = document.getElementById('trueBtn');
 const falseBtn = document.getElementById('falseBtn');
@@ -291,6 +292,9 @@ const callbacks = {
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
         
+        // Update header with team name
+        gameHeader.textContent = `Team: ${data.team_name}`;
+        
         showStatus(data.message, 'success');
         saveSessionData();
         updateGameState();
@@ -304,6 +308,9 @@ const callbacks = {
         // Hide both create and join team sections when joining a team
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
+        
+        // Update header with team name
+        gameHeader.textContent = `Team: ${data.team_name}`;
         
         showStatus(data.message, 'success');
         saveSessionData();
@@ -359,6 +366,8 @@ const callbacks = {
         currentRound = null;
         lastClickedButton = null;  // Reset when rejoin fails
         localStorage.removeItem('quizSessionData');
+        // Reset header
+        gameHeader.textContent = 'CHSH Game';
         showStatus(data.message, 'error');
         updateGameState();
     },
@@ -368,6 +377,8 @@ const callbacks = {
         isCreator = false;
         currentRound = null;
         localStorage.removeItem('quizSessionData');
+        // Reset header
+        gameHeader.textContent = 'CHSH Game';
         showStatus(data.message, 'success');
         updateGameState();
     },
@@ -383,6 +394,9 @@ const callbacks = {
             currentRound.alreadyAnswered = data.already_answered;
         }
         
+        // Update header with team name
+        gameHeader.textContent = `Team: ${data.team_name}`;
+        
         showStatus(data.status_message, 'success');
         saveSessionData();
         updateGameState();
@@ -395,6 +409,8 @@ const callbacks = {
         currentTeam = null;
         isCreator = false;
         currentRound = null;
+        // Reset header
+        gameHeader.textContent = 'CHSH Game';
         updateGameState();
     }
 };

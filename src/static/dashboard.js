@@ -433,7 +433,7 @@ function updateMetrics(teams, totalAnswers, connectedCount) {
         let readyPlayerCount = 0;
         teams.forEach(team => {
             if(team.player1_sid) readyPlayerCount++;
-            if(team.player2_sid) readyPlayerCount++;
+            if(team.player2_sid) readyPlayer++;
         });
         readyPlayersCountEl.textContent = readyPlayerCount;
     }
@@ -450,79 +450,173 @@ function updateMetrics(teams, totalAnswers, connectedCount) {
     }
 }
 
+// Keep track of current sorted teams and their positions
+let currentSortedTeams = [];
+let previousTeamPositions = new Map();
+
+// Sort teams by CHSH value
+function sortTeamsByChshValue(teams) {
+    return [...teams].sort((a, b) => {
+        const valueA = (a.correlation_stats?.chsh_value ?? -Infinity);
+        const valueB = (b.correlation_stats?.chsh_value ?? -Infinity);
+        return valueB - valueA; // Descending order (higher CHSH values first)
+    });
+}
+
+// Calculate position changes for animations
+function calculatePositionChanges(oldTeams, newTeams) {
+    const changes = new Map();
+    
+    // Create a map of team_id to old position
+    const oldPositions = new Map();
+    oldTeams.forEach((team, index) => {
+        oldPositions.set(team.team_id, index);
+    });
+    
+    // Calculate position changes
+    newTeams.forEach((team, newIndex) => {
+        const oldIndex = oldPositions.get(team.team_id);
+        if (oldIndex !== undefined && oldIndex !== newIndex) {
+            changes.set(team.team_id, newIndex - oldIndex);
+        }
+    });
+    
+    return changes;
+}
+
 function updateActiveTeams(teams) {
-    activeTeamsTableBody.innerHTML = ""; // Clear existing rows
-    if (teams && teams.length > 0) {
-        noActiveTeamsMsg.style.display = "none";
-        teams.forEach(team => {
-            const row = activeTeamsTableBody.insertRow();
-            row.insertCell().textContent = team.team_name;
-            row.insertCell().textContent = team.team_id;
-            const sid1Cell = row.insertCell();
-            sid1Cell.textContent = team.player1_sid ? team.player1_sid.substring(0, 8) + "..." : 'N/A';
-            sid1Cell.style.fontFamily = 'monospace';
-            const sid2Cell = row.insertCell();
-            sid2Cell.textContent = team.player2_sid ? team.player2_sid.substring(0, 8) + "..." : 'N/A';
-            sid2Cell.style.fontFamily = 'monospace';
-            row.insertCell().textContent = team.current_round_number || 0;
-            
-            // Statistics significance column
-            const statsCell = row.insertCell();
-            statsCell.textContent = team.min_stats_sig ? '✅' : '⏳';
-            statsCell.style.textAlign = 'center';
-            
-            // Add trace_avg column with robust error handling
-            const traceAvgCell = row.insertCell();
-            if (team.correlation_stats && team.correlation_stats.trace_avg !== undefined && 
-                team.correlation_stats.trace_avg !== null && !isNaN(team.correlation_stats.trace_avg)) {
-                try {
-                    const traceAvg = parseFloat(team.correlation_stats.trace_avg);
-                    traceAvgCell.textContent = traceAvg.toFixed(3);
-                    
-                    // Add visual indicator for interesting values
-                    if (Math.abs(traceAvg) > 0.7) {
-                        traceAvgCell.style.fontWeight = "bold";
-                    }
-                } catch (e) {
-                    console.error("Error formatting trace_avg", e);
-                    traceAvgCell.textContent = "Error";
-                }
-            } else {
-                traceAvgCell.textContent = "—";
-            }
-            
-            // Add CHSH value column with robust error handling
-            const chshValueCell = row.insertCell();
-            if (team.correlation_stats && team.correlation_stats.chsh_value !== undefined && 
-                team.correlation_stats.chsh_value !== null && !isNaN(team.correlation_stats.chsh_value)) {
-                try {
-                    const chshValue = parseFloat(team.correlation_stats.chsh_value);
-                    chshValueCell.textContent = chshValue.toFixed(3);
-                    
-                    // Add visual indicator for interesting values (CHSH inequality violation is > 2)
-                    if (Math.abs(chshValue) > 2) {
-                        chshValueCell.style.fontWeight = "bold";
-                        chshValueCell.style.color = Math.abs(chshValue) > 2.8 ? "#cc0000" : "#0066cc";
-                    }
-                } catch (e) {
-                    console.error("Error formatting chsh_value", e);
-                    chshValueCell.textContent = "Error";
-                }
-            } else {
-                chshValueCell.textContent = "—";
-            }
-            
-            // Details button cell
-            const detailsCell = row.insertCell();
-            const detailsBtn = document.createElement('button');
-            detailsBtn.className = 'view-details-btn';
-            detailsBtn.textContent = 'View Details';
-            detailsBtn.onclick = () => showTeamDetails(team);
-            detailsCell.appendChild(detailsBtn);
-        });
-    } else {
+    if (!teams || teams.length === 0) {
+        activeTeamsTableBody.innerHTML = "";
         noActiveTeamsMsg.style.display = "block";
+        currentSortedTeams = [];
+        return;
     }
+    
+    // Sort teams
+    const sortedTeams = sortTeamsByChshValue(teams);
+    
+    // Calculate position changes
+    const changes = calculatePositionChanges(currentSortedTeams, sortedTeams);
+    
+    noActiveTeamsMsg.style.display = "none";
+    activeTeamsTableBody.innerHTML = ""; // Clear existing rows
+    
+    // Create all rows first
+    const rowsToAnimate = new Map();
+    sortedTeams.forEach((team, index) => {
+        const row = activeTeamsTableBody.insertRow();
+        row.className = 'team-row';
+        const positionChange = changes.get(team.team_id);
+
+        // Store row and position change for later animation
+        if (positionChange !== undefined) {
+            rowsToAnimate.set(row, positionChange);
+        }
+        
+        row.insertCell().textContent = team.team_name;
+        row.insertCell().textContent = team.team_id;
+        const sid1Cell = row.insertCell();
+        sid1Cell.textContent = team.player1_sid ? team.player1_sid.substring(0, 8) + "..." : 'N/A';
+        sid1Cell.style.fontFamily = 'monospace';
+        const sid2Cell = row.insertCell();
+        sid2Cell.textContent = team.player2_sid ? team.player2_sid.substring(0, 8) + "..." : 'N/A';
+        sid2Cell.style.fontFamily = 'monospace';
+        row.insertCell().textContent = team.current_round_number || 0;
+        
+        // Statistics significance column
+        const statsCell = row.insertCell();
+        statsCell.textContent = team.min_stats_sig ? '✅' : '⏳';
+        statsCell.style.textAlign = 'center';
+        
+        // Add trace_avg column with robust error handling
+        const traceAvgCell = row.insertCell();
+        if (team.correlation_stats && team.correlation_stats.trace_avg !== undefined && 
+            team.correlation_stats.trace_avg !== null && !isNaN(team.correlation_stats.trace_avg)) {
+            try {
+                const traceAvg = parseFloat(team.correlation_stats.trace_avg);
+                traceAvgCell.textContent = traceAvg.toFixed(3);
+                
+                // Add visual indicator for interesting values
+                if (Math.abs(traceAvg) > 0.7) {
+                    traceAvgCell.style.fontWeight = "bold";
+                }
+            } catch (e) {
+                console.error("Error formatting trace_avg", e);
+                traceAvgCell.textContent = "Error";
+            }
+        } else {
+            traceAvgCell.textContent = "—";
+        }
+        
+        // Add CHSH value column with robust error handling
+        const chshValueCell = row.insertCell();
+        if (team.correlation_stats && team.correlation_stats.chsh_value !== undefined && 
+            team.correlation_stats.chsh_value !== null && !isNaN(team.correlation_stats.chsh_value)) {
+            try {
+                const chshValue = parseFloat(team.correlation_stats.chsh_value);
+                chshValueCell.textContent = chshValue.toFixed(3);
+                
+                // Add visual indicator for interesting values (CHSH inequality violation is > 2)
+                if (Math.abs(chshValue) > 2) {
+                    chshValueCell.style.fontWeight = "bold";
+                    chshValueCell.style.color = Math.abs(chshValue) > 2.8 ? "#cc0000" : "#0066cc";
+                }
+            } catch (e) {
+                console.error("Error formatting chsh_value", e);
+                chshValueCell.textContent = "Error";
+            }
+        } else {
+            chshValueCell.textContent = "—";
+        }
+        
+        // Details button cell
+        const detailsCell = row.insertCell();
+        const detailsBtn = document.createElement('button');
+        detailsBtn.className = 'view-details-btn';
+        detailsBtn.textContent = 'View Details';
+        detailsBtn.onclick = () => showTeamDetails(team);
+        detailsCell.appendChild(detailsBtn);
+    });
+    
+    // Start animations in next frame after all rows are created
+    requestAnimationFrame(() => {
+        // Apply initial transforms and add classes
+        for (const [row, positionChange] of rowsToAnimate) { // positionChange is (newIndex - oldIndex)
+            const rowHeight = row.offsetHeight; 
+            if (rowHeight > 0) {
+                const initialTranslateY = -positionChange * rowHeight;
+                row.style.transform = `translateY(${initialTranslateY}px)`;
+                row.classList.add('moving', 'animating');
+                // row.offsetHeight; // Force reflow to apply the transform before the next animation step // MOVED
+            } else {
+                // If rowHeight is not available or zero, this row won't be animated correctly.
+                // It will just appear in its new position without animation.
+                console.warn('Cannot animate row, height is 0 or unavailable for team ID associated with this row.', row);
+            }
+        }
+
+        // Force a reflow on the table body AFTER all initial transforms are set
+        if (rowsToAnimate.size > 0) {
+            activeTeamsTableBody.offsetHeight; 
+        }
+
+        // Start animations in the next frame to ensure initial styles are committed
+        requestAnimationFrame(() => {
+            for (const [row] of rowsToAnimate) {
+                // Check if the row was prepared for animation (i.e., has 'animating' class)
+                if (row.classList.contains('animating')) { 
+                    row.style.transform = 'translateY(0px)'; // Animate to final position
+                    row.addEventListener('transitionend', () => {
+                        row.classList.remove('moving', 'animating');
+                        row.style.transform = ''; // Clean up inline style
+                    }, { once: true });
+                }
+            }
+        });
+    });
+    
+    // Update stored teams for next comparison
+    currentSortedTeams = sortedTeams;
 }
 
 function addAnswerToLog(answer) {
