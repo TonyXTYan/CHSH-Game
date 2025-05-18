@@ -223,16 +223,24 @@ def on_restart_game():
             emit('game_reset_complete', room=request.sid)
             return
         
-        # Reset team state after successful database clear
+        # Create fresh state for each team while preserving team membership
+        fresh_teams = {}
         for team_name, team_info in state.active_teams.items():
             if team_info:  # Validate team info exists
-                team_info['current_round_number'] = 0
-                team_info['current_db_round_id'] = None
-                team_info['answered_current_round'] = {}
-                team_info['combo_tracker'] = {}
+                fresh_teams[team_name] = {
+                    'players': team_info['players'][:],  # Copy players list
+                    'team_id': team_info['team_id'],
+                    'current_round_number': 0,
+                    'current_db_round_id': None,
+                    'answered_current_round': {},
+                    'combo_tracker': {}
+                }
+        
+        # Replace the entire active_teams dict with fresh state
+        state.active_teams = fresh_teams
         
         # Notify all teams about the reset
-        for team_name in state.active_teams.keys():
+        for team_name in fresh_teams.keys():
             socketio.emit('game_reset', room=team_name)
         
         # Ensure all clients are notified of the state change

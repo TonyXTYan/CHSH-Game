@@ -9,9 +9,14 @@ TARGET_COMBO_REPEATS = 3
 
 def start_new_round_for_pair(team_name):
     try:
+        # Don't start new rounds if game isn't active
+        if not state.game_started:
+            return
+
         team_info = state.active_teams.get(team_name)
         if not team_info or len(team_info['players']) != 2:
             return
+            
 
         team_info['current_round_number'] += 1
         round_number = team_info['current_round_number']
