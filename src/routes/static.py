@@ -6,7 +6,7 @@ from src.config import app
 @app.route('/<path:path>')
 def serve(path):
     static_folder_path = app.static_folder
-    if path == "dashboard": # Specific route for dashboard.html
+    if path == "dashboard": # Specific route for dashboard
         return send_from_directory(static_folder_path, 'dashboard.html')
     if path != "" and os.path.exists(os.path.join(static_folder_path, path)):
         return send_from_directory(static_folder_path, path)

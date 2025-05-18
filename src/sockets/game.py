@@ -57,7 +57,7 @@ def on_submit_answer(data):
             round_db_entry.p2_answered_at = datetime.utcnow()
 
         db.session.commit()
-        emit('answer_confirmed', {'message': 'Answer received.'}, room=sid)
+        emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, room=sid)
 
         # Emit to dashboard
         answer_for_dash = {

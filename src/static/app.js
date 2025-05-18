@@ -93,7 +93,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         currentRound = null;
         trueBtn.disabled = false;
         falseBtn.disabled = false;
-        waitingMessage.style.display = 'none';
+        waitingMessage.classList.remove('visible');
         questionItem.textContent = '';
     }
 
@@ -113,11 +113,11 @@ function updateGameState(newGameStarted = null, isReset = false) {
         if (currentRound.alreadyAnswered) {
             trueBtn.disabled = true;
             falseBtn.disabled = true;
-            waitingMessage.style.display = 'block';
+            waitingMessage.classList.add('visible');
         } else {
             trueBtn.disabled = false;
             falseBtn.disabled = false;
-            waitingMessage.style.display = 'none';
+            waitingMessage.classList.remove('visible');
         }
     } else if (gameStarted) {
         // Game started but waiting for first question
@@ -126,7 +126,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         questionItem.textContent = "...";
         trueBtn.disabled = true;
         falseBtn.disabled = true;
-        waitingMessage.style.display = 'none';
+        waitingMessage.classList.remove('visible');
     } else {
         // In team but game not started
         teamSection.style.display = 'block';
@@ -141,7 +141,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
 function resetGameControls() {
     trueBtn.disabled = false;
     falseBtn.disabled = false;
-    waitingMessage.style.display = 'none';
+    waitingMessage.classList.remove('visible');
     questionItem.textContent = '';
     currentRound = null;
 }
@@ -193,7 +193,7 @@ function submitAnswer(answer) {
     
     trueBtn.disabled = true;
     falseBtn.disabled = true;
-    waitingMessage.style.display = 'block';
+    waitingMessage.classList.add('visible');
     showStatus(`Round ${currentRound.round_number} answer received`, 'success');
 }
 
