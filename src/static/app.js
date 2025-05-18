@@ -190,21 +190,24 @@ function resetGameControls() {
 
 // Update available teams list
 function updateTeamsList(teams) {
+    // Always clear the lists first to handle any state, including initial empty or repopulation
+    if (availableTeams) availableTeams.innerHTML = '';
+    if (inactiveTeams) inactiveTeams.innerHTML = '';
+
     if (!teams || teams.length === 0) {
-        availableTeams.innerHTML = '<div class="team-item">No teams available to join currently. Create one or wait!</div>';
-        inactiveTeams.innerHTML = '<div class="team-item inactive">No inactive teams available.</div>';
+        if (availableTeams) availableTeams.innerHTML = '<li>No active teams available.</li>';
+        if (inactiveTeams) inactiveTeams.innerHTML = '<li>No inactive teams to reactivate.</li>';
         return;
     }
-    
-    // Split teams into active and inactive
+
     const activeTeamsList = teams.filter(team => team.is_active);
     const inactiveTeamsList = teams.filter(team => !team.is_active);
-    
+
     // Update active teams
     if (activeTeamsList.length === 0) {
-        availableTeams.innerHTML = '<div class="team-item">No active teams available to join currently.</div>';
+        if (availableTeams) availableTeams.innerHTML = '<li>No active teams available.</li>';
     } else {
-        availableTeams.innerHTML = '';
+        // availableTeams.innerHTML = ''; // Already cleared at the top
         activeTeamsList.forEach(team => {
             const teamElement = document.createElement('div');
             teamElement.className = 'team-item';
@@ -228,9 +231,9 @@ function updateTeamsList(teams) {
     
     // Update inactive teams
     if (inactiveTeamsList.length === 0) {
-        inactiveTeams.innerHTML = '<div class="team-item inactive">No inactive teams available.</div>';
+        if (inactiveTeams) inactiveTeams.innerHTML = '<li>No inactive teams to reactivate.</li>';
     } else {
-        inactiveTeams.innerHTML = '';
+        // inactiveTeams.innerHTML = ''; // Already cleared at the top
         inactiveTeamsList.forEach(team => {
             const teamElement = document.createElement('div');
             teamElement.className = 'team-item inactive';
