@@ -245,13 +245,17 @@ function handleResetGame() {
     }
 
     if (!confirmingStop) {
-        // Start confirmation phase
-        
-        // Ensure any previous mouseout listener is removed before adding a new one.
+        // Count inactive teams with players
+        const inactiveTeamsCount = lastReceivedTeams.filter(team =>
+            team.is_active && (!team.player1_sid && !team.player2_sid)
+        ).length;
+
+        // Ensure any previous mouseout listener is removed before adding a new one
         if (currentConfirmMouseOutListener && startBtn) {
             startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
             currentConfirmMouseOutListener = null;
         }
+        
         // Clear any existing interval (defensive)
         if (countdownInterval) {
             clearInterval(countdownInterval);
@@ -263,49 +267,47 @@ function handleResetGame() {
         let secondsLeft = 3;
         countdownActive = true;
         
-        startBtn.textContent = `Are you sure? (${secondsLeft})`;
+        const message = inactiveTeamsCount > 0 ?
+            `Reset game stats and remove ${inactiveTeamsCount} inactive team${inactiveTeamsCount !== 1 ? 's' : ''}? (${secondsLeft})` :
+            `Reset game stats? (${secondsLeft})`;
+        
+        startBtn.textContent = message;
         
         countdownInterval = setInterval(() => {
-            if (!countdownActive) { // If cleanup was called (e.g., by mouseout)
-                clearInterval(countdownInterval); // Ensure interval is stopped
+            if (!countdownActive) {
+                clearInterval(countdownInterval);
                 countdownInterval = null;
                 return;
             }
             
             secondsLeft--;
             if (secondsLeft > 0) {
-                if (confirmingStop) {  // Only update if still confirming
-                    startBtn.textContent = `Are you sure? (${secondsLeft})`;
+                if (confirmingStop) {
+                    const message = inactiveTeamsCount > 0 ?
+                        `Reset game stats and remove ${inactiveTeamsCount} inactive team${inactiveTeamsCount !== 1 ? 's' : ''}? (${secondsLeft})` :
+                        `Reset game stats? (${secondsLeft})`;
+                    startBtn.textContent = message;
                 }
             } else {
-                // Countdown finished, cleanup.
-                cleanupResetConfirmation(startBtn); 
+                cleanupResetConfirmation(startBtn);
             }
         }, 1000);
 
-        // Define and add the mouseout listener for this confirmation attempt
+        // Define and add the mouseout listener
         currentConfirmMouseOutListener = () => {
-            cleanupResetConfirmation(startBtn); // This will also remove this listener
+            cleanupResetConfirmation(startBtn);
         };
         startBtn.addEventListener('mouseout', currentConfirmMouseOutListener);
         
-        // Add beforeunload listener for page navigation during confirmation
+        // Add beforeunload listener
         window.addEventListener('beforeunload', () => {
             cleanupResetConfirmation(startBtn);
         }, { once: true });
         
     } else {
-        // Confirmation click received (confirmingStop is true)
-        
-        // Cleanup the confirmation UI (timer, "Are you sure?" text, listeners)
-        // This will also set confirmingStop = false and remove currentConfirmMouseOutListener.
         cleanupResetConfirmation(startBtn);
-        
-        // Start actual reset process
         startBtn.disabled = true;
         startBtn.textContent = "Resetting...";
-        // confirmingStop is already false due to cleanupResetConfirmation.
-        
         startResetTimeout();
         socket.emit("restart_game");
     }
@@ -338,6 +340,7 @@ socket.on("error", (data) => {
 
 socket.on("dashboard_update", (data) => {
     console.log("Dashboard update received:", data);
+    lastReceivedTeams = data.teams;
     if (data.game_state) {
         console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}`);
         
@@ -363,7 +366,7 @@ socket.on("dashboard_update", (data) => {
             document.getElementById("game-control-text").textContent = "Game Control";
         }
     }
-    updateActiveTeams(data.active_teams);
+    updateActiveTeams(data.teams);
     updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
     updateMetrics(data.active_teams, data.total_answers_count, data.connected_players_count);
     
@@ -420,6 +423,7 @@ socket.on("new_answer_for_dashboard", (data) => {
 
 socket.on("team_status_changed_for_dashboard", (data) => {
     console.log("Team status changed for dashboard:", data);
+    lastReceivedTeams = data.teams;
     updateActiveTeams(data.teams);
     updateMetrics(data.teams, currentAnswersCount, data.connected_players_count);
     
@@ -431,9 +435,13 @@ socket.on("team_status_changed_for_dashboard", (data) => {
 
 function updateMetrics(teams, totalAnswers, connectedCount) {
     if (teams) {
-        activeTeamsCountEl.textContent = teams.length;
+        // Count active teams
+        const activeTeams = teams.filter(team => team.is_active);
+        activeTeamsCountEl.textContent = activeTeams.length;
+        
+        // Count ready players (only from active teams)
         let readyPlayerCount = 0;
-        teams.forEach(team => {
+        activeTeams.forEach(team => {
             if(team.player1_sid) readyPlayerCount++;
             if(team.player2_sid) readyPlayerCount++;
         });
@@ -454,19 +462,44 @@ function updateMetrics(teams, totalAnswers, connectedCount) {
 
 
 function updateActiveTeams(teams) {
-    if (!teams || teams.length === 0) {
-        activeTeamsTableBody.innerHTML = "";
-        noActiveTeamsMsg.style.display = "block";
-        return;
+    if (!teams) {
+        teams = [];
     }
+
+    const showInactive = document.getElementById('show-inactive').checked;
+    const sortBy = document.getElementById('sort-teams').value;
     
-    noActiveTeamsMsg.style.display = "none";
+    // Filter teams based on active status
+    let filteredTeams = showInactive ? teams : teams.filter(team => team.is_active);
+    
+    // Sort teams
+    filteredTeams.sort((a, b) => {
+        if (sortBy === 'status') {
+            if (a.is_active === b.is_active) return 0;
+            return a.is_active ? -1 : 1;
+        } else if (sortBy === 'date') {
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        }
+        return a.team_name.localeCompare(b.team_name);
+    });
+    
+    // Show/hide no teams message
+    noActiveTeamsMsg.style.display = filteredTeams.length === 0 ? "block" : "none";
     activeTeamsTableBody.innerHTML = ""; // Clear existing rows
     
-    teams.forEach(team => {
+    filteredTeams.forEach(team => {
         const row = activeTeamsTableBody.insertRow();
-        row.className = 'team-row';
-        row.insertCell().textContent = team.team_name;
+        row.className = team.is_active ? 'team-row active' : 'team-row inactive';
+        
+        // Team name cell with status indicator
+        const nameCell = row.insertCell();
+        const statusDot = document.createElement('span');
+        statusDot.className = `team-status ${team.is_active ? 'active' : 'inactive'}`;
+        nameCell.appendChild(statusDot);
+        nameCell.appendChild(document.createTextNode(team.team_name));
+        
+        // Status cell
+        row.insertCell().textContent = team.is_active ? 'Active' : 'Inactive';
         row.insertCell().textContent = team.current_round_number || 0;
         
         // Statistics significance column

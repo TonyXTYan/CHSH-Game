@@ -163,17 +163,70 @@ function resetGameControls() {
 function updateTeamsList(teams) {
     if (!teams || teams.length === 0) {
         availableTeams.innerHTML = '<div class="team-item">No teams available to join currently. Create one or wait!</div>';
+        inactiveTeams.innerHTML = '<div class="team-item inactive">No inactive teams available.</div>';
         return;
     }
     
-    availableTeams.innerHTML = '';
-    teams.forEach(team => {
-        const teamElement = document.createElement('div');
-        teamElement.className = 'team-item';
-        teamElement.textContent = team.team_name;
-        teamElement.onclick = () => joinTeam(team.team_name);
-        availableTeams.appendChild(teamElement);
-    });
+    // Split teams into active and inactive
+    const activeTeamsList = teams.filter(team => team.is_active);
+    const inactiveTeamsList = teams.filter(team => !team.is_active);
+    
+    // Update active teams
+    if (activeTeamsList.length === 0) {
+        availableTeams.innerHTML = '<div class="team-item">No active teams available to join currently.</div>';
+    } else {
+        availableTeams.innerHTML = '';
+        activeTeamsList.forEach(team => {
+            const teamElement = document.createElement('div');
+            teamElement.className = 'team-item';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = team.team_name;
+            
+            const joinButton = document.createElement('button');
+            joinButton.className = 'join-btn';
+            joinButton.textContent = 'Join Team';
+            joinButton.onclick = (e) => {
+                e.stopPropagation();
+                joinTeam(team.team_name);
+            };
+            
+            teamElement.appendChild(nameSpan);
+            teamElement.appendChild(joinButton);
+            availableTeams.appendChild(teamElement);
+        });
+    }
+    
+    // Update inactive teams
+    if (inactiveTeamsList.length === 0) {
+        inactiveTeams.innerHTML = '<div class="team-item inactive">No inactive teams available.</div>';
+    } else {
+        inactiveTeams.innerHTML = '';
+        inactiveTeamsList.forEach(team => {
+            const teamElement = document.createElement('div');
+            teamElement.className = 'team-item inactive';
+            
+            const nameSpan = document.createElement('span');
+            nameSpan.textContent = team.team_name;
+            
+            const reactivateButton = document.createElement('button');
+            reactivateButton.className = 'reactivate-btn';
+            reactivateButton.textContent = 'Reactivate & Join';
+            reactivateButton.onclick = (e) => {
+                e.stopPropagation();
+                reactivateTeam(team.team_name);
+            };
+            
+            teamElement.appendChild(nameSpan);
+            teamElement.appendChild(reactivateButton);
+            inactiveTeams.appendChild(teamElement);
+        });
+    }
+}
+
+function reactivateTeam(teamName) {
+    socket.emit('reactivate_team', { team_name: teamName });
+    showStatus('Reactivating team...', 'info');
 }
 
 // Create a new team

@@ -235,43 +235,49 @@ def compute_correlation_stats(team_id): # NOT USED
         return 0.0, 0.0, 0.0
 
 
-def get_serialized_active_teams():
+def get_all_teams():
     try:
+        # Query all teams from database
+        all_teams = Teams.query.all()
         teams_list = []
-        for name, info in state.active_teams.items():
-            players = info['players']
-            # Compute hashes for the team
-            hash1, hash2 = compute_team_hashes(info['team_id'])
-            # Check if all combinations have reached target repeats
+        
+        for team in all_teams:
+            # Get active team info from state if available
+            team_info = state.active_teams.get(team.team_name)
+            
+            # For active teams, check game progress
             all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
-            combo_tracker = info.get('combo_tracker', {})
-            min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS 
-                            for combo in all_combos)
+            combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
+            min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
+                            for combo in all_combos) if team_info else False
             
-            # Compute correlation matrix and metrics - Single function call
-            corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(info['team_id'])
+            # Get players from either active state or database
+            players = team_info['players'] if team_info else []
+
+            # Compute hashes for the team
+            hash1, hash2 = compute_team_hashes(team.team_id)
             
-            # Calculate first statistic: Trace(corr_matrix) / 4
+            # Compute correlation matrix and statistics
+            corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(team.team_id)
+            
+            # Calculate statistics
             try:
                 trace_sum = sum(corr_matrix[i][i] for i in range(4))
                 stat1 = abs(trace_sum) / 4
-                # stat1 = (stat1 + same_item_balance_avg) / 2
             except (TypeError, IndexError) as e:
                 print(f"Error calculating trace statistic: {e}")
                 stat1 = 0.0
             
-            # Calculate second statistic using CHSH game formula
             try:
-                # Get indices for A, B, X, Y from item_values
                 A_idx = item_values.index('A')
                 B_idx = item_values.index('B')
                 X_idx = item_values.index('X')
                 Y_idx = item_values.index('Y')
                 
                 stat2 = (
-                    corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] + 
+                    corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] +
                     corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
-                    corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
+                    corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] +
                     corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
                 )/2
             except (ValueError, IndexError, TypeError) as e:
@@ -279,11 +285,12 @@ def get_serialized_active_teams():
                 stat2 = 0.0
             
             teams_list.append({
-                'team_name': name,
-                'team_id': info['team_id'],
+                'team_name': team.team_name,
+                'team_id': team.team_id,
+                'is_active': team.is_active,
                 'player1_sid': players[0] if len(players) > 0 else None,
                 'player2_sid': players[1] if len(players) > 1 else None,
-                'current_round_number': info.get('current_round_number', 0),
+                'current_round_number': team_info.get('current_round_number', 0) if team_info else 0,
                 'history_hash1': hash1,
                 'history_hash2': hash2,
                 'min_stats_sig': min_stats_sig,
@@ -294,6 +301,7 @@ def get_serialized_active_teams():
                     'chsh_value': stat2,
                     'same_item_balance': same_item_balance_avg
                 },
+                'created_at': team.created_at.isoformat() if team.created_at else None
             })
         return teams_list
     except Exception as e:
@@ -304,7 +312,7 @@ def get_serialized_active_teams():
 
 def emit_dashboard_team_update():
     try:
-        serialized_teams = get_serialized_active_teams()
+        serialized_teams = get_all_teams()
         update_data = {
             'teams': serialized_teams,
             'connected_players_count': len(state.connected_players)
@@ -322,7 +330,7 @@ def emit_dashboard_full_update(client_sid=None):
             total_answers = Answers.query.count()
 
         update_data = {
-            'active_teams': get_serialized_active_teams(),
+            'teams': get_all_teams(),
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
             'game_state': {
@@ -359,7 +367,7 @@ def on_dashboard_join(data=None, callback=None):
         with app.app_context():
             total_answers = Answers.query.count()
         update_data = {
-            'active_teams': get_serialized_active_teams(),
+            'teams': get_all_teams(),
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
             'game_state': {

@@ -52,10 +52,24 @@
         </div>
 
         <div class="panel">
-            <h2>Active Teams</h2>
+            <div class="panel-header">
+                <h2>Teams</h2>
+                <div class="team-filters">
+                    <label>
+                        <input type="checkbox" id="show-inactive" checked>
+                        Show Inactive Teams
+                    </label>
+                    <select id="sort-teams">
+                        <option value="status">Sort by Status</option>
+                        <option value="name">Sort by Name</option>
+                        <option value="date">Sort by Last Active</option>
+                    </select>
+                </div>
+            </div>
             <table id="active-teams-table">
                 <thead><tr>
                     <th>Team Name</th>
+                    <th>Status</th>
                     <th>Current Round</th>
                     <th>Stats Sig</th>
                     <th>Trace Avg</th>

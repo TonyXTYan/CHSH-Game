@@ -23,32 +23,56 @@ from src.state import state
 # Initialize the database tables
 with app.app_context():
     db.create_all()
-    # Reset all teams to inactive and clear all data on server start
+    print("Initializing database and cleaning up old data...")
     try:
+        # Start transaction
+        db.session.begin_nested()
+
         # Delete all answers first to avoid foreign key constraints
-        Answers.query.delete()
+        answers_count = Answers.query.delete()
+        print(f"Deleted {answers_count} answers")
+
         # Delete all question rounds
-        PairQuestionRounds.query.delete()
-        # Now handle teams
-        active_teams_query = Teams.query.filter_by(is_active=True)
-        teams = active_teams_query.all()
-        for team in teams:
-            # First check if there's already an inactive team with same name
-            existing_inactive = Teams.query.filter_by(team_name=team.team_name, is_active=False).first()
-            if existing_inactive:
-                # If exists, we need to give this team a unique name before deactivating
-                team.team_name = f"{team.team_name}_{team.team_id}"
+        rounds_count = PairQuestionRounds.query.delete()
+        print(f"Deleted {rounds_count} question rounds")
+
+        # Delete all inactive teams
+        inactive_count = Teams.query.filter_by(is_active=False).delete()
+        print(f"Deleted {inactive_count} inactive teams")
+
+        # Mark all remaining teams as inactive and rename if needed
+        active_teams = Teams.query.filter_by(is_active=True).all()
+        renamed_count = 0
+        deactivated_count = 0
+
+        for team in active_teams:
             team.is_active = False
-            db.session.flush()  # Flush changes for each team individually
+            deactivated_count += 1
+            
+            # Check for name conflicts with other active teams being deactivated
+            conflicting_teams = [t for t in active_teams if t != team and t.team_name == team.team_name]
+            if conflicting_teams:
+                team.team_name = f"{team.team_name}_{team.team_id}"
+                renamed_count += 1
+            
+            db.session.flush()
+
         db.session.commit()
-        
-        # Notify dashboard clients of reset
+        print(f"Deactivated {deactivated_count} active teams (renamed {renamed_count} due to conflicts)")
+
+        # Notify any connected dashboard clients
         socketio.emit('game_reset_complete')
+        
     except Exception as e:
-        print(f"Error resetting data: {str(e)}")
+        print(f"Error resetting database: {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
-    # Clear memory state
-    state.reset()
+        
+    finally:
+        # Always clear memory state
+        state.reset()
+        print("Server initialization complete")
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve
