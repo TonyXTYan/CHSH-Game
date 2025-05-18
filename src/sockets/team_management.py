@@ -1,7 +1,7 @@
 from datetime import datetime
 from flask import request
 from flask_socketio import emit, join_room, leave_room
-from src.config import socketio, db
+from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update
@@ -146,7 +146,8 @@ def on_create_team(data):
             'team_id': new_team_db.team_id,
             'current_round_number': 0,
             'combo_tracker': {},
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'waiting_pair'
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[new_team_db.team_id] = team_name
@@ -232,6 +233,67 @@ def on_join_team(data):
         print(f"Error in on_join_team: {str(e)}")
         traceback.print_exc()
         emit('error', {'message': f'Error joining team: {str(e)}'})
+
+@socketio.on('reactivate_team')
+def on_reactivate_team(data):
+    try:
+        team_name = data.get('team_name')
+        sid = request.sid
+        
+        if not team_name:
+            emit('error', {'message': 'Team name is required'}); return
+            
+        # Find the inactive team in the database
+        with app.app_context():
+            team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+            if not team:
+                emit('error', {'message': 'Team not found or is already active'}); return
+                
+            # Check if team name would conflict with any active team
+            if team_name in state.active_teams:
+                emit('error', {'message': 'An active team with this name already exists'}); return
+                
+            # Reactivate the team
+            team.is_active = True
+            team.player1_session_id = sid
+            db.session.commit()
+            
+            # Set up team state
+            state.active_teams[team_name] = {
+                'players': [sid],
+                'team_id': team.team_id,
+                'current_round_number': 0,
+                'combo_tracker': {},
+                'answered_current_round': {}
+            }
+            state.player_to_team[sid] = team_name
+            state.team_id_to_name[team.team_id] = team_name
+            
+            # Join the socket room
+            join_room(team_name)
+            
+            # Notify client
+            emit('team_created', {
+                'team_name': team_name,
+                'team_id': team.team_id,
+                'message': 'Team reactivated successfully. Waiting for another player.',
+                'game_started': state.game_started
+            })
+            
+            # Update all clients about available teams
+            socketio.emit('teams_updated', {
+                'teams': get_available_teams_list(),
+                'game_started': state.game_started
+            })
+            
+            # Update dashboard
+            emit_dashboard_team_update()
+            
+    except Exception as e:
+        print(f"Error in on_reactivate_team: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': f'Error reactivating team: {str(e)}'})
 
 @socketio.on('leave_team')
 def on_leave_team(data):

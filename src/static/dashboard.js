@@ -461,6 +461,13 @@ function updateMetrics(teams, totalAnswers, connectedCount) {
 }
 
 
+// Add event listener for show-inactive toggle
+document.getElementById('show-inactive').addEventListener('change', () => {
+    if (lastReceivedTeams) {
+        updateActiveTeams(lastReceivedTeams);
+    }
+});
+
 function updateActiveTeams(teams) {
     if (!teams) {
         teams = [];
@@ -469,8 +476,10 @@ function updateActiveTeams(teams) {
     const showInactive = document.getElementById('show-inactive').checked;
     const sortBy = document.getElementById('sort-teams').value;
     
-    // Filter teams based on active status
-    let filteredTeams = showInactive ? teams : teams.filter(team => team.is_active);
+    // Filter teams based on status
+    let filteredTeams = showInactive ? teams : teams.filter(team =>
+        team.is_active || team.status === 'waiting_pair'
+    );
     
     // Sort teams
     filteredTeams.sort((a, b) => {
@@ -494,12 +503,20 @@ function updateActiveTeams(teams) {
         // Team name cell with status indicator
         const nameCell = row.insertCell();
         const statusDot = document.createElement('span');
-        statusDot.className = `team-status ${team.is_active ? 'active' : 'inactive'}`;
+        let statusClass = 'inactive';
+        if (team.is_active) {
+            statusClass = team.status === 'waiting_pair' ? 'waiting' : 'active';
+        }
+        statusDot.className = `team-status ${statusClass}`;
         nameCell.appendChild(statusDot);
         nameCell.appendChild(document.createTextNode(team.team_name));
         
         // Status cell
-        row.insertCell().textContent = team.is_active ? 'Active' : 'Inactive';
+        let statusText = 'Inactive';
+        if (team.is_active) {
+            statusText = team.status === 'waiting_pair' ? 'Waiting Pair' : 'Active';
+        }
+        row.insertCell().textContent = statusText;
         row.insertCell().textContent = team.current_round_number || 0;
         
         // Statistics significance column

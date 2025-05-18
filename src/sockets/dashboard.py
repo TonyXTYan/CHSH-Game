@@ -284,7 +284,7 @@ def get_all_teams():
                 print(f"Error calculating CHSH statistic: {e}")
                 stat2 = 0.0
             
-            teams_list.append({
+            team_data = {
                 'team_name': team.team_name,
                 'team_id': team.team_id,
                 'is_active': team.is_active,
@@ -302,7 +302,19 @@ def get_all_teams():
                     'same_item_balance': same_item_balance_avg
                 },
                 'created_at': team.created_at.isoformat() if team.created_at else None
-            })
+            }
+            
+            # Add status field for active teams
+            if team_info and 'status' in team_info:
+                team_data['status'] = team_info['status']
+            elif team.is_active and len(players) < 2:
+                team_data['status'] = 'waiting_pair'
+            elif team.is_active:
+                team_data['status'] = 'active'
+            else:
+                team_data['status'] = 'inactive'
+                
+            teams_list.append(team_data)
         return teams_list
     except Exception as e:
         print(f"Error in get_serialized_active_teams: {str(e)}")

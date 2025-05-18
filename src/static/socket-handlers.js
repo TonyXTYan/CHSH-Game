@@ -172,6 +172,22 @@ function initializeSocketHandlers(socket, callbacks) {
             callbacks.resetGameControls();
         }
     });
+
+    // Handle team reactivation response
+    socket.on('team_reactivated', (data) => {
+        if (data.success) {
+            if (callbacks.onTeamCreated) {
+                callbacks.onTeamCreated(data);
+            }
+            if (callbacks.showStatus) {
+                callbacks.showStatus(data.message, 'success');
+            }
+        } else {
+            if (callbacks.showStatus) {
+                callbacks.showStatus(data.message || 'Failed to reactivate team', 'error');
+            }
+        }
+    });
     
     socket.on('game_state_changed', (data) => {
         // Update game state only if callback exists

@@ -25,6 +25,10 @@
     background-color: #9E9E9E;
 }
 
+.team-status.waiting {
+    background-color: #FFA500;
+}
+
 .team-filters {
     display: flex;
     align-items: center;
@@ -83,7 +87,7 @@ table {
 
 #active-teams-table th,
 #active-teams-table td {
-    width: 12.5%; /* Since there are 8 columns, each should take up 12.5% */
+    width: 10.0%; /* Since there are 9 columns, each should take up 10.0% */
     text-align: center;
 }
 

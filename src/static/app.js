@@ -15,6 +15,7 @@ const questionSection = document.getElementById('questionSection');
 const teamNameInput = document.getElementById('teamNameInput');
 const createTeamBtn = document.getElementById('createTeamBtn');
 const availableTeams = document.getElementById('availableTeams');
+const inactiveTeams = document.getElementById('inactiveTeams');
 const gameHeader = document.getElementById('gameHeader');
 const questionItem = document.getElementById('questionItem');
 const trueBtn = document.getElementById('trueBtn');
