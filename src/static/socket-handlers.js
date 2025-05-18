@@ -109,24 +109,27 @@ function initializeSocketHandlers(socket, callbacks) {
         // Reset client-side state
         callbacks.showStatus('Game has been reset. Ready to start new game.', 'info');
         
-        // Clear answer display if it exists
+        // Reset round and answer display
         if (typeof callbacks.onAnswerConfirmed === 'function') {
             callbacks.onAnswerConfirmed({ message: '' });
         }
-        
-        // Reset round display
         if (typeof callbacks.resetRoundDisplay === 'function') {
             callbacks.resetRoundDisplay();
         }
         
-        // Reset game state
+        // Clear game state and re-enable controls
         if (typeof callbacks.updateGameState === 'function') {
-            callbacks.updateGameState(false);
+            callbacks.updateGameState(false, true); // Added true to indicate this is a reset
         }
         
-        // Clear any ongoing game UI elements
+        // Clear game UI elements and ensure controls are enabled
         if (typeof callbacks.onGameReset === 'function') {
             callbacks.onGameReset();
+        }
+
+        // Ensure all game controls are re-enabled
+        if (typeof callbacks.resetGameControls === 'function') {
+            callbacks.resetGameControls();
         }
     });
     

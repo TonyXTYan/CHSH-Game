@@ -5,6 +5,7 @@ from src.models.quiz_models import Teams, Answers, PairQuestionRounds
 from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
 from time import time
+import hashlib
 
 # Store last activity time for each dashboard client
 dashboard_last_activity = {}
@@ -22,17 +23,46 @@ def on_keep_alive():
         import traceback
         traceback.print_exc()
 
+def compute_team_hashes(team_id):
+    try:
+        # Get all rounds and answers for this team in chronological order
+        rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
+        answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
+
+        # Create history string containing both questions and answers
+        history = []
+        for round in rounds:
+            history.append(f"P1:{round.participant1_item.value if round.participant1_item else 'None'}")
+            history.append(f"P2:{round.participant2_item.value if round.participant2_item else 'None'}")
+        for answer in answers:
+            history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
+        
+        history_str = "|".join(history)
+        
+        # Generate two different hashes
+        hash1 = hashlib.sha256(history_str.encode()).hexdigest()[:8]
+        hash2 = hashlib.md5(history_str.encode()).hexdigest()[:8]
+        
+        return hash1, hash2
+    except Exception as e:
+        print(f"Error computing team hashes: {str(e)}")
+        return "ERROR", "ERROR"
+
 def get_serialized_active_teams():
     try:
         teams_list = []
         for name, info in state.active_teams.items():
             participants = info['participants']
+            # Compute hashes for the team
+            hash1, hash2 = compute_team_hashes(info['team_id'])
             teams_list.append({
                 'team_name': name,
                 'team_id': info['team_id'],
                 'participant1_sid': participants[0] if len(participants) > 0 else None,
                 'participant2_sid': participants[1] if len(participants) > 1 else None,
-                'current_round_number': info.get('current_round_number', 0)
+                'current_round_number': info.get('current_round_number', 0),
+                'history_hash1': hash1,
+                'history_hash2': hash2
             })
         return teams_list
     except Exception as e:
@@ -134,14 +164,14 @@ def on_restart_game():
     try:
         from flask import request
         if request.sid not in state.dashboard_clients:
-            emit('error', {'message': 'Unauthorized: Not a dashboard client'}); return
-
-        if not state.active_teams:
-            emit('error', {'message': 'No active teams to reset'}); return
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})
+            emit('game_reset_complete', room=request.sid)
+            return
 
         # First update game state to prevent new answers during reset
         state.game_started = False
         
+        # Even if there are no active teams, clear the database
         try:
             # Clear database entries within a transaction
             db.session.begin_nested()  # Create savepoint
@@ -153,7 +183,16 @@ def on_restart_game():
             print(f"Database error during game reset: {str(db_error)}")
             import traceback
             traceback.print_exc()
-            emit('error', {'message': 'Database error during reset'}); return
+            emit('error', {'message': 'Database error during reset'})
+            emit('game_reset_complete', room=request.sid)
+            return
+
+        # If no active teams, still complete the reset successfully
+        if not state.active_teams:
+            emit('game_state_changed', {'game_started': False})
+            emit_dashboard_full_update()
+            emit('game_reset_complete', room=request.sid)
+            return
         
         # Reset team state after successful database clear
         for team_name, team_info in state.active_teams.items():
@@ -172,6 +211,10 @@ def on_restart_game():
         
         # Update dashboard with reset state
         emit_dashboard_full_update()
+
+        # Notify dashboard clients that reset is complete
+        for dash_sid in state.dashboard_clients:
+            socketio.emit('game_reset_complete', room=dash_sid)
             
     except Exception as e:
         print(f"Error in on_restart_game: {str(e)}")

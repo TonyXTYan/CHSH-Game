@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Live Quiz - Presenter Dashboard</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 0; padding: 20px; background-color: #f0f2f5; color: #333; }
@@ -20,7 +20,7 @@
         .metric-card h3 { margin: 0 0 10px 0; font-size: 1.2em; color: #0056b3; }
         .metric-card p { margin: 0; font-size: 1.5em; font-weight: bold; }
         .metric-card button { 
-            padding: 8px 16px;
+            padding: 8px 8px;
             background-color: #0056b3;
             color: white;
             border: none;
@@ -71,7 +71,7 @@
         <div class="panel">
             <h2>Active Teams</h2>
             <table id="active-teams-table">
-                <thead><tr><th>Team Name</th><th>Team ID</th><th>Participant 1 SID</th><th>Participant 2 SID</th><th>Current Round</th></tr></thead>
+                <thead><tr><th>Team Name</th><th>Team ID</th><th>Participant 1 SID</th><th>Participant 2 SID</th><th>Current Round</th><th>History Hash 1 (SHA-256)</th><th>History Hash 2 (MD5)</th></tr></thead>
                 <tbody></tbody>
             </table>
             <p id="no-active-teams">No active teams yet.</p>
@@ -123,13 +123,23 @@
 
         let currentAnswersCount = 0;
 
+        // Utility function to reset button to initial state
+        function resetButtonToInitialState(btn) {
+            if (!btn) return;
+            btn.disabled = false;
+            btn.textContent = "Start Game";
+            btn.className = "";  // Remove all classes to get default blue styling
+            btn.onclick = startGame;
+            confirmingStop = false;
+            document.getElementById("game-control-text").textContent = "Game Control";
+        }
+
         socket.on("connect", () => {
             connectionStatusDiv.textContent = "Connected to server";
             connectionStatusDiv.className = "status-connected";
             // Reset game button state on reconnect
             const startBtn = document.getElementById("start-game-btn");
-            startBtn.disabled = false;
-            startBtn.textContent = "Start Game";
+            resetButtonToInitialState(startBtn);
             socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
         });
 
@@ -155,6 +165,19 @@
             startBtn.textContent = "Reset game stats";
             startBtn.className = "reset-game";
             startBtn.onclick = handleResetGame;
+        });
+
+        socket.on("game_reset_complete", () => {
+            const startBtn = document.getElementById("start-game-btn");
+            
+            // Use the utility function to reset button state
+            resetButtonToInitialState(startBtn);
+            
+            // Reset other UI elements
+            answerLogTableBody.innerHTML = "";
+            noAnswersLogMsg.style.display = "block";
+            currentAnswersCount = 0;
+            totalAnswersCountEl.textContent = "0";
         });
 
         function handleResetGame() {
@@ -185,29 +208,39 @@
             } else {
                 // Prevent double-click during processing
                 startBtn.disabled = true;
+                startBtn.textContent = "Resetting...";
                 
-                // Restart game logic
+                // Start reset timeout to prevent stuck states
+                startResetTimeout();
+                
+                // Restart game logic - wait for server confirmation before resetting UI
                 socket.emit("restart_game");
-                const gameControlText = document.getElementById("game-control-text");
-                gameControlText.textContent = "Game Control";
-                confirmingStop = false;
-                answerLogTableBody.innerHTML = "";
-                noAnswersLogMsg.style.display = "block";
-                currentAnswersCount = 0;
-                totalAnswersCountEl.textContent = "0";
-                // Reset game state locally
-                startBtn.textContent = "Start Game";
-                startBtn.className = "";
-                startBtn.onclick = startGame;
-                // Reset game control text
-                document.getElementById("game-control-text").textContent = "Game Control";
             }
+        }
+
+        // Add reset timeout to prevent stuck states
+        let resetTimeout;
+        function startResetTimeout() {
+            clearTimeout(resetTimeout);
+            resetTimeout = setTimeout(() => {
+                const startBtn = document.getElementById("start-game-btn");
+                if (startBtn && startBtn.disabled) {
+                    console.log("Reset timeout triggered - resetting button state");
+                    resetButtonToInitialState(startBtn);
+                }
+            }, 5000); // 5 seconds timeout
         }
 
         socket.on("error", (data) => {
             console.error("Socket Error:", data);
             connectionStatusDiv.textContent = `Error: ${data.message}`;
             connectionStatusDiv.className = "status-disconnected";
+
+            // Reset button state in case of errors
+            const startBtn = document.getElementById("start-game-btn");
+            if (startBtn && startBtn.disabled) {
+                resetButtonToInitialState(startBtn);
+            }
         });
 
         socket.on("dashboard_update", (data) => {
@@ -266,9 +299,15 @@
                     const row = activeTeamsTableBody.insertRow();
                     row.insertCell().textContent = team.team_name;
                     row.insertCell().textContent = team.team_id;
-                    row.insertCell().textContent = team.participant1_sid || 'N/A';
-                    row.insertCell().textContent = team.participant2_sid || 'N/A';
+                    row.insertCell().textContent = team.participant1_sid ? team.participant1_sid.substring(0, 8) + "..." : 'N/A';
+                    row.insertCell().textContent = team.participant2_sid ? team.participant2_sid.substring(0, 8) + "..." : 'N/A';
                     row.insertCell().textContent = team.current_round_number || 0;
+                    const hash1Cell = row.insertCell();
+                    hash1Cell.textContent = team.history_hash1;
+                    hash1Cell.style.fontFamily = 'monospace';
+                    const hash2Cell = row.insertCell();
+                    hash2Cell.textContent = team.history_hash2;
+                    hash2Cell.style.fontFamily = 'monospace';
                 });
             } else {
                 noActiveTeamsMsg.style.display = "block";
@@ -280,7 +319,7 @@
             const row = answerLogTableBody.insertRow(0); // Add to top
             row.insertCell().textContent = new Date(answer.timestamp).toLocaleTimeString();
             row.insertCell().textContent = answer.team_name; // Need to get team_name from team_id
-            row.insertCell().textContent = answer.participant_session_id;
+            row.insertCell().textContent = answer.participant_session_id.substring(0, 8) + "...";
             row.insertCell().textContent = answer.question_round_id;
             row.insertCell().textContent = answer.assigned_item;
             row.insertCell().textContent = answer.response_value;
@@ -322,7 +361,7 @@
                         new Date(answer.timestamp).toLocaleString(),
                         answer.team_name,
                         answer.team_id,
-                        answer.participant_session_id,
+                        answer.participant_session_id, // Use full SID for CSV export
                         answer.question_round_id,
                         answer.assigned_item,
                         answer.response_value

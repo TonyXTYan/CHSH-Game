@@ -83,9 +83,18 @@ function tryRestoreSession() {
 }
 
 // Update UI based on game state
-function updateGameState(newGameStarted = null) {
+function updateGameState(newGameStarted = null, isReset = false) {
     if (newGameStarted !== null) {
         gameStarted = newGameStarted;
+    }
+
+    if (isReset) {
+        // Ensure all controls are in their initial state after reset
+        currentRound = null;
+        trueBtn.disabled = false;
+        falseBtn.disabled = false;
+        waitingMessage.style.display = 'none';
+        questionItem.textContent = '';
     }
 
     if (!currentTeam) {
@@ -122,7 +131,19 @@ function updateGameState(newGameStarted = null) {
         // In team but game not started
         teamSection.style.display = 'block';
         questionSection.style.display = 'none';
+        // Ensure controls are enabled when not in game
+        trueBtn.disabled = false;
+        falseBtn.disabled = false;
     }
+}
+
+// Reset all game controls to their initial state
+function resetGameControls() {
+    trueBtn.disabled = false;
+    falseBtn.disabled = false;
+    waitingMessage.style.display = 'none';
+    questionItem.textContent = '';
+    currentRound = null;
 }
 
 // Update available teams list
@@ -173,7 +194,7 @@ function submitAnswer(answer) {
     trueBtn.disabled = true;
     falseBtn.disabled = true;
     waitingMessage.style.display = 'block';
-    showStatus('Answer submitted!', 'success');
+    showStatus(`Round ${currentRound.round_number} answer received`, 'success');
 }
 
 // Socket.io event handlers callbacks
@@ -182,6 +203,7 @@ const callbacks = {
     showStatus,
     updateGameState,
     updateTeamsList,
+    resetGameControls,
     updateSessionInfo: (text) => sessionInfo.textContent = text,
     tryRestoreSession,
 
@@ -247,7 +269,7 @@ const callbacks = {
         console.log('New question received:', data);
         currentRound = data;
         currentRound.alreadyAnswered = false;
-        showStatus(`Round ${data.round_number}: Your item is ${data.item}`, 'info');
+        showStatus(`Round ${data.round_number}`, 'info');
         updateGameState();
     },
 
