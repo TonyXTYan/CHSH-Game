@@ -2,7 +2,7 @@ bidict==0.23.1
 blinker==1.9.0
 cffi==1.17.1
 click==8.2.0
-cryptography==36.0.2
+cryptography==44.0.1
 Flask==3.1.1
 Flask-SocketIO==5.3.6
 Flask-SQLAlchemy==3.1.1
