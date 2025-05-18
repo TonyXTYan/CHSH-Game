@@ -343,7 +343,11 @@ socket.on("dashboard_update", (data) => {
         
         // Persist full game state from server
         localStorage.setItem('game_started', data.game_state.started.toString());
-        localStorage.setItem('game_paused', data.game_state.paused.toString());
+        if (data.game_state.paused !== undefined) {
+            localStorage.setItem('game_paused', data.game_state.paused.toString());
+        } else {
+            localStorage.removeItem('game_paused'); // Clear if undefined
+        }
         localStorage.setItem('game_state_last_update', Date.now().toString());
 
         // Update pause button visibility and state

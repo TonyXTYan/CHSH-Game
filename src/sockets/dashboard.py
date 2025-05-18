@@ -39,6 +39,9 @@ def compute_team_hashes(team_id):
             history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
         
         history_str = "|".join(history)
+
+        # print(f"History for team {team_id}: {history_str}")
+        # print(rounds)
         
         # Generate two different hashes
         hash1 = hashlib.sha256(history_str.encode()).hexdigest()[:8]
@@ -48,6 +51,119 @@ def compute_team_hashes(team_id):
     except Exception as e:
         print(f"Error computing team hashes: {str(e)}")
         return "ERROR", "ERROR"
+
+def compute_correlation_matrix(team_id):
+    try:
+        # Get all rounds and their corresponding answers for this team
+        rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
+        
+        # Create a mapping from round_id to the round object for quick access
+        round_map = {round.round_id: round for round in rounds}
+        
+        # Get all answers for this team
+        answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
+        
+        # Group answers by round_id
+        answers_by_round = {}
+        for answer in answers:
+            if answer.question_round_id not in answers_by_round:
+                answers_by_round[answer.question_round_id] = []
+            answers_by_round[answer.question_round_id].append(answer)
+        
+        # Prepare the 4x4 correlation matrix for A, B, X, Y combinations
+        item_values = ['A', 'B', 'X', 'Y']
+        corr_matrix = [[0 for _ in range(4)] for _ in range(4)]
+        
+        # Count pairs for each item combination
+        pair_counts = {(i, j): 0 for i in item_values for j in item_values}
+        correlation_sums = {(i, j): 0 for i in item_values for j in item_values}
+        
+        # Analyze each round that has both player answers
+        for round_id, round_answers in answers_by_round.items():
+            # Skip if we don't have exactly 2 answers (one from each player)
+            if len(round_answers) != 2 or round_id not in round_map:
+                continue
+                
+            round_obj = round_map[round_id]
+            p1_item = round_obj.player1_item.value if round_obj.player1_item else None
+            p2_item = round_obj.player2_item.value if round_obj.player2_item else None
+            
+            # Skip if we don't have both items
+            if not p1_item or not p2_item:
+                continue
+                
+            # Get player responses (True/False)
+            # Find which answer belongs to which player
+            p1_answer = None
+            p2_answer = None
+            
+            for answer in round_answers:
+                if answer.assigned_item.value == p1_item:
+                    p1_answer = answer.response_value
+                elif answer.assigned_item.value == p2_item:
+                    p2_answer = answer.response_value
+            
+            # Skip if we don't have both answers
+            if p1_answer is None or p2_answer is None:
+                continue
+                
+            # Update counts
+            p1_idx = item_values.index(p1_item)
+            p2_idx = item_values.index(p2_item)
+            
+            # Calculate correlation: (T,T) or (F,F) count as 1, (T,F) or (F,T) count as -1
+            correlation = 1 if p1_answer == p2_answer else -1
+            
+            pair_counts[(p1_item, p2_item)] += 1
+            correlation_sums[(p1_item, p2_item)] += correlation
+        
+        # Calculate correlations for each cell in the matrix
+        for i, row_item in enumerate(item_values):
+            for j, col_item in enumerate(item_values):
+                count = pair_counts[(row_item, col_item)]
+                if count > 0:
+                    corr_matrix[i][j] = correlation_sums[(row_item, col_item)] / count
+                else:
+                    corr_matrix[i][j] = 0
+        
+        return corr_matrix, item_values
+    except Exception as e:
+        print(f"Error computing correlation matrix: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return [[0 for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y']
+
+def compute_correlation_stats(team_id):
+    try:
+        # Get the correlation matrix
+        corr_matrix, item_values = compute_correlation_matrix(team_id)
+        
+        # Calculate first statistic: Trace(corr_matrix) / 4
+        trace_sum = sum(corr_matrix[i][i] for i in range(4))
+        stat1 = trace_sum / 4
+        
+        # Calculate second statistic using CHSH game formula
+        # corrAX + corrAY + corrBX - corrBY + corrXA + corrXB + corrYA - corrYB
+        # Get indices for A, B, X, Y from item_values
+        A_idx = item_values.index('A')
+        B_idx = item_values.index('B')
+        X_idx = item_values.index('X')
+        Y_idx = item_values.index('Y')
+        
+        stat2 = (
+            corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] + 
+            corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
+            corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
+            corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
+        )
+        
+        return stat1, stat2
+    except Exception as e:
+        print(f"Error computing correlation statistics: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return 0.0, 0.0
+
 
 def get_serialized_active_teams():
     try:
@@ -62,6 +178,12 @@ def get_serialized_active_teams():
             min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS 
                             for combo in all_combos)
             
+            # Compute correlation matrix for the team
+            correlation_matrix, item_labels = compute_correlation_matrix(info['team_id'])
+            
+            # Compute correlation statistics
+            stat1, stat2 = compute_correlation_stats(info['team_id'])
+            
             teams_list.append({
                 'team_name': name,
                 'team_id': info['team_id'],
@@ -70,7 +192,13 @@ def get_serialized_active_teams():
                 'current_round_number': info.get('current_round_number', 0),
                 'history_hash1': hash1,
                 'history_hash2': hash2,
-                'min_stats_sig': min_stats_sig
+                'min_stats_sig': min_stats_sig,
+                'correlation_matrix': correlation_matrix,
+                'correlation_labels': item_labels,
+                'correlation_stats': {
+                    'trace_avg': stat1,
+                    'chsh_value': stat2
+                }
             })
         return teams_list
     except Exception as e:
