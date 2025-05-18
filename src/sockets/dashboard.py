@@ -25,32 +25,34 @@ def on_keep_alive():
         traceback.print_exc()
 
 def compute_team_hashes(team_id):
-    try:
-        # Get all rounds and answers for this team in chronological order
-        rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
-        answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
+    return "disabled", "disabled"
+    # # This function is disabled for now due to performance concerns
+    # try:
+    #     # Get all rounds and answers for this team in chronological order
+    #     rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
+    #     answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
 
-        # Create history string containing both questions and answers
-        history = []
-        for round in rounds:
-            history.append(f"P1:{round.player1_item.value if round.player1_item else 'None'}")
-            history.append(f"P2:{round.player2_item.value if round.player2_item else 'None'}")
-        for answer in answers:
-            history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
+    #     # Create history string containing both questions and answers
+    #     history = []
+    #     for round in rounds:
+    #         history.append(f"P1:{round.player1_item.value if round.player1_item else 'None'}")
+    #         history.append(f"P2:{round.player2_item.value if round.player2_item else 'None'}")
+    #     for answer in answers:
+    #         history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
         
-        history_str = "|".join(history)
+    #     history_str = "|".join(history)
 
-        # print(f"History for team {team_id}: {history_str}")
-        # print(rounds)
+    #     # print(f"History for team {team_id}: {history_str}")
+    #     # print(rounds)
         
-        # Generate two different hashes
-        hash1 = hashlib.sha256(history_str.encode()).hexdigest()[:8]
-        hash2 = hashlib.md5(history_str.encode()).hexdigest()[:8]
+    #     # Generate two different hashes
+    #     hash1 = hashlib.sha256(history_str.encode()).hexdigest()[:8]
+    #     hash2 = hashlib.md5(history_str.encode()).hexdigest()[:8]
         
-        return hash1, hash2
-    except Exception as e:
-        print(f"Error computing team hashes: {str(e)}")
-        return "ERROR", "ERROR"
+    #     return hash1, hash2
+    # except Exception as e:
+    #     print(f"Error computing team hashes: {str(e)}")
+    #     return "ERROR", "ERROR"
 
 def compute_correlation_matrix(team_id):
     try:
@@ -96,14 +98,36 @@ def compute_correlation_matrix(team_id):
             # Find which answer belongs to which player
             p1_answer = None
             p2_answer = None
+
+            # We've already checked that len(round_answers) == 2
+            ans_A = round_answers[0]
+            ans_B = round_answers[1]
+
+            if p1_item == p2_item:
+                # Both players were assigned the same item.
+                # Both answers in round_answers should correspond to this item.
+                # We assign one response to p1_answer and the other to p2_answer.
+                # The specific order (ans_A to p1 vs. ans_B to p1) doesn't affect
+                # the (p1_answer == p2_answer) correlation calculation.
+                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item: # Or p2_item, they are the same
+                    p1_answer = ans_A.response_value
+                    p2_answer = ans_B.response_value
+                # If assigned_item values don't match, p1_answer/p2_answer might remain None,
+                # and the round will be skipped by the check below, which is appropriate for inconsistent data.
+            else:
+                # p1_item and p2_item are different.
+                # Match answers to their respective items.
+                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p2_item:
+                    p1_answer = ans_A.response_value
+                    p2_answer = ans_B.response_value
+                elif ans_A.assigned_item.value == p2_item and ans_B.assigned_item.value == p1_item:
+                    # ans_A is for p2_item, ans_B is for p1_item
+                    p1_answer = ans_B.response_value 
+                    p2_answer = ans_A.response_value
+                # If items don't match as expected, p1_answer/p2_answer might remain None,
+                # and the round will be skipped by the check below.
             
-            for answer in round_answers:
-                if answer.assigned_item.value == p1_item:
-                    p1_answer = answer.response_value
-                elif answer.assigned_item.value == p2_item:
-                    p2_answer = answer.response_value
-            
-            # Skip if we don't have both answers
+            # Skip if we don't have both answers (e.g., due to data inconsistency)
             if p1_answer is None or p2_answer is None:
                 continue
                 
@@ -171,7 +195,7 @@ def compute_correlation_stats(team_id):
                 corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
                 corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
                 corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
-            )
+            )/2
         except (ValueError, IndexError, TypeError) as e:
             print(f"Error calculating CHSH statistic: {e}")
             stat2 = 0.0

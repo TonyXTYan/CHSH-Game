@@ -5,7 +5,7 @@ from src.models.quiz_models import ItemEnum, PairQuestionRounds, Answers
 from src.state import state
 
 QUESTION_ITEMS = [ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y]
-TARGET_COMBO_REPEATS = 3
+TARGET_COMBO_REPEATS = 5
 
 def start_new_round_for_pair(team_name):
     try:
@@ -56,7 +56,7 @@ def start_new_round_for_pair(team_name):
         player1, player2 = team_info['players']
         socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1)
         socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2)
-        print(f"Team {team_name} round {round_number}: P1({player1}) gets {p1_item.value}, P2({player2}) gets {p2_item.value}")
+        # print(f"Team {team_name} round {round_number}: P1({player1}) gets {p1_item.value}, P2({player2}) gets {p2_item.value}")
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
     except Exception as e:

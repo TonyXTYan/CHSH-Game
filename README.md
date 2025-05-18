@@ -29,3 +29,7 @@ Start command on `render.com`
 gunicorn wsgi:app --worker-class eventlet
 ```
 
+
+# TODO
+- [ ] details stats shouldn't stream, should be on request, it also needs auto update upon team stats change
+

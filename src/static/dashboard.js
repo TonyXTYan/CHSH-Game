@@ -372,6 +372,11 @@ socket.on("dashboard_update", (data) => {
         answerStreamEnabled = data.game_state.streaming_enabled;
         updateStreamingUI();
     }
+
+    // Refresh team details popup if open
+    if (data.active_teams) {
+        refreshTeamDetailsIfOpen(data.active_teams);
+    }
     
     // Update button state based on game state
     const startBtn = document.getElementById("start-game-btn");
@@ -394,15 +399,20 @@ socket.on("dashboard_update", (data) => {
     }
 });
 
-socket.on("new_answer_for_dashboard", (answer) => {
-    console.log("New answer for dashboard:", answer);
+socket.on("new_answer_for_dashboard", (data) => {
+    console.log("New answer for dashboard:", data);
     currentAnswersCount++;
     totalResponsesCountEl.textContent = currentAnswersCount;
     
     if (answerStreamEnabled) {
-        addAnswerToLog(answer);
+        addAnswerToLog(data.answer);
     } else {
         console.log("Answer received but streaming is disabled - not showing in log");
+    }
+
+    // Refresh team details if this answer is from the currently viewed team
+    if (data.team && currentlyViewedTeamId === data.team.team_id) {
+        updateModalContent(data.team);
     }
 });
 
@@ -410,6 +420,11 @@ socket.on("team_status_changed_for_dashboard", (data) => {
     console.log("Team status changed for dashboard:", data);
     updateActiveTeams(data.teams);
     updateMetrics(data.teams, currentAnswersCount, data.connected_players_count);
+    
+    // Refresh team details popup if open
+    if (data.teams) {
+        refreshTeamDetailsIfOpen(data.teams);
+    }
 });
 
 function updateMetrics(teams, totalAnswers, connectedCount) {
@@ -648,9 +663,12 @@ async function downloadData() {
     }
 }
 
-// Function to show team details in modal
-function showTeamDetails(team) {
-    const modal = document.getElementById('team-details-modal');
+// Track current team details popup state
+let currentlyViewedTeamId = null;
+let isDetailsPopupOpen = false;
+
+// Function to update team details modal content
+function updateModalContent(team) {
     const modalTeamName = document.getElementById('modal-team-name');
     const modalHash1 = document.getElementById('modal-hash1');
     const modalHash2 = document.getElementById('modal-hash2');
@@ -709,11 +727,6 @@ function showTeamDetails(team) {
                             // Ensure value is treated as a number and limit to 3 decimal places
                             const numValue = parseFloat(value);
                             cell.textContent = numValue.toFixed(3);
-                            
-                            // Color coding for correlation values
-                            if (numValue > 0.5) cell.style.backgroundColor = "rgba(0, 255, 0, 0.2)";
-                            else if (numValue < -0.5) cell.style.backgroundColor = "rgba(255, 0, 0, 0.2)";
-                            else if (numValue === 0) cell.style.backgroundColor = "rgba(200, 200, 200, 0.2)";
                         }
                     });
                 }
@@ -735,26 +748,60 @@ function showTeamDetails(team) {
         errorCell.style.textAlign = "center";
         errorCell.style.padding = "10px";
     }
+}
+
+// Function to close team details modal
+function closeTeamDetails() {
+    const modal = document.getElementById('team-details-modal');
+    currentlyViewedTeamId = null;
+    isDetailsPopupOpen = false;
+    modal.style.display = 'none';
+    
+    // Clean up event listener
+    if (window._modalClickHandler) {
+        window.removeEventListener('click', window._modalClickHandler);
+        window._modalClickHandler = null;
+    }
+}
+
+// Function to refresh team details if modal is open
+function refreshTeamDetailsIfOpen(teams) {
+    if (!isDetailsPopupOpen || !currentlyViewedTeamId) return;
+    
+    const updatedTeam = teams.find(t => t.team_id === currentlyViewedTeamId);
+    if (updatedTeam) {
+        updateModalContent(updatedTeam);
+    }
+}
+
+// Function to show team details in modal
+function showTeamDetails(team) {
+    const modal = document.getElementById('team-details-modal');
+    
+    // Update tracking state
+    currentlyViewedTeamId = team.team_id;
+    isDetailsPopupOpen = true;
+    
+    // Update modal content
+    updateModalContent(team);
     
     // Show the modal
     modal.style.display = 'block';
     
     // Close button functionality
     const closeBtn = document.querySelector('.close-modal');
-    closeBtn.onclick = () => {
-        modal.style.display = 'none';
-    };
+    closeBtn.onclick = closeTeamDetails;
     
-    // Close modal when clicking outside of it - using an event listener instead of directly setting window.onclick
+    // Close modal when clicking outside of it
     // Remove previous event listener if exists to avoid duplicate handlers
     if (window._modalClickHandler) {
         window.removeEventListener('click', window._modalClickHandler);
     }
     
-    // Create and store a reference to the handler so we can remove it later if needed
+    // Create and store a reference to the handler
     window._modalClickHandler = (event) => {
         if (event.target === modal) {
-            modal.style.display = 'none';
+            closeTeamDetails();
         }
     };
     

@@ -212,11 +212,13 @@ th {
     border: 1px solid #ddd;
     padding: 6px;
     text-align: center;
+    font-family: 'Courier New', monospace;
 }
 
 #correlation-matrix-table th {
     background-color: #f2f2f2;
 }
+
 
 .view-details-btn {
     background-color: #0056b3;

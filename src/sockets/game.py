@@ -79,7 +79,7 @@ def on_submit_answer(data):
         emit_dashboard_team_update()
 
         if len(team_info['answered_current_round']) == 2:
-            print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")
+            # print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")
             socketio.emit('round_complete', {
                 'team_name': team_name,
                 'round_number': team_info['current_round_number']
