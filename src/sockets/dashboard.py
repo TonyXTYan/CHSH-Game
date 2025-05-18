@@ -112,14 +112,32 @@ def emit_dashboard_full_update(client_sid=None):
         traceback.print_exc()
 
 @socketio.on('dashboard_join')
-def on_dashboard_join():
+def on_dashboard_join(data=None, callback=None):
     try:
         from flask import request
         sid = request.sid
         state.dashboard_clients.add(sid)
         print(f"Dashboard client connected: {sid}")
         dashboard_last_activity[sid] = time()
-        emit_dashboard_full_update(client_sid=sid)
+        
+        # Prepare update data
+        with app.app_context():
+            total_answers = Answers.query.count()
+        update_data = {
+            'active_teams': get_serialized_active_teams(),
+            'total_answers_count': total_answers,
+            'game_state': {
+                'started': state.game_started,
+                'streaming_enabled': state.answer_stream_enabled
+            }
+        }
+        
+        # If callback provided, use it to return data directly
+        if callback:
+            callback(update_data)
+        else:
+            # Otherwise emit as usual
+            socketio.emit('dashboard_update', update_data, room=sid)
     except Exception as e:
         print(f"Error in on_dashboard_join: {str(e)}")
         import traceback
@@ -127,7 +145,7 @@ def on_dashboard_join():
         emit('error', {'message': f'Error joining dashboard: {str(e)}'})
 
 @socketio.on('start_game')
-def on_start_game():
+def on_start_game(data=None):
     try:
         from flask import request
         if request.sid in state.dashboard_clients:
@@ -172,6 +190,7 @@ def on_disconnect():
 def on_restart_game():
     try:
         from flask import request
+        print(f"Received restart_game from {request.sid}")
         if request.sid not in state.dashboard_clients:
             emit('error', {'message': 'Unauthorized: Not a dashboard client'})
             emit('game_reset_complete', room=request.sid)
@@ -179,6 +198,7 @@ def on_restart_game():
 
         # First update game state to prevent new answers during reset
         state.game_started = False
+        # print("Set game_started=False")
         
         # Even if there are no active teams, clear the database
         try:
@@ -222,6 +242,7 @@ def on_restart_game():
         emit_dashboard_full_update()
 
         # Notify dashboard clients that reset is complete
+        print("Emitting game_reset_complete to all dashboard clients")
         for dash_sid in state.dashboard_clients:
             socketio.emit('game_reset_complete', room=dash_sid)
             

@@ -123,7 +123,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         // Game started but waiting for first question
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
-        questionItem.textContent = "Waiting for question...";
+        questionItem.textContent = "...";
         trueBtn.disabled = true;
         falseBtn.disabled = true;
         waitingMessage.style.display = 'none';

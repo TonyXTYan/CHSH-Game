@@ -137,6 +137,7 @@
         // Utility function to reset button to initial state
         function resetButtonToInitialState(btn) {
             if (!btn) return;
+            console.log(`Resetting button from ${btn.textContent} to Start Game`);
             btn.disabled = false;
             btn.textContent = "Start Game";
             btn.className = "";  // Remove all classes to get default blue styling
@@ -217,10 +218,40 @@
         });
 
         let confirmingStop = false;
+        let countdownActive = false;
+        let countdownInterval = null;
+        let currentConfirmMouseOutListener = null; // To manage the mouseout listener
+
+        // Global cleanup function for reset confirmation
+        function cleanupResetConfirmation(startBtn) {
+            countdownActive = false;
+            if (countdownInterval) {
+                clearInterval(countdownInterval);
+                countdownInterval = null;
+            }
+
+            // Remove the mouseout listener if it's active
+            if (startBtn && currentConfirmMouseOutListener) {
+                startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
+                currentConfirmMouseOutListener = null;
+            }
+            // The 'beforeunload' listener is {once: true}, it handles itself.
+
+            let wasConfirming = confirmingStop;
+            confirmingStop = false; // Always mark confirmation as ended
+
+            if (wasConfirming && startBtn) { // Only reset button text if it was in confirmation mode
+                startBtn.textContent = "Reset game stats";
+                startBtn.className = "reset-game";
+            }
+        }
         
         socket.on("game_started", () => {
             const startBtn = document.getElementById("start-game-btn");
             const gameControlText = document.getElementById("game-control-text");
+            
+            cleanupResetConfirmation(startBtn); // Ensure any prior confirmation state is cleared
+
             gameControlText.textContent = "Game in progress";
             startBtn.disabled = false;
             startBtn.textContent = "Reset game stats";
@@ -229,16 +260,30 @@
         });
 
         socket.on("game_reset_complete", () => {
+            console.log("Received game_reset_complete event");
+            
+            if (resetTimeout) {
+                clearTimeout(resetTimeout);
+                resetTimeout = null;
+            }
+            
             const startBtn = document.getElementById("start-game-btn");
+            const gameControlText = document.getElementById("game-control-text");
             
-            // Use the utility function to reset button state
-            resetButtonToInitialState(startBtn);
+            cleanupResetConfirmation(startBtn); // Crucial to clear any confirmation state
             
-            // Reset other UI elements
+            startBtn.disabled = false;
+            startBtn.textContent = "Start Game";
+            startBtn.className = "";
+            startBtn.onclick = startGame;
+            gameControlText.textContent = "Game Control";
+            
             answerLogTableBody.innerHTML = "";
             noAnswersLogMsg.style.display = "block";
             currentAnswersCount = 0;
             totalAnswersCountEl.textContent = "0";
+            
+            socket.emit('dashboard_join');
         });
 
         function handleResetGame() {
@@ -249,32 +294,71 @@
             }
 
             if (!confirmingStop) {
-                startBtn.textContent = "Are you sure?";
+                // Start confirmation phase
+                
+                // Ensure any previous mouseout listener is removed before adding a new one.
+                if (currentConfirmMouseOutListener && startBtn) {
+                    startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
+                    currentConfirmMouseOutListener = null;
+                }
+                // Clear any existing interval (defensive)
+                if (countdownInterval) {
+                    clearInterval(countdownInterval);
+                    countdownInterval = null;
+                }
+
                 startBtn.className = "confirm-reset";
                 confirmingStop = true;
+                let secondsLeft = 3;
+                countdownActive = true;
                 
-                // Create reset timeout
-                const resetTimeout = setTimeout(() => {
-                    if (confirmingStop) {
-                        startBtn.textContent = "Reset game stats";
-                        startBtn.className = "reset-game";
-                        confirmingStop = false;
+                startBtn.textContent = `Are you sure? (${secondsLeft})`;
+                
+                countdownInterval = setInterval(() => {
+                    if (!countdownActive) { // If cleanup was called (e.g., by mouseout)
+                        clearInterval(countdownInterval); // Ensure interval is stopped
+                        countdownInterval = null;
+                        return;
                     }
-                }, 3000);
+                    
+                    secondsLeft--;
+                    if (secondsLeft > 0) {
+                        if (confirmingStop) {  // Only update if still confirming
+                            startBtn.textContent = `Are you sure? (${secondsLeft})`;
+                        }
+                    } else {
+                        // Countdown finished, cleanup.
+                        cleanupResetConfirmation(startBtn); 
+                    }
+                }, 1000);
 
-                // Clear timeout if user leaves page
+                // Define and add the mouseout listener for this confirmation attempt
+                currentConfirmMouseOutListener = () => {
+                    cleanupResetConfirmation(startBtn); // This will also remove this listener
+                };
+                startBtn.addEventListener('mouseout', currentConfirmMouseOutListener);
+                
+                // Add beforeunload listener for page navigation during confirmation
                 window.addEventListener('beforeunload', () => {
-                    clearTimeout(resetTimeout);
+                    cleanupResetConfirmation(startBtn);
                 }, { once: true });
+                
+                // The problematic click listener is removed:
+                // NO: startBtn.addEventListener('click', () => cleanupResetConfirmation(startBtn), { once: true });
+                
             } else {
-                // Prevent double-click during processing
+                // Confirmation click received (confirmingStop is true)
+                
+                // Cleanup the confirmation UI (timer, "Are you sure?" text, listeners)
+                // This will also set confirmingStop = false and remove currentConfirmMouseOutListener.
+                cleanupResetConfirmation(startBtn);
+                
+                // Start actual reset process
                 startBtn.disabled = true;
                 startBtn.textContent = "Resetting...";
+                // confirmingStop is already false due to cleanupResetConfirmation.
                 
-                // Start reset timeout to prevent stuck states
                 startResetTimeout();
-                
-                // Restart game logic - wait for server confirmation before resetting UI
                 socket.emit("restart_game");
             }
         }
@@ -306,6 +390,9 @@
 
         socket.on("dashboard_update", (data) => {
             console.log("Dashboard update received:", data);
+            if (data.game_state) {
+                console.log(`Game state update - started: ${data.game_state.started}, streaming: ${data.game_state.streaming_enabled}`);
+            }
             updateActiveTeams(data.active_teams);
             updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
             updateMetrics(data.active_teams, data.total_answers_count);
@@ -316,14 +403,23 @@
                 updateStreamingUI();
             }
             
-            // Update game state if not in stopping state
-            if (data.game_state && data.game_state.started && !confirmingStop) {
-                const startBtn = document.getElementById("start-game-btn");
-                if (startBtn.textContent === "Start Game") {
-                    startBtn.disabled = false;
-                    startBtn.textContent = "Reset game stats";
-                    startBtn.className = "reset-game";
-                    startBtn.onclick = handleResetGame;
+            // Update button state based on game state
+            const startBtn = document.getElementById("start-game-btn");
+            if (!confirmingStop) {
+                if (data.game_state) {
+                    if (data.game_state.started && startBtn.textContent === "Start Game") {
+                        console.log("Updating button to Reset state");
+                        startBtn.disabled = false;
+                        startBtn.textContent = "Reset game stats";
+                        startBtn.className = "reset-game";
+                        startBtn.onclick = handleResetGame;
+                    } else if (!data.game_state.started && startBtn.textContent === "Reset game stats") {
+                        console.log("Resetting button to Start Game state");
+                        startBtn.disabled = false;
+                        startBtn.textContent = "Start Game";
+                        startBtn.className = "";
+                        startBtn.onclick = startGame;
+                    }
                 }
             }
         });

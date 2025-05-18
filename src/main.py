@@ -56,7 +56,7 @@ from src.routes.static import serve
 @app.route('/api/server/id')
 def get_server_id():
     return {'instance_id': server_instance_id}
-from src.sockets.dashboard import on_dashboard_join, on_start_game, get_dashboard_data
+from src.sockets import dashboard
 from src.sockets.team_management import (
     handle_connect, 
     handle_disconnect, 
