@@ -82,8 +82,12 @@ def get_serialized_active_teams():
 def emit_dashboard_team_update():
     try:
         serialized_teams = get_serialized_active_teams()
+        update_data = {
+            'teams': serialized_teams,
+            'connected_players_count': len(state.connected_players)
+        }
         for sid in state.dashboard_clients:
-            socketio.emit('team_status_changed_for_dashboard', serialized_teams, room=sid)
+            socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
     except Exception as e:
         print(f"Error in emit_dashboard_team_update: {str(e)}")
         import traceback
@@ -93,9 +97,11 @@ def emit_dashboard_full_update(client_sid=None):
     try:
         with app.app_context():
             total_answers = Answers.query.count()
+
         update_data = {
             'active_teams': get_serialized_active_teams(),
             'total_answers_count': total_answers,
+            'connected_players_count': len(state.connected_players),
             'game_state': {
                 'started': state.game_started,
                 'streaming_enabled': state.answer_stream_enabled
@@ -116,9 +122,14 @@ def on_dashboard_join(data=None, callback=None):
     try:
         from flask import request
         sid = request.sid
+        
+        # Add to dashboard clients
         state.dashboard_clients.add(sid)
-        print(f"Dashboard client connected: {sid}")
         dashboard_last_activity[sid] = time()
+        print(f"Dashboard client connected: {sid}")
+        
+        # Whenever a dashboard client joins, emit updated status to all dashboards
+        emit_dashboard_full_update()
         
         # Prepare update data
         with app.app_context():
@@ -126,6 +137,7 @@ def on_dashboard_join(data=None, callback=None):
         update_data = {
             'active_teams': get_serialized_active_teams(),
             'total_answers_count': total_answers,
+            'connected_players_count': len(state.connected_players),
             'game_state': {
                 'started': state.game_started,
                 'streaming_enabled': state.answer_stream_enabled

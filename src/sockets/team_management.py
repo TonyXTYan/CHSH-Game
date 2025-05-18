@@ -31,7 +31,14 @@ def get_team_members(team_name):
 @socketio.on('connect')
 def handle_connect():
     try:
-        print(f'Client connected: {request.sid}')
+        sid = request.sid
+        print(f'Client connected: {sid}')
+        
+        # By default, treat all non-dashboard connections as players
+        if sid not in state.dashboard_clients:
+            state.connected_players.add(sid)
+            emit_dashboard_full_update()  # Use full update to refresh player count
+        
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list()
@@ -44,12 +51,18 @@ def handle_connect():
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    print(f'Client disconnected: {request.sid}')
+    print(f'Client disconnected: {sid}')
     try:
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
             print(f"Dashboard client disconnected: {sid}")
 
+        # Remove from connected players list regardless of team status
+        if sid in state.connected_players:
+            state.connected_players.remove(sid)
+            emit_dashboard_full_update()  # Update dashboard with new player count
+
+        # Handle team-related disconnection
         if sid in state.player_to_team:
             team_name = state.player_to_team[sid]
             team_info = state.active_teams.get(team_name)

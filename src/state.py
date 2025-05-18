@@ -2,6 +2,7 @@ class AppState:
     def __init__(self):
         self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}}}
         self.player_to_team = {}  # {sid: team_name}
+        self.connected_players = set()  # All connected player SIDs
         self.dashboard_clients = set() # Stores SIDs of connected dashboard clients
         self.game_started = False # Track if game has started
         self.answer_stream_enabled = False # Track if answer streaming is enabled
@@ -13,6 +14,7 @@ class AppState:
     def reset(self):
         self.active_teams.clear()
         self.player_to_team.clear()
+        self.connected_players.clear()
         self.dashboard_clients.clear()
         self.previous_sessions.clear()
         self.team_id_to_name.clear()

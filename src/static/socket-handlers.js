@@ -3,7 +3,7 @@ function initializeSocketHandlers(socket, callbacks) {
     socket.on('connect', () => {
         callbacks.updateConnectionStatus('Connected to server!');
         callbacks.sessionId = socket.id;
-        callbacks.updateSessionInfo('Session ID: ' + socket.id);
+        callbacks.updateSessionInfo(socket.id);
         
         // If not restoring session, show ready status
         if (!callbacks.tryRestoreSession()) {

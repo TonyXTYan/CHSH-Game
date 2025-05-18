@@ -21,8 +21,9 @@ setInterval(() => {
 }, 30000); // Send keep-alive ping every 30 seconds
 
 const activeTeamsCountEl = document.getElementById("active-teams-count");
-const totalPlayersCountEl = document.getElementById("total-players-count");
-const totalAnswersCountEl = document.getElementById("total-answers-count");
+const readyPlayersCountEl = document.getElementById("ready-players-count");
+const connectedPlayersCountEl = document.getElementById("connected-players-count");
+const totalResponsesCountEl = document.getElementById("total-responses-count");
 
 const activeTeamsTableBody = document.querySelector("#active-teams-table tbody");
 const noActiveTeamsMsg = document.getElementById("no-active-teams");
@@ -75,8 +76,9 @@ function clearAllUITables() {
     noActiveTeamsMsg.style.display = "block";
     noAnswersLogMsg.style.display = "block";
     activeTeamsCountEl.textContent = "0";
-    totalPlayersCountEl.textContent = "0";
-    totalAnswersCountEl.textContent = "0";
+    readyPlayersCountEl.textContent = "0";
+    connectedPlayersCountEl.textContent = "0";
+    totalResponsesCountEl.textContent = "0";
 }
 
 socket.on("disconnect", () => {
@@ -86,9 +88,10 @@ socket.on("disconnect", () => {
     activeTeamsTableBody.innerHTML = "";
     noActiveTeamsMsg.style.display = "block";
     activeTeamsCountEl.textContent = "0";
-    totalPlayersCountEl.textContent = "0";
+    readyPlayersCountEl.textContent = "0";
+    connectedPlayersCountEl.textContent = "0";
     currentAnswersCount = 0;
-    totalAnswersCountEl.textContent = "0";
+    totalResponsesCountEl.textContent = "0";
 });
 
 socket.on("server_shutdown", () => {
@@ -101,7 +104,7 @@ socket.on("server_shutdown", () => {
     noAnswersLogMsg.style.display = "block";
     activeTeamsCountEl.textContent = "0";
     totalPlayersCountEl.textContent = "0";
-    totalAnswersCountEl.textContent = "0";
+    totalResponsesCountEl.textContent = "0";
     // Reset game button state
     const startBtn = document.getElementById("start-game-btn");
     resetButtonToInitialState(startBtn);
@@ -178,7 +181,7 @@ socket.on("game_reset_complete", () => {
     answerLogTableBody.innerHTML = "";
     noAnswersLogMsg.style.display = "block";
     currentAnswersCount = 0;
-    totalAnswersCountEl.textContent = "0";
+    totalResponsesCountEl.textContent = "0";
     
     socket.emit('dashboard_join');
 });
@@ -289,7 +292,7 @@ socket.on("dashboard_update", (data) => {
     }
     updateActiveTeams(data.active_teams);
     updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
-    updateMetrics(data.active_teams, data.total_answers_count);
+    updateMetrics(data.active_teams, data.total_answers_count, data.connected_players_count);
     
     // Sync streaming state with server
     if (data.game_state && data.game_state.streaming_enabled !== undefined) {
@@ -321,7 +324,7 @@ socket.on("dashboard_update", (data) => {
 socket.on("new_answer_for_dashboard", (answer) => {
     console.log("New answer for dashboard:", answer);
     currentAnswersCount++;
-    totalAnswersCountEl.textContent = currentAnswersCount;
+    totalResponsesCountEl.textContent = currentAnswersCount;
     
     if (answerStreamEnabled) {
         addAnswerToLog(answer);
@@ -330,25 +333,32 @@ socket.on("new_answer_for_dashboard", (answer) => {
     }
 });
 
-socket.on("team_status_changed_for_dashboard", (teams_data) => {
-    console.log("Team status changed for dashboard:", teams_data);
-    updateActiveTeams(teams_data);
-    updateMetrics(teams_data, currentAnswersCount);
+socket.on("team_status_changed_for_dashboard", (data) => {
+    console.log("Team status changed for dashboard:", data);
+    updateActiveTeams(data.teams);
+    updateMetrics(data.teams, currentAnswersCount, data.connected_players_count);
 });
 
-function updateMetrics(teams, totalAnswers) {
+function updateMetrics(teams, totalAnswers, connectedCount) {
     if (teams) {
         activeTeamsCountEl.textContent = teams.length;
-        let playerCount = 0;
+        let readyPlayerCount = 0;
         teams.forEach(team => {
-            if(team.player1_sid) playerCount++;
-            if(team.player2_sid) playerCount++;
+            if(team.player1_sid) readyPlayerCount++;
+            if(team.player2_sid) readyPlayerCount++;
         });
-        totalPlayersCountEl.textContent = playerCount;
+        readyPlayersCountEl.textContent = readyPlayerCount;
     }
+    
+    // Update connected players count
+    if (typeof connectedCount === 'number') {
+        console.log('Updating connected players count:', connectedCount);
+        connectedPlayersCountEl.textContent = connectedCount;
+    }
+    
     if (totalAnswers !== undefined) {
         currentAnswersCount = totalAnswers;
-        totalAnswersCountEl.textContent = currentAnswersCount;
+        totalResponsesCountEl.textContent = currentAnswersCount;
     }
 }
 

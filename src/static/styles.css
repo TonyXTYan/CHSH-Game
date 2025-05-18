@@ -209,6 +209,10 @@ button:disabled {
     text-align: center;
     margin-top: 20px;
 }
+
+.session-id {
+    font-family: monospace;
+}
 .connection-status {
     position: fixed;
     top: 10px;

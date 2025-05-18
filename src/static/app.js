@@ -219,7 +219,7 @@ const callbacks = {
     updateGameState,
     updateTeamsList,
     resetGameControls,
-    updateSessionInfo: (text) => sessionInfo.textContent = text,
+    updateSessionInfo: (id) => sessionInfo.innerHTML = `Session ID: <span class="session-id">${id}</span>`,
     tryRestoreSession,
 
     onTeamCreated: (data) => {
