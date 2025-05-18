@@ -78,14 +78,7 @@ h1, h2, h3 {
     background: #e9ecef;
 }
 
-/* Section headers */
-#joinTeamSection h3 {
-    margin-top: 1.5rem;
-    color: #333;
-    font-size: 1.2rem;
-    border-bottom: 2px solid #dee2e6;
-    padding-bottom: 0.5rem;
-}
+/* Section headers - removed since they're now defined together with toggle-btn h3 later */
 
 /* Team buttons */
 .team-item button {
@@ -336,4 +329,86 @@ button:disabled {
 .reconnecting {
     background-color: #fff8e1;
     color: #f57f17;
+}
+
+/* Collapsible section styles */
+.collapsible-section {
+    margin-bottom: 1rem;
+}
+
+.toggle-btn {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    background: none;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+}
+
+.toggle-btn:hover,
+.toggle-btn:focus,
+.toggle-btn:active {
+    background-color: transparent;
+}
+
+/* Match the h3 styles to be consistent */
+#joinTeamSection h3 {
+    margin-top: 1.5rem;
+    color: #333;
+    font-size: 1.2rem;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.5rem;
+    text-align: center;
+}
+
+/* Style the collapsible section header */
+.collapsible-section {
+    position: relative;
+}
+
+.collapsible-header {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+    cursor: pointer;
+}
+
+.collapsible-section h3 {
+    margin-top: 1.5rem;
+    margin-bottom: 0;
+    color: #333;
+    font-size: 1.2rem;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 0.5rem;
+    text-align: center;
+    flex-grow: 1;
+}
+
+.toggle-indicator {
+    position: absolute;
+    right: 0;
+    /* Adjust position to align with text */
+    top: 1.1rem; /* Aligned with the text rather than the entire block */
+    cursor: pointer;
+    transition: transform 0.2s ease;
+    font-size: 25px;
+    font-weight: bold;
+    display: inline-block;
+    padding-right: 7px;
+    color: #000000;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.2);
+    transform: rotate(-90deg); /* Start with no rotation */
+    transform-origin: center center; /* Make rotations happen around the center */
+}
+
+.toggle-indicator.collapsed {
+    transform: rotate(0deg);
+}
+
+#inactiveTeams {
+    transition: all 0.3s ease;
+    overflow: hidden;
 }

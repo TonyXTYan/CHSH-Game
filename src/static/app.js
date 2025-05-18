@@ -486,5 +486,26 @@ createTeamBtn.addEventListener('click', createTeam);
 trueBtn.addEventListener('click', () => submitAnswer(true));
 falseBtn.addEventListener('click', () => submitAnswer(false));
 
+// Initialize collapsible inactive teams section
+document.addEventListener('DOMContentLoaded', function() {
+    const collapsibleHeader = document.querySelector('.collapsible-header');
+    const toggleIndicator = document.querySelector('.toggle-indicator');
+    const inactiveTeams = document.getElementById('inactiveTeams');
+    
+    if (collapsibleHeader && inactiveTeams) {
+        collapsibleHeader.addEventListener('click', function() {
+            toggleIndicator.classList.toggle('collapsed');
+            if (inactiveTeams.style.display === 'none') {
+                inactiveTeams.style.display = 'block';
+            } else {
+                inactiveTeams.style.display = 'none';
+            }
+        });
+        
+        // Initialize as collapsed
+        toggleBtn.classList.add('collapsed');
+    }
+});
+
 // Initialize UI
 updateGameState();
