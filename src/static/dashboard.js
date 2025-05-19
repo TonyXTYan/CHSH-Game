@@ -561,14 +561,18 @@ function updateActiveTeams(teams) {
         
         // Add Same Item Balance column
         const balanceCell = row.insertCell();
-        if (team.correlation_stats && team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && !isNaN(team.correlation_stats.same_item_balance)) {
+        if (team.correlation_stats && 
+            team.correlation_stats.same_item_balance !== undefined && 
+            team.correlation_stats.same_item_balance !== null && 
+            !isNaN(team.correlation_stats.same_item_balance)) {
             try {
-                const balance = parseFloat(team.correlation_stats.same_item_balance);
-                balanceCell.textContent = balance.toFixed(3);
+                const balanceValue = parseFloat(team.correlation_stats.same_item_balance);
+                const balanceUncertainty = team.correlation_stats.same_item_balance_uncertainty !== undefined ? 
+                                           parseFloat(team.correlation_stats.same_item_balance_uncertainty) : null;
+                balanceCell.textContent = formatStatWithUncertainty(balanceValue, balanceUncertainty);
                 
                 // Add visual indicator for interesting values
-                if (Math.abs(balance) >= 0.5) {
+                if (Math.abs(balanceValue) >= 0.5) {
                     balanceCell.style.fontWeight = "bold";
                     balanceCell.style.color = "#0022aa"; // Blue
                 }
@@ -589,16 +593,24 @@ function updateActiveTeams(teams) {
             team.correlation_stats.same_item_balance !== undefined && 
             team.correlation_stats.same_item_balance !== null && 
             !isNaN(team.correlation_stats.same_item_balance) &&
-            team.correlation_stats.trace_average_statistic_uncertainty !== undefined) { // Added check for uncertainty
+            team.correlation_stats.trace_average_statistic_uncertainty !== undefined &&
+            team.correlation_stats.same_item_balance_uncertainty !== undefined) { 
             try {
                 const traceAvg = parseFloat(team.correlation_stats.trace_average_statistic);
                 const balance = parseFloat(team.correlation_stats.same_item_balance);
                 const balancedRandom = (traceAvg + balance) / 2;
                 
                 // Calculate uncertainty for balancedRandom
-                // Assuming same_item_balance has negligible uncertainty or is not provided
-                const traceAvgUncertainty = parseFloat(team.correlation_stats.trace_average_statistic_uncertainty);
-                const balancedRandomUncertainty = !isNaN(traceAvgUncertainty) ? traceAvgUncertainty / 2 : null;
+                const traceAvgUnc = parseFloat(team.correlation_stats.trace_average_statistic_uncertainty);
+                const balanceUnc = parseFloat(team.correlation_stats.same_item_balance_uncertainty);
+                let balancedRandomUncertainty = null;
+                if (!isNaN(traceAvgUnc) && !isNaN(balanceUnc)) {
+                    balancedRandomUncertainty = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
+                } else if (!isNaN(traceAvgUnc)) { // Only trace uncertainty available
+                    balancedRandomUncertainty = traceAvgUnc / 2;
+                } else if (!isNaN(balanceUnc)) { // Only balance uncertainty available
+                    balancedRandomUncertainty = balanceUnc / 2;
+                }
 
                 balancedRandomCell.textContent = formatStatWithUncertainty(balancedRandom, balancedRandomUncertainty);
                 
@@ -812,7 +824,6 @@ function updateModalContent(team) {
     const modalHash1 = document.getElementById('modal-hash1');
     const modalHash2 = document.getElementById('modal-hash2');
     const correlationTable = document.getElementById('correlation-matrix-table');
-    const modalTraceAvg = document.getElementById('modal-trace-avg'); // New ID from HTML
     const modalChshValue = document.getElementById('modal-chsh-value'); // New ID from HTML (was modal-chsh-stat2)
     const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh'); // New ID from HTML (was modal-chsh-stat3)
     
@@ -944,10 +955,6 @@ function updateModalContent(team) {
 
     // Populate CHSH Statistics in modal
     if (team.correlation_stats) {
-        modalTraceAvg.textContent = formatStatWithUncertainty(
-            team.correlation_stats.trace_average_statistic,
-            team.correlation_stats.trace_average_statistic_uncertainty
-        );
         modalChshValue.textContent = formatStatWithUncertainty(
             team.correlation_stats.chsh_value_statistic,
             team.correlation_stats.chsh_value_statistic_uncertainty
@@ -957,7 +964,6 @@ function updateModalContent(team) {
             team.correlation_stats.cross_term_combination_statistic_uncertainty
         );
     } else {
-        modalTraceAvg.textContent = "—";
         modalChshValue.textContent = "—";
         modalCrossTermChsh.textContent = "—";
     }

@@ -1,6 +1,7 @@
 from flask import jsonify
 import math
 from uncertainties import ufloat
+import uncertainties.umath as um  # for ufloat‑compatible fabs
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -178,12 +179,15 @@ def compute_correlation_matrix(team_id):
         else:
             avg_same_item_balance = 0.0  # Default if no same-item responses
         
-        return corr_matrix, item_values, avg_same_item_balance, same_item_balance, correlation_sums, pair_counts
+        return (corr_matrix, item_values,
+                avg_same_item_balance, same_item_balance, same_item_responses,
+                correlation_sums, pair_counts)
     except Exception as e:
         print(f"Error computing correlation matrix: {str(e)}")
         import traceback
         traceback.print_exc()
-        return [[(0,0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}
+        return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
+                ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
 def compute_correlation_stats(team_id): # NOT USED
     try:
@@ -259,7 +263,9 @@ def get_all_teams():
             hash1, hash2 = compute_team_hashes(team.team_id)
             
             # Compute correlation matrix and statistics
-            corr_matrix_tuples, item_values, same_item_balance_avg, same_item_balance, correlation_sums, pair_counts = compute_correlation_matrix(team.team_id)
+            (corr_matrix_tuples, item_values,
+             same_item_balance_avg, same_item_balance, same_item_responses,
+             correlation_sums, pair_counts) = compute_correlation_matrix(team.team_id)
             
             # --- Calculate statistics with uncertainties using ufloat ---
 
@@ -334,6 +340,24 @@ def get_all_teams():
                         t_ij_ufloat = ufloat(t_ij_val, math.sqrt(variance_t_ij))
                         cross_term_sum_ufloat += coeff * t_ij_ufloat
             cross_term_combination_statistic_ufloat = cross_term_sum_ufloat
+
+            # --- Same‑item balance with uncertainty (ufloat) ---
+            same_item_balance_ufloats = []
+            for item, counts in (same_item_responses or {}).items():
+                T_count = counts.get('true', 0)
+                F_count = counts.get('false', 0)
+                total_tf = T_count + F_count
+                if total_tf > 0:
+                    p_val = T_count / total_tf
+                    var_p = (p_val * (1 - p_val)) / total_tf  # binomial variance
+                    p_true = ufloat(p_val, math.sqrt(var_p))
+                    balance_ufloat = 1 - um.fabs(2 * p_true - 1)
+                    same_item_balance_ufloats.append(balance_ufloat)
+
+            if same_item_balance_ufloats:
+                avg_same_item_balance_ufloat = sum(same_item_balance_ufloats) / len(same_item_balance_ufloats)
+            else:
+                avg_same_item_balance_ufloat = ufloat(0, 0)
             
             team_data = {
                 'team_name': team.team_name,
@@ -354,7 +378,9 @@ def get_all_teams():
                     'chsh_value_statistic_uncertainty': chsh_value_statistic_ufloat.s if not math.isinf(chsh_value_statistic_ufloat.s) else None,
                     'cross_term_combination_statistic': cross_term_combination_statistic_ufloat.n,
                     'cross_term_combination_statistic_uncertainty': cross_term_combination_statistic_ufloat.s if not math.isinf(cross_term_combination_statistic_ufloat.s) else None,
-                    'same_item_balance': same_item_balance_avg
+                    'same_item_balance': avg_same_item_balance_ufloat.n,
+                    'same_item_balance_uncertainty': (avg_same_item_balance_ufloat.s
+                                                      if not math.isinf(avg_same_item_balance_ufloat.s) else None)
                 },
                 'created_at': team.created_at.isoformat() if team.created_at else None
             }
