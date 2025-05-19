@@ -29,8 +29,7 @@ primary_region = 'syd'  # You can choose a region closer to your users
 
 [[vm]]
   memory = '512mb'
-  cpu_kind = "shared"
-  cpus = 2
+  size = "shared-cpu-2x"
   # memory_mb = 1024 # Alternative way to specify memory
 
 # Optional: Define a deploy strategy
