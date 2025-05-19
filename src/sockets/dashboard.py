@@ -1,4 +1,6 @@
 from flask import jsonify
+import math
+from uncertainties import ufloat
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -202,10 +204,10 @@ def compute_correlation_stats(team_id): # NOT USED
         # Calculate first statistic: Trace(corr_matrix) / 4
         try:
             trace_sum = sum(corr_matrix[i][i] for i in range(4))
-            stat1 = trace_sum / 4
+            trace_average_statistic = trace_sum / 4
         except (TypeError, IndexError) as e:
             print(f"Error calculating trace statistic: {e}")
-            stat1 = 0.0
+            trace_average_statistic = 0.0
         
         # Calculate second statistic using CHSH game formula
         # corrAX + corrAY + corrBX - corrBY + corrXA + corrXB + corrYA - corrYB
@@ -216,7 +218,7 @@ def compute_correlation_stats(team_id): # NOT USED
             X_idx = item_values.index('X')
             Y_idx = item_values.index('Y')
             
-            stat2 = (
+            chsh_value_statistic = (
                 corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] + 
                 corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
                 corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] + 
@@ -224,9 +226,9 @@ def compute_correlation_stats(team_id): # NOT USED
             )/2
         except (ValueError, IndexError, TypeError) as e:
             print(f"Error calculating CHSH statistic: {e}")
-            stat2 = 0.0
+            chsh_value_statistic = 0.0
         
-        return stat1, stat2, same_item_balance_avg
+        return trace_average_statistic, chsh_value_statistic, same_item_balance_avg
     except Exception as e:
         print(f"Error computing correlation statistics: {str(e)}")
         import traceback
@@ -259,55 +261,79 @@ def get_all_teams():
             # Compute correlation matrix and statistics
             corr_matrix_tuples, item_values, same_item_balance_avg, same_item_balance, correlation_sums, pair_counts = compute_correlation_matrix(team.team_id)
             
-            # Calculate statistics
-            stat1 = 0.0
-            try:
-                trace_val_sum = 0
+            # --- Calculate statistics with uncertainties using ufloat ---
+
+            # Stat1: Trace Average Statistic
+            sum_of_cii_ufloats = ufloat(0, 0)
+            if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples):
                 for i in range(4):
                     num, den = corr_matrix_tuples[i][i]
-                    if den != 0:
-                        trace_val_sum += num / den
-                stat1 = abs(trace_val_sum) / 4
-            except (TypeError, IndexError, ZeroDivisionError) as e:
-                print(f"Error calculating trace statistic (stat1): {e}")
-                stat1 = 0.0
+                    if den > 0:
+                        c_ii_val = num / den
+                        # Clamp c_ii_val to [-1, 1] to avoid math domain error in (1 - c_ii_val**2)
+                        c_ii_val = max(-1.0, min(1.0, c_ii_val))
+                        variance_ii = (1 - c_ii_val**2) / den
+                        # Ensure variance is non-negative
+                        variance_ii = max(0, variance_ii)
+                        c_ii_ufloat = ufloat(c_ii_val, math.sqrt(variance_ii))
+                        sum_of_cii_ufloats += c_ii_ufloat
+            trace_average_statistic_ufloat = (1/4) * sum_of_cii_ufloats
+            # Take absolute value of the nominal part as per original logic for stat1
+            # Uncertainty remains on the pre-absolute value. This might need clarification if abs() should apply to ufloat.
+            # For now, applying abs to nominal value as in original code.
+            # trace_average_statistic_ufloat = ufloat(abs(trace_average_statistic_ufloat.n), trace_average_statistic_ufloat.s)
+            # Re-evaluating: The proposal for stat1 doesn't mention abs(). The original code had abs(trace_val_sum)/4.
+            # Let's stick to the proposal: (1/4) * sum(c_ii)
+            # The original code's abs() might have been a specific choice not in the proposal.
+            # If abs is critical, it should be ufloat.fabs(). For now, following proposal.
 
-            stat2 = 0.0
-            try:
-                A_idx = item_values.index('A')
-                B_idx = item_values.index('B')
-                X_idx = item_values.index('X')
-                Y_idx = item_values.index('Y')
+            # Stat2: CHSH Value Statistic
+            chsh_sum_ufloat = ufloat(0, 0)
+            if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples) and all(item in item_values for item in ['A', 'B', 'X', 'Y']):
+                try:
+                    A_idx = item_values.index('A')
+                    B_idx = item_values.index('B')
+                    X_idx = item_values.index('X')
+                    Y_idx = item_values.index('Y')
 
-                def get_corr_val(idx1, idx2):
-                    num, den = corr_matrix_tuples[idx1][idx2]
-                    return num / den if den != 0 else 0
+                    terms_indices_coeffs = [
+                        (A_idx, X_idx, 1), (A_idx, Y_idx, 1),
+                        (B_idx, X_idx, 1), (B_idx, Y_idx, -1),
+                        (X_idx, A_idx, 1), (X_idx, B_idx, 1),
+                        (Y_idx, A_idx, 1), (Y_idx, B_idx, -1)
+                    ]
 
-                stat2 = (
-                    get_corr_val(A_idx, X_idx) + get_corr_val(A_idx, Y_idx) +
-                    get_corr_val(B_idx, X_idx) - get_corr_val(B_idx, Y_idx) +
-                    get_corr_val(X_idx, A_idx) + get_corr_val(X_idx, B_idx) +
-                    get_corr_val(Y_idx, A_idx) - get_corr_val(Y_idx, B_idx)
-                ) / 2
-            except (ValueError, IndexError, TypeError, ZeroDivisionError) as e:
-                print(f"Error calculating CHSH statistic (stat2): {e}")
-                stat2 = 0.0
+                    for r_idx, c_idx, coeff in terms_indices_coeffs:
+                        num, den = corr_matrix_tuples[r_idx][c_idx]
+                        if den > 0:
+                            c_ij_val = num / den
+                            c_ij_val = max(-1.0, min(1.0, c_ij_val)) # Clamp
+                            variance_ij = max(0, (1 - c_ij_val**2) / den)
+                            c_ij_ufloat = ufloat(c_ij_val, math.sqrt(variance_ij))
+                            chsh_sum_ufloat += coeff * c_ij_ufloat
+                except ValueError: # Handle missing A,B,X,Y in item_values if it occurs
+                    print(f"Warning: Could not find all A,B,X,Y indices for team {team.team_id} for CHSH calculation.")
+            chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
 
-            stat3 = 0.0
-            try:
-                def get_term_val(item1, item2):
-                    num_sum = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
-                    den_sum = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
-                    return num_sum / den_sum if den_sum != 0 else 0
-
-                term_AX = get_term_val('A', 'X')
-                term_AY = get_term_val('A', 'Y')
-                term_BX = get_term_val('B', 'X')
-                term_BY = get_term_val('B', 'Y')
-                stat3 = term_AX + term_AY + term_BX - term_BY
-            except (TypeError, ZeroDivisionError) as e:
-                print(f"Error calculating CHSH statistic (stat3): {e}")
-                stat3 = 0.0
+            # Stat3: Cross-Term Combination Statistic
+            cross_term_sum_ufloat = ufloat(0, 0)
+            # Ensure item_values contains A,B,X,Y before proceeding
+            if all(item in item_values for item in ['A', 'B', 'X', 'Y']):
+                term_item_pairs_coeffs = [
+                    ('A', 'X', 1), ('A', 'Y', 1),
+                    ('B', 'X', 1), ('B', 'Y', -1)
+                ]
+                for item1, item2, coeff in term_item_pairs_coeffs:
+                    M_ij = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    if M_ij > 0:
+                        # N_ij_sum_prod is (N_ij_plus - N_ij_minus) + (N_ji_plus - N_ji_minus)
+                        N_ij_sum_prod = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
+                        t_ij_val = N_ij_sum_prod / M_ij
+                        t_ij_val = max(-1.0, min(1.0, t_ij_val)) # Clamp
+                        variance_t_ij = max(0, (1 - t_ij_val**2) / M_ij)
+                        t_ij_ufloat = ufloat(t_ij_val, math.sqrt(variance_t_ij))
+                        cross_term_sum_ufloat += coeff * t_ij_ufloat
+            cross_term_combination_statistic_ufloat = cross_term_sum_ufloat
             
             team_data = {
                 'team_name': team.team_name,
@@ -319,12 +345,15 @@ def get_all_teams():
                 'history_hash1': hash1,
                 'history_hash2': hash2,
                 'min_stats_sig': min_stats_sig,
-                'correlation_matrix': corr_matrix_tuples, # Send the tuples
+                'correlation_matrix': corr_matrix_tuples, # Send the (numerator, denominator) tuples
                 'correlation_labels': item_values,
                 'correlation_stats': {
-                    'trace_avg': stat1,
-                    'chsh_value': stat2, # This is the original stat2
-                    'chsh_value_stat3': stat3, # This is the new stat3
+                    'trace_average_statistic': trace_average_statistic_ufloat.n,
+                    'trace_average_statistic_uncertainty': trace_average_statistic_ufloat.s if not math.isinf(trace_average_statistic_ufloat.s) else None,
+                    'chsh_value_statistic': chsh_value_statistic_ufloat.n,
+                    'chsh_value_statistic_uncertainty': chsh_value_statistic_ufloat.s if not math.isinf(chsh_value_statistic_ufloat.s) else None,
+                    'cross_term_combination_statistic': cross_term_combination_statistic_ufloat.n,
+                    'cross_term_combination_statistic_uncertainty': cross_term_combination_statistic_ufloat.s if not math.isinf(cross_term_combination_statistic_ufloat.s) else None,
                     'same_item_balance': same_item_balance_avg
                 },
                 'created_at': team.created_at.isoformat() if team.created_at else None
