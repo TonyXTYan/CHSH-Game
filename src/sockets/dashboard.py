@@ -276,13 +276,15 @@ def get_all_teams():
                     num, den = corr_matrix_tuples[i][i]
                     if den > 0:
                         c_ii_val = num / den
-                        # Clamp c_ii_val to [-1, 1] to avoid math domain error in (1 - c_ii_val**2)
                         c_ii_val = max(-1.0, min(1.0, c_ii_val))
                         variance_ii = (1 - c_ii_val**2) / den
-                        # Ensure variance is non-negative
-                        variance_ii = max(0, variance_ii)
-                        c_ii_ufloat = ufloat(c_ii_val, math.sqrt(variance_ii))
-                        sum_of_cii_ufloats += c_ii_ufloat
+                        if variance_ii == 0:
+                            c_ii_ufloat = ufloat(c_ii_val, float("inf"))
+                        else:
+                            c_ii_ufloat = ufloat(c_ii_val, math.sqrt(variance_ii))
+                    else:
+                        c_ii_ufloat = ufloat(0, float("inf"))
+                    sum_of_cii_ufloats += c_ii_ufloat
             trace_average_statistic_ufloat = (1/4) * sum_of_cii_ufloats
             # Take absolute value of the nominal part as per original logic for stat1
             # Uncertainty remains on the pre-absolute value. This might need clarification if abs() should apply to ufloat.
@@ -313,11 +315,16 @@ def get_all_teams():
                         num, den = corr_matrix_tuples[r_idx][c_idx]
                         if den > 0:
                             c_ij_val = num / den
-                            c_ij_val = max(-1.0, min(1.0, c_ij_val)) # Clamp
-                            variance_ij = max(0, (1 - c_ij_val**2) / den)
-                            c_ij_ufloat = ufloat(c_ij_val, math.sqrt(variance_ij))
-                            chsh_sum_ufloat += coeff * c_ij_ufloat
-                except ValueError: # Handle missing A,B,X,Y in item_values if it occurs
+                            c_ij_val = max(-1.0, min(1.0, c_ij_val))
+                            variance_ij = (1 - c_ij_val**2) / den
+                            if variance_ij == 0:
+                                c_ij_ufloat = ufloat(c_ij_val, float("inf"))
+                            else:
+                                c_ij_ufloat = ufloat(c_ij_val, math.sqrt(variance_ij))
+                        else:
+                            c_ij_ufloat = ufloat(0, float("inf"))
+                        chsh_sum_ufloat += coeff * c_ij_ufloat
+                except ValueError:
                     print(f"Warning: Could not find all A,B,X,Y indices for team {team.team_id} for CHSH calculation.")
             chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
 
@@ -332,13 +339,17 @@ def get_all_teams():
                 for item1, item2, coeff in term_item_pairs_coeffs:
                     M_ij = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
                     if M_ij > 0:
-                        # N_ij_sum_prod is (N_ij_plus - N_ij_minus) + (N_ji_plus - N_ji_minus)
                         N_ij_sum_prod = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
                         t_ij_val = N_ij_sum_prod / M_ij
-                        t_ij_val = max(-1.0, min(1.0, t_ij_val)) # Clamp
-                        variance_t_ij = max(0, (1 - t_ij_val**2) / M_ij)
-                        t_ij_ufloat = ufloat(t_ij_val, math.sqrt(variance_t_ij))
-                        cross_term_sum_ufloat += coeff * t_ij_ufloat
+                        t_ij_val = max(-1.0, min(1.0, t_ij_val))
+                        variance_t_ij = (1 - t_ij_val**2) / M_ij
+                        if variance_t_ij == 0:
+                            t_ij_ufloat = ufloat(t_ij_val, float("inf"))
+                        else:
+                            t_ij_ufloat = ufloat(t_ij_val, math.sqrt(variance_t_ij))
+                    else:
+                        t_ij_ufloat = ufloat(0, float("inf"))
+                    cross_term_sum_ufloat += coeff * t_ij_ufloat
             cross_term_combination_statistic_ufloat = cross_term_sum_ufloat
 
             # --- Same‑item balance with uncertainty (ufloat) ---
@@ -349,15 +360,22 @@ def get_all_teams():
                 total_tf = T_count + F_count
                 if total_tf > 0:
                     p_val = T_count / total_tf
-                    var_p = (p_val * (1 - p_val)) / total_tf  # binomial variance
-                    p_true = ufloat(p_val, math.sqrt(var_p))
+                    var_p = 1 / total_tf  # simplified variance 1/N
+                    if var_p == 0:
+                        p_true = ufloat(p_val, float("inf"))
+                    else:
+                        p_true = ufloat(p_val, math.sqrt(var_p))
                     balance_ufloat = 1 - um.fabs(2 * p_true - 1)
+                    same_item_balance_ufloats.append(balance_ufloat)
+                else:
+                    # Not enough statistics – propagate infinite uncertainty
+                    balance_ufloat = ufloat(0, float("inf"))
                     same_item_balance_ufloats.append(balance_ufloat)
 
             if same_item_balance_ufloats:
                 avg_same_item_balance_ufloat = sum(same_item_balance_ufloats) / len(same_item_balance_ufloats)
             else:
-                avg_same_item_balance_ufloat = ufloat(0, 0)
+                avg_same_item_balance_ufloat = ufloat(0, float("inf"))
             
             team_data = {
                 'team_name': team.team_name,

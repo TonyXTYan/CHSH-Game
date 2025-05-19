@@ -40,12 +40,12 @@ function formatStatWithUncertainty(magnitude, uncertainty, precision = 3) {
     let magStr = magnitude.toFixed(precision);
     let uncStr;
 
-    if (uncertainty === null || (typeof uncertainty === 'number' && uncertainty > 9.9999)) {
-        uncStr = '∞';
+    if (typeof uncertainty === 'number' && uncertainty > 9.9999) {
+        uncStr = '∞'; // Use ∞ for large uncertainty
     } else if (typeof uncertainty === 'number' && !isNaN(uncertainty)) {
         uncStr = uncertainty.toFixed(precision);
     } else {
-        uncStr = "?"; // Or "N/A" if uncertainty is missing/invalid
+        uncStr = "?"; // Use ? for invalid or missing uncertainty
     }
     return `${magStr} ± ${uncStr}`;
 }
