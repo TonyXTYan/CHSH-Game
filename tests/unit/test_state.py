@@ -15,10 +15,11 @@ def test_app_state_initialization():
     assert len(state.dashboard_clients) == 0
     
     assert state.game_started is False
+    assert state.game_paused is False
     assert state.answer_stream_enabled is False
     
-    assert isinstance(state.previous_sessions, dict)
-    assert len(state.previous_sessions) == 0
+    assert isinstance(state.connected_players, set)
+    assert len(state.connected_players) == 0
     
     assert isinstance(state.team_id_to_name, dict)
     assert len(state.team_id_to_name) == 0
@@ -33,7 +34,8 @@ def test_app_state_reset():
     state.dashboard_clients = {"dashboard1", "dashboard2"}
     state.game_started = True
     state.answer_stream_enabled = True
-    state.previous_sessions = {"old_sid": "new_sid"}
+    state.connected_players = {"player1", "player2"}
+    state.game_paused = True
     state.team_id_to_name = {1: "team1"}
     
     # Reset state
@@ -45,7 +47,8 @@ def test_app_state_reset():
     assert len(state.dashboard_clients) == 0
     assert state.game_started is False
     assert state.answer_stream_enabled is False
-    assert len(state.previous_sessions) == 0
+    assert len(state.connected_players) == 0
+    assert state.game_paused is False
     assert len(state.team_id_to_name) == 0
 
 def test_app_state_team_tracking():
@@ -99,34 +102,3 @@ def test_app_state_team_tracking():
     assert team_name not in state.active_teams
     assert player1 not in state.player_to_team
     assert team_id not in state.team_id_to_name
-
-def test_app_state_session_mapping():
-    """Test previous session mapping functionality"""
-    state = AppState()
-    
-    # Add session mappings
-    old_sid1 = "old_sid1"
-    new_sid1 = "new_sid1"
-    old_sid2 = "old_sid2"
-    new_sid2 = "new_sid2"
-    
-    state.previous_sessions[old_sid1] = new_sid1
-    state.previous_sessions[old_sid2] = new_sid2
-    
-    # Verify mappings
-    assert state.previous_sessions[old_sid1] == new_sid1
-    assert state.previous_sessions[old_sid2] == new_sid2
-    
-    # Update a mapping
-    newer_sid1 = "newer_sid1"
-    state.previous_sessions[new_sid1] = newer_sid1
-    
-    # Verify chain of mappings
-    assert state.previous_sessions[old_sid1] == new_sid1
-    assert state.previous_sessions[new_sid1] == newer_sid1
-    
-    # Clear mappings
-    state.previous_sessions.clear()
-    
-    # Verify cleared
-    assert len(state.previous_sessions) == 0
