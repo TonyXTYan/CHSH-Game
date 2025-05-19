@@ -13,7 +13,7 @@ function initializeSocketHandlers(socket, callbacks) {
         if (typeof callbacks.resetToInitialView === 'function') {
             callbacks.resetToInitialView();
         } else {
-            callbacks.showStatus('Disconnected. Please create or join a team.', 'error');
+            callbacks.showStatus('Disconnected, try refreshing the page.', 'error');
         }
     });
 

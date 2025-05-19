@@ -57,7 +57,7 @@ function resetToInitialView() {
     localStorage.removeItem('quizSessionData');
     gameHeader.textContent = 'CHSH Game';
     updateGameState(); // This will show team creation/joining
-    showStatus('Disconnected. Please create or join a team.', 'info');
+    showStatus('Disconnected, try refreshing the page.', 'info');
 }
 
 // Update UI based on game state
