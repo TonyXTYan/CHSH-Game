@@ -2,3 +2,4 @@
 *.DS_Store
 *.db
 venv
+.ai-generated-md
