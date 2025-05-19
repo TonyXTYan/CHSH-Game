@@ -811,57 +811,105 @@ function updateModalContent(team) {
     
     // Clear existing correlation matrix
     correlationTable.innerHTML = '';
-    
+
     // Populate correlation matrix table if available with validation
-    if (team.correlation_matrix && team.correlation_labels &&
+    if (team.correlation_matrix && team.correlation_labels && 
         Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
-        team.correlation_matrix.length > 0 && team.correlation_matrix.every(row => Array.isArray(row))) {
+        team.correlation_matrix.length > 0 && team.correlation_labels.length > 0 &&
+        team.correlation_matrix.length === team.correlation_labels.length &&
+        team.correlation_matrix.every(row => Array.isArray(row) && row.length === team.correlation_labels.length)) {
         
         try {
-            // Add header row with labels
-            const headerRow = correlationTable.insertRow();
-            headerRow.insertCell(); // Empty corner cell
-            
-            team.correlation_labels.forEach(label => {
+            const labels = team.correlation_labels;
+            const numLabels = labels.length;
+            const matrixData = team.correlation_matrix;
+
+            // Create thead and tbody elements for better structure (optional but good practice)
+            // However, to minimize changes to existing patterns, we'll append rows directly to the table.
+
+            // Row 0: Player 2 Label
+            const player2LabelRow = correlationTable.insertRow();
+            player2LabelRow.insertCell(); // Empty cell for Player 1 vertical label column
+            player2LabelRow.insertCell(); // Empty cell above Row Item Labels for Player 1
+            const player2Th = document.createElement('th');
+            player2Th.colSpan = numLabels;
+            player2Th.textContent = 'Player 2';
+            player2Th.style.textAlign = 'center';
+            player2LabelRow.appendChild(player2Th);
+
+            // Row 1: Column Item Labels (A, B, X, Y for Player 2)
+            const columnItemLabelRow = correlationTable.insertRow();
+            columnItemLabelRow.insertCell(); // Empty cell for Player 1 vertical label column
+            const cornerTh = document.createElement('th'); // Empty top-left cell of the actual data matrix part
+            columnItemLabelRow.appendChild(cornerTh);
+
+            labels.forEach(label => {
                 const th = document.createElement('th');
                 th.textContent = label || '?';
-                headerRow.appendChild(th);
+                th.classList.add('corr-matrix-col-item-label'); // Added class
+                columnItemLabelRow.appendChild(th);
             });
             
-            team.correlation_matrix.forEach((matrixRow, rowIdx) => {
-                if (rowIdx >= team.correlation_labels.length) return;
+            // Add data rows
+            matrixData.forEach((rowData, rowIndex) => {
+                if (rowIndex >= numLabels) return; // Should be caught by earlier checks
+
+                const dataRow = correlationTable.insertRow();
+
+                // Player 1 Vertical Label (only in the first data row, spans all data rows)
+                if (rowIndex === 0) {
+                    const player1Th = document.createElement('th');
+                    player1Th.rowSpan = numLabels;
+                    player1Th.textContent = 'Player 1';
+                    player1Th.classList.add('corr-matrix-player1-label');
+                    dataRow.appendChild(player1Th);
+                }
+
+                // Row Item Label (A, B, X, Y for Player 1)
+                const rowItemLabelTh = document.createElement('th');
+                rowItemLabelTh.textContent = labels[rowIndex] || '?';
+                rowItemLabelTh.classList.add('corr-matrix-row-item-label'); // Added class
+                dataRow.appendChild(rowItemLabelTh);
                 
-                const tableRow = correlationTable.insertRow();
-                const rowLabelCell = document.createElement('th');
-                rowLabelCell.textContent = team.correlation_labels[rowIdx] || '?';
-                tableRow.appendChild(rowLabelCell);
-                
-                if (Array.isArray(matrixRow)) {
-                    matrixRow.forEach(cellData => {
-                        const cell = tableRow.insertCell();
-                        if (Array.isArray(cellData) && cellData.length === 2) {
-                            const numerator = cellData[0];
-                            const denominator = cellData[1];
-                            
-                            if (denominator !== 0) {
-                                const floatValue = parseFloat(numerator) / parseFloat(denominator);
-                                cell.textContent = floatValue.toFixed(3);
-                            } else {
-                                cell.textContent = "—";
+                // Add correlation values
+                if (Array.isArray(rowData)) {
+                    rowData.forEach(cellTuple => { // cellTuple is [numerator, denominator]
+                        const cell = dataRow.insertCell();
+                        cell.classList.add('corr-matrix-data-cell'); // Added class
+                        if (Array.isArray(cellTuple) && cellTuple.length === 2) {
+                            const num = parseFloat(cellTuple[0]);
+                            const den = parseFloat(cellTuple[1]);
+
+                            if (isNaN(num) || isNaN(den)) {
+                                cell.textContent = "—"; // Invalid data in tuple
+                            } else if (den !== 0) {
+                                cell.textContent = (num / den).toFixed(3);
+                            } else if (num !== 0 && den === 0) {
+                                cell.textContent = "Inf"; // Infinity
+                            } else { // num is 0 and den is 0, or other unhandled cases
+                                cell.textContent = "—"; // Or "0.000" if 0/0 should be 0
                             }
-                            cell.title = `${numerator} / ${denominator}`;
                         } else {
-                            cell.textContent = "Error"; // Should be [num, den]
-                            cell.title = "Invalid data format";
+                             // Fallback if cellTuple is not the expected [num, den] array
+                            cell.textContent = "—";
                         }
                     });
+                } else {
+                    // Fill row with placeholders if rowData is not an array
+                    for (let i = 0; i < numLabels; i++) {
+                        const cell = dataRow.insertCell();
+                        cell.classList.add('corr-matrix-data-cell'); // Added class
+                        cell.textContent = "—";
+                    }
                 }
             });
         } catch (error) {
-            console.error("Error rendering correlation matrix:", error, team.correlation_matrix);
+            console.error("Error rendering correlation matrix:", error);
+            correlationTable.innerHTML = ''; // Clear partially rendered table on error
             const errorRow = correlationTable.insertRow();
             const errorCell = errorRow.insertCell();
-            errorCell.colSpan = (team.correlation_labels ? team.correlation_labels.length : 0) + 1;
+            // Adjust colspan based on the new table structure: 1 (P1) + 1 (Row Labels) + numLabels (Data)
+            errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 3; 
             errorCell.textContent = "Error rendering correlation data";
             errorCell.style.textAlign = "center";
             errorCell.style.padding = "10px";
@@ -869,8 +917,9 @@ function updateModalContent(team) {
     } else {
         const errorRow = correlationTable.insertRow();
         const errorCell = errorRow.insertCell();
-        errorCell.colSpan = (team.correlation_labels ? team.correlation_labels.length : 0) + 1;
-        errorCell.textContent = "No correlation data available or invalid format";
+        // Adjust colspan based on the new table structure (assuming 0 labels if none provided)
+        errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
+        errorCell.textContent = "No correlation data available";
         errorCell.style.textAlign = "center";
         errorCell.style.padding = "10px";
     }

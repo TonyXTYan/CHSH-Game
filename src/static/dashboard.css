@@ -85,9 +85,19 @@ table {
     margin-top: 10px; 
 }
 
-#active-teams-table th,
+#active-teams-table th:nth-child(1) {
+    width: 120px; /* Team Name - fixed width */
+}
+
+#active-teams-table th:nth-child(2) {
+    width: 80px;  /* Status - fixed width */
+}
+
+#active-teams-table th:not(:nth-child(1)):not(:nth-child(2)) {
+    width: auto;  /* All other columns - equal share of remaining space */
+}
+
 #active-teams-table td {
-    width: 10.0%; /* Since there are 9 columns, each should take up 10.0% */
     text-align: center;
 }
 
@@ -279,23 +289,20 @@ th {
     border-radius: 4px;
 }
 
-#correlation-matrix-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 10px;
-    font-size: 14px;
-}
-
 #correlation-matrix-table th, 
 #correlation-matrix-table td {
     border: 1px solid #ddd;
     padding: 6px;
     text-align: center;
-    font-family: 'Courier New', monospace;
+    font-family: monospace;
 }
 
-#correlation-matrix-table th {
-    background-color: #f2f2f2;
+#correlation-matrix-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 14px;
+    table-layout: fixed; 
 }
 
 
