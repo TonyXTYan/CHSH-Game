@@ -276,24 +276,17 @@ def get_all_teams():
                     num, den = corr_matrix_tuples[i][i]
                     if den > 0:
                         c_ii_val = num / den
-                        c_ii_val = max(-1.0, min(1.0, c_ii_val))
-                        variance_ii = (1 - c_ii_val**2) / den
-                        if variance_ii == 0:
-                            c_ii_ufloat = ufloat(c_ii_val, float("inf"))
-                        else:
-                            c_ii_ufloat = ufloat(c_ii_val, math.sqrt(variance_ii))
+                        c_ii_val = max(-1.0, min(1.0, c_ii_val))  # Clamp to valid range
+                        stdev_ii = 1 / math.sqrt(den)            # σ = 1/√N
+                        c_ii_ufloat = ufloat(c_ii_val, stdev_ii)
                     else:
+                        # No statistics → infinite uncertainty
                         c_ii_ufloat = ufloat(0, float("inf"))
                     sum_of_cii_ufloats += c_ii_ufloat
-            trace_average_statistic_ufloat = (1/4) * sum_of_cii_ufloats
-            # Take absolute value of the nominal part as per original logic for stat1
-            # Uncertainty remains on the pre-absolute value. This might need clarification if abs() should apply to ufloat.
-            # For now, applying abs to nominal value as in original code.
-            # trace_average_statistic_ufloat = ufloat(abs(trace_average_statistic_ufloat.n), trace_average_statistic_ufloat.s)
-            # Re-evaluating: The proposal for stat1 doesn't mention abs(). The original code had abs(trace_val_sum)/4.
-            # Let's stick to the proposal: (1/4) * sum(c_ii)
-            # The original code's abs() might have been a specific choice not in the proposal.
-            # If abs is critical, it should be ufloat.fabs(). For now, following proposal.
+            # Average of the four diagonal correlations
+            raw_trace_avg_ufloat = (1 / 4) * sum_of_cii_ufloats
+            # Force the magnitude to be positive
+            trace_average_statistic_ufloat = um.fabs(raw_trace_avg_ufloat)
 
             # Stat2: CHSH Value Statistic
             chsh_sum_ufloat = ufloat(0, 0)
@@ -316,11 +309,8 @@ def get_all_teams():
                         if den > 0:
                             c_ij_val = num / den
                             c_ij_val = max(-1.0, min(1.0, c_ij_val))
-                            variance_ij = (1 - c_ij_val**2) / den
-                            if variance_ij == 0:
-                                c_ij_ufloat = ufloat(c_ij_val, float("inf"))
-                            else:
-                                c_ij_ufloat = ufloat(c_ij_val, math.sqrt(variance_ij))
+                            stdev_ij = 1 / math.sqrt(den)      # σ = 1/√N
+                            c_ij_ufloat = ufloat(c_ij_val, stdev_ij)
                         else:
                             c_ij_ufloat = ufloat(0, float("inf"))
                         chsh_sum_ufloat += coeff * c_ij_ufloat
@@ -342,11 +332,8 @@ def get_all_teams():
                         N_ij_sum_prod = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
                         t_ij_val = N_ij_sum_prod / M_ij
                         t_ij_val = max(-1.0, min(1.0, t_ij_val))
-                        variance_t_ij = (1 - t_ij_val**2) / M_ij
-                        if variance_t_ij == 0:
-                            t_ij_ufloat = ufloat(t_ij_val, float("inf"))
-                        else:
-                            t_ij_ufloat = ufloat(t_ij_val, math.sqrt(variance_t_ij))
+                        stdev_t_ij = 1 / math.sqrt(M_ij)       # σ = 1/√N
+                        t_ij_ufloat = ufloat(t_ij_val, stdev_t_ij)
                     else:
                         t_ij_ufloat = ufloat(0, float("inf"))
                     cross_term_sum_ufloat += coeff * t_ij_ufloat
