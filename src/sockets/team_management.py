@@ -1,6 +1,7 @@
 from datetime import datetime
 from flask import request
 from flask_socketio import emit, join_room, leave_room
+from sqlalchemy import func
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
@@ -282,13 +283,18 @@ def on_reactivate_team(data):
             team.is_active = True
             team.player1_session_id = sid
             db.session.commit()
+
+            # Query for the highest round number previously played by this team
+            max_round_obj = db.session.query(func.max(PairQuestionRounds.round_number_for_team)) \
+                                        .filter_by(team_id=team.team_id).scalar()
+            last_played_round_number = max_round_obj if max_round_obj is not None else 0
             
             # Set up team state
             state.active_teams[team_name] = {
                 'players': [sid],
                 'team_id': team.team_id,
-                'current_round_number': 0,
-                'combo_tracker': {},
+                'current_round_number': last_played_round_number,
+                'combo_tracker': {}, # Consider if this needs reloading too for long-term game fairness
                 'answered_current_round': {},
                 'status': 'waiting_pair'
             }

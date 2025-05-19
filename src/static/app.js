@@ -458,7 +458,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Initialize as collapsed
-        toggleBtn.classList.add('collapsed');
+        toggleIndicator.classList.add('collapsed');
     }
 });
 

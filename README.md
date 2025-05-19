@@ -10,6 +10,7 @@
 [![Flask](https://img.shields.io/badge/flask-black?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Gunicorn](https://img.shields.io/badge/gunicorn-black?logo=gunicorn&logoColor=white)](https://gunicorn.org/)
 [![render](https://img.shields.io/badge/render-black?logo=render&logoColor=white)](https://render.com/)
+[![Fly.io](https://img.shields.io/badge/fly.io-black?logo=flydotio&logoColor=white)](https://fly.io/)
 
 
 
@@ -20,19 +21,13 @@
 It allows teams to compete in a game to explore quantum-classical boundaries. This project also features a real-time dashboard of the CHSH parameters and various statistics.
 
 - Live demo: 
-    - ⚠️ As of May 2025, this game is hosted with a free tier on [render.com](https://render.com) and it only supports one game instance at a time (over the entire interenet). **This also means the server might take a minute to wake up after some inactivity.** If you wish to host your own game or doing extensive testing, you can simply fork this repository and deploy your own instance. That is, if you see a live game is going on, please don't interrupt it, this repo can be easily deployed with flask and gunicorn (and for free on e.g. [render.com](https://render.com)).
-    - Host: [https://chsh-game.onrender.com/dashboard](https://chsh-game.onrender.com/dashboard)
-    - Player: [https://chsh-game.onrender.com/](https://chsh-game.onrender.com/)
+    - ⚠️ As of May 2025, this game is hosted with a free tier on [fly.io](https://fly.io) and it only supports one game instance at a time (over the entire interenet). **This also means the server might take a minute to wake up after some inactivity.** If you wish to host your own game or doing extensive testing, you can simply fork this repository and deploy your own instance. That is, if you see a live game is going on, please don't interrupt it, this repo can be easily deployed with flask and gunicorn (and for free on e.g. [render.com](https://render.com)).
+    - Host: [chsh-game.fly.dev/dashboard](https://chsh-game.fly.dev/dashboard)
+    - Player: [chsh-game.fly.dev](https://chsh-game.fly.dev)
 
-![Host QR Code](/src/resources/qrcode-render-dashboard-framed-256.png)
-![Player QR Code](/src/resources/qrcode-render-player-framed-256.png)
-<!-- https://genqrcode.com -->
+![Player QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=4&frame_text=Player&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=chsh-game.fly.dev&width=256&height=256&bordersize=2)
+![Host QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=4&frame_text=Host&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=chsh-game.fly.dev%2Fdashboard&width=256&height=256&bordersize=2)
 
-
-
-Presenter/Host: [https://chsh-game.onrender.com/dashboard](https://chsh-game.onrender.com/dashboard)
-
-Player: [https://chsh-game.onrender.com/](https://chsh-game.onrender.com/)
 
 
 ## How to play
