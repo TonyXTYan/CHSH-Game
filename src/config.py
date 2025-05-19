@@ -1,25 +1,31 @@
 import os
-import eventlet
-eventlet.monkey_patch()
-
 from flask import Flask
 from flask_socketio import SocketIO
-from src.models.quiz_models import db
+from flask_sqlalchemy import SQLAlchemy
 
-app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'asdf#FGSgvasgf$5$WGT')
+# Create Flask app
+app = Flask(__name__)
 
-# Fix for SQLite URL format in render.com
-database_url = os.environ.get('DATABASE_URL')
-if database_url and database_url.startswith('postgres://'):
-    database_url = database_url.replace('postgres://', 'postgresql://', 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///' + os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'quiz_app.db')
+# Configure database
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///chsh_game.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
-db.init_app(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=60, ping_interval=25)
+# Set secret key for session management
+app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev_key_change_in_production')
 
-# Create database tables
-with app.app_context():
-    db.create_all()
+# Configure Socket.IO
+socketio = SocketIO(
+    app,
+    cors_allowed_origins="*",
+    ping_timeout=60,
+    ping_interval=25,
+    max_http_buffer_size=10e6
+)
+
+# Initialize database
+db = SQLAlchemy(app)
+
+# App configuration
+DEBUG = os.environ.get('DEBUG', 'False').lower() in ('true', '1', 't')
+PORT = int(os.environ.get('PORT', 5000))
+HOST = os.environ.get('HOST', '0.0.0.0')

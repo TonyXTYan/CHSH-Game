@@ -2,6 +2,7 @@ import os
 import sys
 import signal
 import uuid
+import traceback
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -9,14 +10,28 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 server_instance_id = str(uuid.uuid4())
 
 def handle_shutdown(signum, frame):
+    """
+    Handle graceful shutdown of the server.
+    Notifies clients and cleans up resources.
+    """
     print("\nServer shutting down gracefully...")
-    # Notify all clients
-    socketio.emit('server_shutdown')
-    # Clean up resources
-    state.reset()
-    sys.exit(0)
+    try:
+        # Notify all clients
+        socketio.emit('server_shutdown')
+        # Clean up resources
+        state.reset()
+        # Close database connections
+        try:
+            db.session.remove()
+            db.engine.dispose()
+        except Exception as db_error:
+            print(f"Error closing database connections: {str(db_error)}")
+    except Exception as e:
+        print(f"Error during shutdown: {str(e)}")
+    finally:
+        sys.exit(0)
 
-from src.config import app, socketio, db
+from src.config import app, socketio, db, DEBUG, PORT, HOST
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
 from src.state import state
 
@@ -26,7 +41,7 @@ with app.app_context():
     print("Initializing database and cleaning up old data...")
     try:
         # Start transaction
-        db.session.begin_nested()
+        db.session.begin()
 
         # Delete all answers first to avoid foreign key constraints
         answers_count = Answers.query.delete()
@@ -65,7 +80,6 @@ with app.app_context():
         
     except Exception as e:
         print(f"Error resetting database: {str(e)}")
-        import traceback
         traceback.print_exc()
         db.session.rollback()
         
@@ -79,14 +93,18 @@ from src.routes.static import serve
 
 @app.route('/api/server/id')
 def get_server_id():
+    """Return the unique server instance ID."""
     return {'instance_id': server_instance_id}
+
+# Import socket handlers
 from src.sockets import dashboard
 from src.sockets.team_management import (
     handle_connect, 
     handle_disconnect, 
     on_create_team, 
     on_join_team, 
-    on_leave_team
+    on_leave_team,
+    on_reactivate_team
 )
 from src.sockets.game import (
     on_submit_answer
@@ -96,4 +114,13 @@ if __name__ == '__main__':
     # Register signal handlers
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
-    socketio.run(app, host='0.0.0.0', port=5000, debug=True, use_reloader=False)
+    
+    # Run the server with configuration from config.py
+    socketio.run(
+        app, 
+        host=HOST, 
+        port=PORT, 
+        debug=DEBUG, 
+        use_reloader=False,
+        allow_unsafe_werkzeug=DEBUG  # Only allow in debug mode
+    )
