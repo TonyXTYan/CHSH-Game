@@ -105,3 +105,4 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 - [x] Bug, sometimes after reforming (reactivating) a team then inputs are disabled??
 - [x] Optimise CHSH normalisation
 - [x] Put a crown on winning team
+- [ ] fly.io deploy via CI
