@@ -21,4 +21,4 @@ COPY . .
 EXPOSE 5000
 
 # Set the command to run the application
-CMD ["gunicorn", "wsgi:app", "--worker-class", "eventlet", "--bind", "0.0.0.0:8080"]
+CMD ["gunicorn", "wsgi:app", "--worker-class", "eventlet"]

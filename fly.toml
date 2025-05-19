@@ -1,0 +1,49 @@
+# fly.toml app configuration file for chsh-game
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'chsh-game' # Replace with your desired app name on Fly.io
+primary_region = 'syd'  # You can choose a region closer to your users
+
+[build]
+  # If you have a Dockerfile, Fly.io will use it by default.
+  # Otherwise, you might need to specify a builder, e.g.:
+  # builder = "paketobuildpacks/builder:base"
+
+[env]
+  PORT = "8080" # The port your app will listen on inside the container
+
+[http_service]
+  internal_port = 8080 # Matches the PORT env var
+  force_https = true
+  auto_stop_machines = true # Automatically stop machines when idle
+  auto_start_machines = true # Automatically start machines on new requests
+  min_machines_running = 0 # Set to 1 or more for higher availability
+  processes = ['app']
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 25
+    soft_limit = 20
+
+[[vm]]
+  memory = '1gb'
+  cpu_kind = 'shared'
+  cpus = 1
+  # memory_mb = 1024 # Alternative way to specify memory
+
+# Optional: Define a deploy strategy
+# [deploy]
+#   release_command = "python manage.py migrate" # Example for Django
+#   strategy = "canary"
+
+# Optional: Define health checks
+# [[services.http_checks]]
+#   interval = "10s"
+#   timeout = "2s"
+#   grace_period = "5s"
+#   method = "GET"
+#   path = "/healthcheck" # Add a healthcheck endpoint to your app
+#   protocol = "http"
+#   tls_skip_verify = false

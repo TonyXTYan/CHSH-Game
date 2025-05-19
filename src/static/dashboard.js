@@ -33,7 +33,7 @@ const noAnswersLogMsg = document.getElementById("no-answers-log");
 let currentAnswersCount = 0;
 
 // Helper function to format statistics with uncertainty
-function formatStatWithUncertainty(magnitude, uncertainty, precision = 3) {
+function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
     if (typeof magnitude !== 'number' || isNaN(magnitude)) {
         return "—"; // Or "N/A"
     }

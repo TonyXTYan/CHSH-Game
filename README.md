@@ -87,6 +87,13 @@ Start command:
 gunicorn wsgi:app --worker-class eventlet
 ```
 
+Untested
+```bash
+gunicorn wsgi:app --worker-class eventlet --workers 4
+gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
+```
+
+
 
 # TODO
 - [ ] details stats shouldn't stream, should be on request, it also needs auto update upon team stats change
