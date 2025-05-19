@@ -513,6 +513,39 @@ function updateActiveTeams(teams) {
     // Show/hide no teams message
     noActiveTeamsMsg.style.display = filteredTeams.length === 0 ? "block" : "none";
     activeTeamsTableBody.innerHTML = ""; // Clear existing rows
+
+    // --- BEGIN MODIFICATION: Determine top performers ---
+    let highestBalancedTrTeamId = null;
+    let maxBalancedTrValue = -Infinity;
+    let highestChshTeamId = null;
+    let maxChshValue = -Infinity;
+
+    const eligibleTeams = teams.filter(team => team.min_stats_sig === true);
+
+    eligibleTeams.forEach(team => {
+        const stats = team.correlation_stats;
+
+        // Calculate Balanced |Tr|
+        if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
+            const traceAvg = stats.trace_average_statistic;
+            const balance = stats.same_item_balance;
+            const balancedTr = (traceAvg + balance) / 2;
+            if (balancedTr > maxBalancedTrValue) {
+                maxBalancedTrValue = balancedTr;
+                highestBalancedTrTeamId = team.team_id;
+            }
+        }
+
+        // Calculate CHSH Value
+        if (stats && typeof stats.cross_term_combination_statistic === 'number') {
+            const chshValue = stats.cross_term_combination_statistic;
+            if (chshValue > maxChshValue) {
+                maxChshValue = chshValue;
+                highestChshTeamId = team.team_id;
+            }
+        }
+    });
+    // --- END MODIFICATION ---
     
     filteredTeams.forEach(team => {
         const row = activeTeamsTableBody.insertRow();
@@ -539,7 +572,16 @@ function updateActiveTeams(teams) {
         
         // Statistics significance column
         const statsCell = row.insertCell();
-        statsCell.textContent = team.min_stats_sig ? '✅' : '⏳';
+        let baseStatus = team.min_stats_sig ? '✅' : '⏳';
+        let awardsString = "";
+
+        if (team.team_id === highestBalancedTrTeamId && highestBalancedTrTeamId !== null) {
+            awardsString += "🎯";
+        }
+        if (team.team_id === highestChshTeamId && highestChshTeamId !== null) {
+            awardsString += (awardsString ? " " : "") + "🏆";
+        }
+        statsCell.textContent = baseStatus + (awardsString ? " " + awardsString : "");
         statsCell.style.textAlign = 'center';
         
         // Add trace_avg column (now Trace Average Statistic)
