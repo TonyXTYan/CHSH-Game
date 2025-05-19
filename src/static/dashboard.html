@@ -46,7 +46,7 @@
                 <h3 id="game-control-text">Game Control</h3>
                 <div class="game-controls">
                     <button id="start-game-btn" onclick="startGame()">Start Game</button>
-                    <button id="pause-game-btn" onclick="togglePause()" style="display: none;">Pause</button>
+                    <button id="pause-game-btn" onclick="togglePause()">Pause</button>
                 </div>
             </div>
         </div>
@@ -93,15 +93,15 @@
                     <div class="details-container">
                         <div>
                             <strong>Team ID:</strong>
-                            <span id="modal-team-id" style="font-family: monospace;"></span>
+                            <span id="modal-team-id"></span>
                         </div>
                         <div>
                             <strong>Player 1 SID:</strong>
-                            <span id="modal-player1-sid" style="font-family: monospace;"></span>
+                            <span id="modal-player1-sid"></span>
                         </div>
                         <div>
                             <strong>Player 2 SID:</strong>
-                            <span id="modal-player2-sid" style="font-family: monospace;"></span>
+                            <span id="modal-player2-sid"></span>
                         </div>
                     </div>
                 </div>
@@ -125,19 +125,19 @@
                 <div class="modal-section">
                     <h4>CHSH Statistics</h4>
                     <div class="details-container">
-                        <div><strong>Actual CHSH Value:</strong> <span id="modal-chsh-value" style="font-family: monospace;"></span></div>
-                        <div><strong>Cross-Term CHSH:</strong> <span id="modal-cross-term-chsh" style="font-family: monospace;"></span></div>
+                        <div><strong>Actual CHSH Value:</strong> <span id="modal-chsh-value"></span></div>
+                        <div><strong>Cross-Term CHSH:</strong> <span id="modal-cross-term-chsh"></span></div>
                     </div>
                 </div>
             </div>
         </div>
 
         <div class="panel">
-            <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 10px; cursor: pointer;" onclick="toggleAnswerStream()">
-                <h2 style="margin: 0;">Live Answer Log</h2>
-                <span id="toggle-chevron" style="font-weight: bold; margin-left: 5px; font-size: 1.1em;">▶</span>
-                <span style="margin-right: 3px;">streaming</span>
-                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off" style="padding: 4px 8px; font-size: 0.9em;">OFF</button>
+            <div id="live-answer-log-header" onclick="toggleAnswerStream()">
+                <h2 >Live Answer Log</h2>
+                <span id="toggle-chevron">▶</span>
+                <span class="streaming-text">streaming</span>
+                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off">OFF</button>
             </div>
             <table id="answer-log-table">
                 <thead><tr><th>Timestamp</th><th>Team Name</th><th>Player SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
@@ -147,8 +147,11 @@
         </div>
     </div>
 
-    <footer style="text-align: center; margin-top: 10px; padding: 10px; color: #666;">
-        <a href="https://github.com/TonyXTYan/CHSH-Game" target="_blank" style="color: #666; text-decoration: none;">
+    <footer>
+        <br> 
+        <a href="/" target="_blank">Go to Game (player's page)</a>
+        <br> <br> 
+        <a href="https://github.com/TonyXTYan/CHSH-Game" target="_blank">
             Source code on GitHub: github.com/TonyXTYan/CHSH-Game
         </a>
     </footer>

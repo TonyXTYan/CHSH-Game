@@ -102,4 +102,7 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 - [x] Optimise CHSH normalisation
 - [x] Put a crown on winning team
 - [ ] fly.io deploy via CI
-- [ ] /about.html
+- [x] /about.html
+- [ ] optimise server side CPU / RAM utilisation
+- [ ] persistent storage of game state, re-downloadable
+- [ ] multiple game instances

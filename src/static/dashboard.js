@@ -1031,159 +1031,25 @@ function showTeamDetails(team) {
     currentlyViewedTeamId = team.team_id;
     isDetailsPopupOpen = true;
 
+    // Show the modal first
     const modal = document.getElementById('team-details-modal');
-    const modalTeamName = document.getElementById('modal-team-name');
-    const modalTeamId = document.getElementById('modal-team-id');
-    const modalPlayer1Sid = document.getElementById('modal-player1-sid');
-    const modalPlayer2Sid = document.getElementById('modal-player2-sid');
-    const modalHash1 = document.getElementById('modal-hash1'); // Corresponds to history_hash1
-    const modalHash2 = document.getElementById('modal-hash2'); // Corresponds to history_hash2
-    const modalChshValue = document.getElementById('modal-chsh-value');
-    const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh');
-    const correlationTable = document.getElementById('correlation-matrix-table');
 
-    modalTeamName.textContent = team.team_name || 'N/A';
-    modalTeamId.textContent = team.team_id || 'N/A';
-    modalPlayer1Sid.textContent = team.player1_sid || 'N/A';
-    modalPlayer2Sid.textContent = team.player2_sid || 'N/A';
+    // Re‑use the existing helper to populate every field (team info, CHSH stats,
+    // correlation matrix, etc.) instead of duplicating that logic here.
+    updateModalContent(team);
 
-    // Hashes - using history_hash1 and history_hash2 based on modal IDs and updateModalContent
-    modalHash1.textContent = team.history_hash1 || 'N/A';
-    modalHash2.textContent = team.history_hash2 || 'N/A';
+    modal.style.display = 'block';
 
-    // CHSH Statistics
-    if (team.correlation_stats) {
-        // Using chsh_value_actual for "Actual CHSH Value" as per HTML label
-        modalChshValue.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.chsh_value_actual, 
-            team.correlation_stats.chsh_value_actual_uncertainty
-        ) || 'N/A';
-        modalCrossTermChsh.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.cross_term_combination_statistic,
-            team.correlation_stats.cross_term_combination_statistic_uncertainty
-        ) || 'N/A';
-    } else {
-        modalChshValue.innerHTML = 'N/A';
-        modalCrossTermChsh.innerHTML = 'N/A';
-    }
-
-    // Correlation Matrix - Inlined and adapted from updateModalContent's logic
-    correlationTable.innerHTML = ''; // Clear existing correlation matrix
-
-    if (team.correlation_matrix && team.correlation_labels && 
-        Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
-        team.correlation_matrix.length > 0 && team.correlation_labels.length > 0 &&
-        team.correlation_matrix.length === team.correlation_labels.length &&
-        team.correlation_matrix.every(row => Array.isArray(row) && row.length === team.correlation_labels.length)) {
-        
-        try {
-            const labels = team.correlation_labels;
-            const numLabels = labels.length;
-            const matrixData = team.correlation_matrix;
-
-            const player2LabelRow = correlationTable.insertRow();
-            player2LabelRow.insertCell(); // Empty cell for Player 1 vertical label column
-            player2LabelRow.insertCell(); // Empty cell above Row Item Labels for Player 1
-            const player2Th = document.createElement('th');
-            player2Th.colSpan = numLabels;
-            player2Th.textContent = 'Player 2';
-            player2Th.style.textAlign = 'center';
-            player2LabelRow.appendChild(player2Th);
-
-            const columnItemLabelRow = correlationTable.insertRow();
-            columnItemLabelRow.insertCell(); // Empty cell for Player 1 vertical label column
-            const cornerTh = document.createElement('th'); // Empty top-left cell of the actual data matrix part
-            columnItemLabelRow.appendChild(cornerTh);
-
-            labels.forEach(label => {
-                const th = document.createElement('th');
-                th.textContent = label || '?';
-                th.classList.add('corr-matrix-col-item-label'); // Added class
-                columnItemLabelRow.appendChild(th);
-            });
-            
-            matrixData.forEach((rowData, rowIndex) => {
-                if (rowIndex >= numLabels) return; // Should be caught by earlier checks
-
-                const dataRow = correlationTable.insertRow();
-
-                // Player 1 Vertical Label (only in the first data row, spans all data rows)
-                if (rowIndex === 0) {
-                    const player1Th = document.createElement('th');
-                    player1Th.rowSpan = numLabels;
-                    player1Th.textContent = 'Player 1';
-                    player1Th.classList.add('corr-matrix-player1-label');
-                    dataRow.appendChild(player1Th);
-                }
-
-                // Row Item Label (A, B, X, Y for Player 1)
-                const rowItemLabelTh = document.createElement('th');
-                rowItemLabelTh.textContent = labels[rowIndex] || '?';
-                rowItemLabelTh.classList.add('corr-matrix-row-item-label'); // Added class
-                dataRow.appendChild(rowItemLabelTh);
-                
-                // Add correlation values
-                if (Array.isArray(rowData)) {
-                    rowData.forEach(cellTuple => { // cellTuple is [numerator, denominator]
-                        const cell = dataRow.insertCell();
-                        cell.classList.add('corr-matrix-data-cell'); // Added class
-                        if (Array.isArray(cellTuple) && cellTuple.length === 2) {
-                            const num = parseFloat(cellTuple[0]);
-                            const den = parseFloat(cellTuple[1]);
-
-                            if (isNaN(num) || isNaN(den)) {
-                                cell.textContent = "—"; // Invalid data in tuple
-                            } else if (den !== 0) {
-                                cell.textContent = (num / den).toFixed(3);
-                            } else if (num !== 0 && den === 0) {
-                                cell.textContent = "Inf"; // Infinity
-                            } else { // num is 0 and den is 0, or other unhandled cases
-                                cell.textContent = "—"; // Or "0.000" if 0/0 should be 0
-                            }
-                        } else {
-                             // Fallback if cellTuple is not the expected [num, den] array
-                            cell.textContent = "—";
-                        }
-                    });
-                } else {
-                    // Fill row with placeholders if rowData is not an array
-                    for (let i = 0; i < numLabels; i++) {
-                        const cell = dataRow.insertCell();
-                        cell.classList.add('corr-matrix-data-cell'); // Added class
-                        cell.textContent = "—";
-                    }
-                }
-            });
-        } catch (error) {
-            console.error("Error rendering correlation matrix in showTeamDetails:", error);
-            correlationTable.innerHTML = ''; 
-            const errorRow = correlationTable.insertRow();
-            const errorCell = errorRow.insertCell();
-            errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 3; 
-            errorCell.textContent = "Error rendering correlation data";
-            errorCell.style.textAlign = "center";
-            errorCell.style.padding = "10px";
-        }
-    } else {
-        const errorRow = correlationTable.insertRow();
-        const errorCell = errorRow.insertCell();
-        errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
-        errorCell.textContent = "No correlation data available";
-        errorCell.classList.add('corr-matrix-error-cell');
-    }
-
-    modal.style.display = "block";
-
-    // Close modal logic
+    // Close‑button handler
     const closeModalBtn = modal.querySelector('.close-modal');
-    closeModalBtn.onclick = closeTeamDetails; // Direct assignment for the button
+    closeModalBtn.onclick = closeTeamDetails;
 
-    // For clicks outside the modal
-    if (window._modalClickHandler) { // Remove any existing listener
+    // Click‑outside‑to‑close logic (ensure only one listener)
+    if (window._modalClickHandler) {
         window.removeEventListener('click', window._modalClickHandler);
     }
-    window._modalClickHandler = function(event) {
-        if (event.target === modal) { // Check if the click is on the modal backdrop
+    window._modalClickHandler = function (event) {
+        if (event.target === modal) {
             closeTeamDetails();
         }
     };

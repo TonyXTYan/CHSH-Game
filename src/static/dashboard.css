@@ -356,3 +356,55 @@ th {
 .team-row.animating {
     pointer-events: none;
 }
+
+/* Styles moved from dashboard.html */
+#pause-game-btn {
+    display: none; /* Initially hidden */
+}
+
+#modal-team-id,
+#modal-player1-sid,
+#modal-player2-sid,
+#modal-chsh-value,
+#modal-cross-term-chsh {
+    font-family: monospace;
+}
+
+#live-answer-log-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+#live-answer-log-header h2 {
+    margin: 0;
+}
+
+#toggle-chevron {
+    font-weight: bold;
+    margin-left: 5px;
+    font-size: 1.1em;
+}
+
+.streaming-text {
+    margin-right: 3px;
+}
+
+#toggle-answers-btn {
+    padding: 4px 8px;
+    font-size: 0.9em;
+}
+
+footer {
+    text-align: center;
+    margin-top: 10px;
+    padding: 10px;
+    color: #666;
+}
+
+footer a {
+    color: #666;
+    text-decoration: none;
+}
