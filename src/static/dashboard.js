@@ -530,11 +530,12 @@ function updateActiveTeams(teams) {
             team.correlation_stats.trace_avg !== null && !isNaN(team.correlation_stats.trace_avg)) {
             try {
                 const traceAvg = parseFloat(team.correlation_stats.trace_avg);
-                traceAvgCell.textContent = traceAvg.toFixed(3);
+                traceAvgCell.textContent = Math.abs(traceAvg).toFixed(3); // Display absolute value
                 
                 // Add visual indicator for interesting values
-                if (Math.abs(traceAvg) > 0.7) {
+                if (Math.abs(traceAvg) >= 0.5) {
                     traceAvgCell.style.fontWeight = "bold";
+                    traceAvgCell.style.color = "#0022aa"; // Blue
                 }
             } catch (e) {
                 console.error("Error formatting trace_avg", e);
@@ -552,10 +553,10 @@ function updateActiveTeams(teams) {
                 const balance = parseFloat(team.correlation_stats.same_item_balance);
                 balanceCell.textContent = balance.toFixed(3);
                 
-                // Add visual indicator for interesting values (close to 1.0 is good balance)
-                if (balance > 0.8) {
+                // Add visual indicator for interesting values
+                if (Math.abs(balance) >= 0.5) {
                     balanceCell.style.fontWeight = "bold";
-                    balanceCell.style.color = "#0066cc";
+                    balanceCell.style.color = "#0022aa"; // Blue
                 }
             } catch (e) {
                 console.error("Error formatting same_item_balance", e);
@@ -580,10 +581,10 @@ function updateActiveTeams(teams) {
                 const balancedRandom = (traceAvg + balance) / 2;
                 balancedRandomCell.textContent = balancedRandom.toFixed(3);
                 
-                // Add visual indicator for interesting values (close to 1.0 is good)
-                if (balancedRandom > 0.7) {
+                // Add visual indicator for interesting values
+                if (Math.abs(balancedRandom) >= 0.5) {
                     balancedRandomCell.style.fontWeight = "bold";
-                    balancedRandomCell.style.color = "#0066cc";
+                    balancedRandomCell.style.color = "#00bbff"; // Cyan
                 }
             } catch (e) {
                 console.error("Error calculating Balanced Random", e);
@@ -601,10 +602,13 @@ function updateActiveTeams(teams) {
                 const chshValue = parseFloat(team.correlation_stats.chsh_value);
                 chshValueCell.textContent = chshValue.toFixed(3);
                 
-                // Add visual indicator for interesting values (CHSH inequality violation is > 2)
-                if (Math.abs(chshValue) > 2) {
+                // Add visual indicator for interesting values
+                if (Math.abs(chshValue) > 2.828) {
                     chshValueCell.style.fontWeight = "bold";
-                    chshValueCell.style.color = Math.abs(chshValue) > 2.8 ? "#cc0000" : "#0066cc";
+                    chshValueCell.style.color = "#ffaa00"; // Red
+                } else if (Math.abs(chshValue) >= 2.0) {
+                    chshValueCell.style.fontWeight = "bold";
+                    chshValueCell.style.color = "#008000"; // Green
                 }
             } catch (e) {
                 console.error("Error formatting chsh_value", e);
