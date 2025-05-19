@@ -74,7 +74,8 @@ def compute_correlation_matrix(team_id):
         
         # Prepare the 4x4 correlation matrix for A, B, X, Y combinations
         item_values = ['A', 'B', 'X', 'Y']
-        corr_matrix = [[0 for _ in range(4)] for _ in range(4)]
+        # corr_matrix will store (numerator, denominator) tuples
+        corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
         
         # Count pairs for each item combination
         pair_counts = {(i, j): 0 for i in item_values for j in item_values}
@@ -143,8 +144,8 @@ def compute_correlation_matrix(team_id):
                 continue
                 
             # Update counts
-            p1_idx = item_values.index(p1_item)
-            p2_idx = item_values.index(p2_item)
+            # p1_idx = item_values.index(p1_item) # Not needed here anymore
+            # p2_idx = item_values.index(p2_item) # Not needed here anymore
             
             # Calculate correlation: (T,T) or (F,F) count as 1, (T,F) or (F,T) count as -1
             correlation = 1 if p1_answer == p2_answer else -1
@@ -152,14 +153,12 @@ def compute_correlation_matrix(team_id):
             pair_counts[(p1_item, p2_item)] += 1
             correlation_sums[(p1_item, p2_item)] += correlation
         
-        # Calculate correlations for each cell in the matrix
+        # Populate the corr_matrix with (numerator, denominator) tuples
         for i, row_item in enumerate(item_values):
             for j, col_item in enumerate(item_values):
-                count = pair_counts[(row_item, col_item)]
-                if count > 0:
-                    corr_matrix[i][j] = correlation_sums[(row_item, col_item)] / count
-                else:
-                    corr_matrix[i][j] = 0
+                numerator = correlation_sums.get((row_item, col_item), 0)
+                denominator = pair_counts.get((row_item, col_item), 0)
+                corr_matrix[i][j] = (numerator, denominator)
         
         # Calculate the same-item balance metric
         same_item_balance = {}
@@ -177,12 +176,12 @@ def compute_correlation_matrix(team_id):
         else:
             avg_same_item_balance = 0.0  # Default if no same-item responses
         
-        return corr_matrix, item_values, avg_same_item_balance, same_item_balance
+        return corr_matrix, item_values, avg_same_item_balance, same_item_balance, correlation_sums, pair_counts
     except Exception as e:
         print(f"Error computing correlation matrix: {str(e)}")
         import traceback
         traceback.print_exc()
-        return [[0 for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}
+        return [[(0,0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}
 
 def compute_correlation_stats(team_id): # NOT USED
     try:
@@ -258,31 +257,57 @@ def get_all_teams():
             hash1, hash2 = compute_team_hashes(team.team_id)
             
             # Compute correlation matrix and statistics
-            corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(team.team_id)
+            corr_matrix_tuples, item_values, same_item_balance_avg, same_item_balance, correlation_sums, pair_counts = compute_correlation_matrix(team.team_id)
             
             # Calculate statistics
+            stat1 = 0.0
             try:
-                trace_sum = sum(corr_matrix[i][i] for i in range(4))
-                stat1 = abs(trace_sum) / 4
-            except (TypeError, IndexError) as e:
-                print(f"Error calculating trace statistic: {e}")
+                trace_val_sum = 0
+                for i in range(4):
+                    num, den = corr_matrix_tuples[i][i]
+                    if den != 0:
+                        trace_val_sum += num / den
+                stat1 = abs(trace_val_sum) / 4
+            except (TypeError, IndexError, ZeroDivisionError) as e:
+                print(f"Error calculating trace statistic (stat1): {e}")
                 stat1 = 0.0
-            
+
+            stat2 = 0.0
             try:
                 A_idx = item_values.index('A')
                 B_idx = item_values.index('B')
                 X_idx = item_values.index('X')
                 Y_idx = item_values.index('Y')
-                
+
+                def get_corr_val(idx1, idx2):
+                    num, den = corr_matrix_tuples[idx1][idx2]
+                    return num / den if den != 0 else 0
+
                 stat2 = (
-                    corr_matrix[A_idx][X_idx] + corr_matrix[A_idx][Y_idx] +
-                    corr_matrix[B_idx][X_idx] - corr_matrix[B_idx][Y_idx] +
-                    corr_matrix[X_idx][A_idx] + corr_matrix[X_idx][B_idx] +
-                    corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
-                )/2
-            except (ValueError, IndexError, TypeError) as e:
-                print(f"Error calculating CHSH statistic: {e}")
+                    get_corr_val(A_idx, X_idx) + get_corr_val(A_idx, Y_idx) +
+                    get_corr_val(B_idx, X_idx) - get_corr_val(B_idx, Y_idx) +
+                    get_corr_val(X_idx, A_idx) + get_corr_val(X_idx, B_idx) +
+                    get_corr_val(Y_idx, A_idx) - get_corr_val(Y_idx, B_idx)
+                ) / 2
+            except (ValueError, IndexError, TypeError, ZeroDivisionError) as e:
+                print(f"Error calculating CHSH statistic (stat2): {e}")
                 stat2 = 0.0
+
+            stat3 = 0.0
+            try:
+                def get_term_val(item1, item2):
+                    num_sum = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
+                    den_sum = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    return num_sum / den_sum if den_sum != 0 else 0
+
+                term_AX = get_term_val('A', 'X')
+                term_AY = get_term_val('A', 'Y')
+                term_BX = get_term_val('B', 'X')
+                term_BY = get_term_val('B', 'Y')
+                stat3 = term_AX + term_AY + term_BX - term_BY
+            except (TypeError, ZeroDivisionError) as e:
+                print(f"Error calculating CHSH statistic (stat3): {e}")
+                stat3 = 0.0
             
             team_data = {
                 'team_name': team.team_name,
@@ -294,11 +319,12 @@ def get_all_teams():
                 'history_hash1': hash1,
                 'history_hash2': hash2,
                 'min_stats_sig': min_stats_sig,
-                'correlation_matrix': corr_matrix,
+                'correlation_matrix': corr_matrix_tuples, # Send the tuples
                 'correlation_labels': item_values,
                 'correlation_stats': {
                     'trace_avg': stat1,
-                    'chsh_value': stat2,
+                    'chsh_value': stat2, # This is the original stat2
+                    'chsh_value_stat3': stat3, # This is the new stat3
                     'same_item_balance': same_item_balance_avg
                 },
                 'created_at': team.created_at.isoformat() if team.created_at else None

@@ -594,24 +594,24 @@ function updateActiveTeams(teams) {
             balancedRandomCell.textContent = "—";
         }
         
-        // Add CHSH value column with robust error handling
+        // Add CHSH value column with robust error handling (now displays stat3)
         const chshValueCell = row.insertCell();
-        if (team.correlation_stats && team.correlation_stats.chsh_value !== undefined && 
-            team.correlation_stats.chsh_value !== null && !isNaN(team.correlation_stats.chsh_value)) {
+        if (team.correlation_stats && team.correlation_stats.chsh_value_stat3 !== undefined && 
+            team.correlation_stats.chsh_value_stat3 !== null && !isNaN(team.correlation_stats.chsh_value_stat3)) {
             try {
-                const chshValue = parseFloat(team.correlation_stats.chsh_value);
-                chshValueCell.textContent = chshValue.toFixed(3);
+                const chshValue_stat3 = parseFloat(team.correlation_stats.chsh_value_stat3);
+                chshValueCell.textContent = chshValue_stat3.toFixed(3);
                 
-                // Add visual indicator for interesting values
-                if (Math.abs(chshValue) > 2.828) {
+                // Add visual indicator for interesting values (using stat3)
+                if (Math.abs(chshValue_stat3) > 2.8) { // Example threshold, adjust as needed
                     chshValueCell.style.fontWeight = "bold";
-                    chshValueCell.style.color = "#ffaa00"; // Red
-                } else if (Math.abs(chshValue) >= 2.0) {
+                    chshValueCell.style.color = "#cc0000"; // Red
+                } else if (Math.abs(chshValue_stat3) > 2.0) { // Example threshold
                     chshValueCell.style.fontWeight = "bold";
                     chshValueCell.style.color = "#008000"; // Green
                 }
             } catch (e) {
-                console.error("Error formatting chsh_value", e);
+                console.error("Error formatting chsh_value_stat3", e);
                 chshValueCell.textContent = "Error";
             }
         } else {
@@ -794,6 +794,8 @@ function updateModalContent(team) {
     const modalHash1 = document.getElementById('modal-hash1');
     const modalHash2 = document.getElementById('modal-hash2');
     const correlationTable = document.getElementById('correlation-matrix-table');
+    const modalChshStat2 = document.getElementById('modal-chsh-stat2');
+    const modalChshStat3 = document.getElementById('modal-chsh-stat3');
     
     // Set team name in modal
     modalTeamName.textContent = team.team_name;
@@ -811,57 +813,55 @@ function updateModalContent(team) {
     correlationTable.innerHTML = '';
     
     // Populate correlation matrix table if available with validation
-    if (team.correlation_matrix && team.correlation_labels && 
+    if (team.correlation_matrix && team.correlation_labels &&
         Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
-        team.correlation_matrix.length > 0) {
+        team.correlation_matrix.length > 0 && team.correlation_matrix.every(row => Array.isArray(row))) {
         
         try {
             // Add header row with labels
             const headerRow = correlationTable.insertRow();
             headerRow.insertCell(); // Empty corner cell
             
-            // Validate and add column headers
             team.correlation_labels.forEach(label => {
                 const th = document.createElement('th');
-                th.textContent = label || '?'; // Fallback if label is undefined
+                th.textContent = label || '?';
                 headerRow.appendChild(th);
             });
             
-            // Add data rows with row labels - only process rows that match the label count
-            team.correlation_matrix.forEach((row, rowIdx) => {
-                // Skip if we've run out of labels
-                if (rowIdx >= team.correlation_labels.length) {
-                    return;
-                }
+            team.correlation_matrix.forEach((matrixRow, rowIdx) => {
+                if (rowIdx >= team.correlation_labels.length) return;
                 
                 const tableRow = correlationTable.insertRow();
-                
-                // Add row label
                 const rowLabelCell = document.createElement('th');
                 rowLabelCell.textContent = team.correlation_labels[rowIdx] || '?';
                 tableRow.appendChild(rowLabelCell);
                 
-                // Add correlation values with validation
-                if (Array.isArray(row)) {
-                    row.forEach(value => {
+                if (Array.isArray(matrixRow)) {
+                    matrixRow.forEach(cellData => {
                         const cell = tableRow.insertCell();
-                        
-                        // Handle potential null/undefined/NaN values gracefully
-                        if (value === null || value === undefined || isNaN(value)) {
-                            cell.textContent = "—";
+                        if (Array.isArray(cellData) && cellData.length === 2) {
+                            const numerator = cellData[0];
+                            const denominator = cellData[1];
+                            
+                            if (denominator !== 0) {
+                                const floatValue = parseFloat(numerator) / parseFloat(denominator);
+                                cell.textContent = floatValue.toFixed(3);
+                            } else {
+                                cell.textContent = "—";
+                            }
+                            cell.title = `${numerator} / ${denominator}`;
                         } else {
-                            // Ensure value is treated as a number and limit to 3 decimal places
-                            const numValue = parseFloat(value);
-                            cell.textContent = numValue.toFixed(3);
+                            cell.textContent = "Error"; // Should be [num, den]
+                            cell.title = "Invalid data format";
                         }
                     });
                 }
             });
         } catch (error) {
-            console.error("Error rendering correlation matrix:", error);
+            console.error("Error rendering correlation matrix:", error, team.correlation_matrix);
             const errorRow = correlationTable.insertRow();
             const errorCell = errorRow.insertCell();
-            errorCell.colSpan = 5;
+            errorCell.colSpan = (team.correlation_labels ? team.correlation_labels.length : 0) + 1;
             errorCell.textContent = "Error rendering correlation data";
             errorCell.style.textAlign = "center";
             errorCell.style.padding = "10px";
@@ -869,10 +869,21 @@ function updateModalContent(team) {
     } else {
         const errorRow = correlationTable.insertRow();
         const errorCell = errorRow.insertCell();
-        errorCell.colSpan = 5;
-        errorCell.textContent = "No correlation data available";
+        errorCell.colSpan = (team.correlation_labels ? team.correlation_labels.length : 0) + 1;
+        errorCell.textContent = "No correlation data available or invalid format";
         errorCell.style.textAlign = "center";
         errorCell.style.padding = "10px";
+    }
+
+    // Populate CHSH Stat2 and Stat3
+    if (team.correlation_stats) {
+        modalChshStat2.textContent = (team.correlation_stats.chsh_value !== undefined && team.correlation_stats.chsh_value !== null && !isNaN(team.correlation_stats.chsh_value))
+            ? parseFloat(team.correlation_stats.chsh_value).toFixed(3) : "—";
+        modalChshStat3.textContent = (team.correlation_stats.chsh_value_stat3 !== undefined && team.correlation_stats.chsh_value_stat3 !== null && !isNaN(team.correlation_stats.chsh_value_stat3))
+            ? parseFloat(team.correlation_stats.chsh_value_stat3).toFixed(3) : "—";
+    } else {
+        modalChshStat2.textContent = "—";
+        modalChshStat3.textContent = "—";
     }
 }
 
