@@ -21,9 +21,10 @@
 It allows teams to compete in a game to explore quantum-classical boundaries. This project also features a real-time dashboard of the CHSH parameters and various statistics.
 
 - Live demo: 
-    - ⚠️ As of May 2025, this game is hosted with a free tier on [fly.io](https://fly.io) and it only supports one game instance at a time (over the entire interenet). **This also means the server might take a minute to wake up after some inactivity.** If you wish to host your own game or doing extensive testing, you can simply fork this repository and deploy your own instance. That is, if you see a live game is going on, please don't interrupt it, this repo can be easily deployed with flask and gunicorn (and for free on e.g. [render.com](https://render.com)).
-    - Host: [chsh-game.fly.dev/dashboard](https://chsh-game.fly.dev/dashboard)
-    - Player: [chsh-game.fly.dev](https://chsh-game.fly.dev)
+    - ⚠️ As of May 2025, this game is hosted with a free tier on [fly.io](https://fly.io) and it only supports one game instance at a time (across the entire interenet). If you wish to host your own game or development, you can simply fork this repository and deploy your own instance. 
+    - ⚠️ If you splot a live game is going on, please don't interrupt it, this repo can be easily deployed with [Flask](https://flask.palletsprojects.com/) and [Gunicorn](https://gunicorn.org/) for free on e.g. [render.com](https://render.com). Additionally, I have an instance hosted there that you can freely play with.
+    - Host: [chsh-game.**fly.dev**/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.**onrender.com**/dashboard](https://chsh-game.onrender.com/dashboard))
+    - Player: [chsh-game.**fly.dev**](https://chsh-game.fly.dev) ([chsh-game.**onrender.com**](https://chsh-game.onrender.com))
 
 ![Player QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=4&frame_text=Player&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=chsh-game.fly.dev&width=256&height=256&bordersize=2)
 ![Host QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=4&frame_text=Host&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=chsh-game.fly.dev%2Fdashboard&width=256&height=256&bordersize=2)
@@ -101,3 +102,4 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 - [x] Optimise CHSH normalisation
 - [x] Put a crown on winning team
 - [ ] fly.io deploy via CI
+- [ ] /about.html

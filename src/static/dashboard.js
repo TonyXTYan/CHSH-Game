@@ -35,7 +35,7 @@ let currentAnswersCount = 0;
 // Helper function to format statistics with uncertainty
 function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
     if (typeof magnitude !== 'number' || isNaN(magnitude)) {
-        return "—"; // Or "N/A"
+        return "—";
     }
     let magStr = magnitude.toFixed(precision);
     let uncStr;
@@ -47,7 +47,7 @@ function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
     } else {
         uncStr = "?"; // Use ? for invalid or missing uncertainty
     }
-    return `${magStr} ± ${uncStr}`;
+    return `${magStr}<span style="font-size: 0.8em; vertical-align: baseline; opacity: 0.5;">±${uncStr}</span>`;
 }
 
 // Utility function to reset button to initial state
@@ -587,7 +587,7 @@ function updateActiveTeams(teams) {
         // Add trace_avg column (now Trace Average Statistic)
         const traceAvgCell = row.insertCell();
         if (team.correlation_stats) {
-            traceAvgCell.textContent = formatStatWithUncertainty(
+            traceAvgCell.innerHTML = formatStatWithUncertainty(
                 team.correlation_stats.trace_average_statistic,
                 team.correlation_stats.trace_average_statistic_uncertainty
             );
@@ -598,7 +598,7 @@ function updateActiveTeams(teams) {
                 traceAvgCell.style.color = "#0022aa"; // Blue
             }
         } else {
-            traceAvgCell.textContent = "—";
+            traceAvgCell.innerHTML = "—";
         }
         
         // Add Same Item Balance column
@@ -611,19 +611,18 @@ function updateActiveTeams(teams) {
                 const balanceValue = parseFloat(team.correlation_stats.same_item_balance);
                 const balanceUncertainty = team.correlation_stats.same_item_balance_uncertainty !== undefined ? 
                                            parseFloat(team.correlation_stats.same_item_balance_uncertainty) : null;
-                balanceCell.textContent = formatStatWithUncertainty(balanceValue, balanceUncertainty);
+                balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
                 
                 // Add visual indicator for interesting values
                 if (Math.abs(balanceValue) >= 0.5) {
                     balanceCell.style.fontWeight = "bold";
-                    balanceCell.style.color = "#0022aa"; // Blue
-                }
+                    balanceCell.style.color = "#0022aa";                }
             } catch (e) {
                 console.error("Error formatting same_item_balance", e);
-                balanceCell.textContent = "Error";
+                balanceCell.innerHTML = "Error";
             }
         } else {
-            balanceCell.textContent = "—";
+            balanceCell.innerHTML = "—";
         }
 
         // Add Balanced Random column with robust error handling
@@ -642,52 +641,42 @@ function updateActiveTeams(teams) {
                 const balance = parseFloat(team.correlation_stats.same_item_balance);
                 const balancedRandom = (traceAvg + balance) / 2;
                 
-                // Calculate uncertainty for balancedRandom
-                const traceAvgUnc = parseFloat(team.correlation_stats.trace_average_statistic_uncertainty);
-                const balanceUnc = parseFloat(team.correlation_stats.same_item_balance_uncertainty);
-                let balancedRandomUncertainty = null;
-                if (!isNaN(traceAvgUnc) && !isNaN(balanceUnc)) {
-                    balancedRandomUncertainty = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
-                } else if (!isNaN(traceAvgUnc)) { // Only trace uncertainty available
-                    balancedRandomUncertainty = traceAvgUnc / 2;
-                } else if (!isNaN(balanceUnc)) { // Only balance uncertainty available
-                    balancedRandomUncertainty = balanceUnc / 2;
-                }
+                const traceAvgUncInput = team.correlation_stats.trace_average_statistic_uncertainty;
+                const balanceUncInput = team.correlation_stats.same_item_balance_uncertainty;
+                let uncBalancedRandom = null;
 
-                balancedRandomCell.textContent = formatStatWithUncertainty(balancedRandom, balancedRandomUncertainty);
-                
-                // Add visual indicator for interesting values
-                if (Math.abs(balancedRandom) >= 0.5) {
-                    balancedRandomCell.style.fontWeight = "bold";
-                    balancedRandomCell.style.color = "#00bbff"; // Cyan
+                if (typeof traceAvgUncInput === 'number' && !isNaN(traceAvgUncInput) &&
+                    typeof balanceUncInput === 'number' && !isNaN(balanceUncInput)) {
+                    const traceAvgUnc = parseFloat(traceAvgUncInput);
+                    const balanceUnc = parseFloat(balanceUncInput);
+                    uncBalancedRandom = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
                 }
+                
+                balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedRandom, uncBalancedRandom);
             } catch (e) {
-                console.error("Error calculating Balanced Random", e);
-                balancedRandomCell.textContent = "Error";
+                console.error("Error calculating or formatting balancedRandom", e);
+                balancedRandomCell.innerHTML = "Error";
             }
         } else {
-            balancedRandomCell.textContent = "—";
+            balancedRandomCell.innerHTML = "—";
         }
         
         // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
         const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
         if (team.correlation_stats) {
-            crossTermChshCell.textContent = formatStatWithUncertainty(
+            crossTermChshCell.innerHTML = formatStatWithUncertainty(
                 team.correlation_stats.cross_term_combination_statistic,
                 team.correlation_stats.cross_term_combination_statistic_uncertainty
             );
              if (typeof team.correlation_stats.cross_term_combination_statistic === 'number') {
-                const val = team.correlation_stats.cross_term_combination_statistic;
-                 if (Math.abs(val) > 2.8) { 
+                // Example: Highlight significant CHSH values
+                if (Math.abs(team.correlation_stats.cross_term_combination_statistic) > 2) {
                     crossTermChshCell.style.fontWeight = "bold";
-                    crossTermChshCell.style.color = "#cc0000"; // Red
-                } else if (Math.abs(val) > 2.0) { 
-                    crossTermChshCell.style.fontWeight = "bold";
-                    crossTermChshCell.style.color = "#008000"; // Green
+                    crossTermChshCell.style.color = team.correlation_stats.cross_term_combination_statistic > 2 ? "green" : "red"; // Green for >2, Red for < -2
                 }
-            }
+             }
         } else {
-            crossTermChshCell.textContent = "—";
+            crossTermChshCell.innerHTML = "—";
         }
         
         // Details button cell
@@ -997,17 +986,17 @@ function updateModalContent(team) {
 
     // Populate CHSH Statistics in modal
     if (team.correlation_stats) {
-        modalChshValue.textContent = formatStatWithUncertainty(
+        modalChshValue.innerHTML = formatStatWithUncertainty(
             team.correlation_stats.chsh_value_statistic,
             team.correlation_stats.chsh_value_statistic_uncertainty
         );
-        modalCrossTermChsh.textContent = formatStatWithUncertainty(
+        modalCrossTermChsh.innerHTML = formatStatWithUncertainty(
             team.correlation_stats.cross_term_combination_statistic,
             team.correlation_stats.cross_term_combination_statistic_uncertainty
         );
     } else {
-        modalChshValue.textContent = "—";
-        modalCrossTermChsh.textContent = "—";
+        modalChshValue.innerHTML = "—";
+        modalCrossTermChsh.innerHTML = "—";
     }
 }
 
@@ -1016,12 +1005,14 @@ function closeTeamDetails() {
     const modal = document.getElementById('team-details-modal');
     currentlyViewedTeamId = null;
     isDetailsPopupOpen = false;
-    modal.style.display = 'none';
+    if (modal) {
+        modal.style.display = 'none';
+    }
     
     // Clean up event listener
     if (window._modalClickHandler) {
         window.removeEventListener('click', window._modalClickHandler);
-        window._modalClickHandler = null;
+        window._modalClickHandler = null; // Clear the stored handler
     }
 }
 
@@ -1037,35 +1028,164 @@ function refreshTeamDetailsIfOpen(teams) {
 
 // Function to show team details in modal
 function showTeamDetails(team) {
-    const modal = document.getElementById('team-details-modal');
-    
-    // Update tracking state
     currentlyViewedTeamId = team.team_id;
     isDetailsPopupOpen = true;
-    
-    // Update modal content
-    updateModalContent(team);
-    
-    // Show the modal
-    modal.style.display = 'block';
-    
-    // Close button functionality
-    const closeBtn = document.querySelector('.close-modal');
-    closeBtn.onclick = closeTeamDetails;
-    
-    // Close modal when clicking outside of it
-    // Remove previous event listener if exists to avoid duplicate handlers
-    if (window._modalClickHandler) {
+
+    const modal = document.getElementById('team-details-modal');
+    const modalTeamName = document.getElementById('modal-team-name');
+    const modalTeamId = document.getElementById('modal-team-id');
+    const modalPlayer1Sid = document.getElementById('modal-player1-sid');
+    const modalPlayer2Sid = document.getElementById('modal-player2-sid');
+    const modalHash1 = document.getElementById('modal-hash1'); // Corresponds to history_hash1
+    const modalHash2 = document.getElementById('modal-hash2'); // Corresponds to history_hash2
+    const modalChshValue = document.getElementById('modal-chsh-value');
+    const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh');
+    const correlationTable = document.getElementById('correlation-matrix-table');
+
+    modalTeamName.textContent = team.team_name || 'N/A';
+    modalTeamId.textContent = team.team_id || 'N/A';
+    modalPlayer1Sid.textContent = team.player1_sid || 'N/A';
+    modalPlayer2Sid.textContent = team.player2_sid || 'N/A';
+
+    // Hashes - using history_hash1 and history_hash2 based on modal IDs and updateModalContent
+    modalHash1.textContent = team.history_hash1 || 'N/A';
+    modalHash2.textContent = team.history_hash2 || 'N/A';
+
+    // CHSH Statistics
+    if (team.correlation_stats) {
+        // Using chsh_value_actual for "Actual CHSH Value" as per HTML label
+        modalChshValue.innerHTML = formatStatWithUncertainty(
+            team.correlation_stats.chsh_value_actual, 
+            team.correlation_stats.chsh_value_actual_uncertainty
+        ) || 'N/A';
+        modalCrossTermChsh.innerHTML = formatStatWithUncertainty(
+            team.correlation_stats.cross_term_combination_statistic,
+            team.correlation_stats.cross_term_combination_statistic_uncertainty
+        ) || 'N/A';
+    } else {
+        modalChshValue.innerHTML = 'N/A';
+        modalCrossTermChsh.innerHTML = 'N/A';
+    }
+
+    // Correlation Matrix - Inlined and adapted from updateModalContent's logic
+    correlationTable.innerHTML = ''; // Clear existing correlation matrix
+
+    if (team.correlation_matrix && team.correlation_labels && 
+        Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
+        team.correlation_matrix.length > 0 && team.correlation_labels.length > 0 &&
+        team.correlation_matrix.length === team.correlation_labels.length &&
+        team.correlation_matrix.every(row => Array.isArray(row) && row.length === team.correlation_labels.length)) {
+        
+        try {
+            const labels = team.correlation_labels;
+            const numLabels = labels.length;
+            const matrixData = team.correlation_matrix;
+
+            const player2LabelRow = correlationTable.insertRow();
+            player2LabelRow.insertCell(); // Empty cell for Player 1 vertical label column
+            player2LabelRow.insertCell(); // Empty cell above Row Item Labels for Player 1
+            const player2Th = document.createElement('th');
+            player2Th.colSpan = numLabels;
+            player2Th.textContent = 'Player 2';
+            player2Th.style.textAlign = 'center';
+            player2LabelRow.appendChild(player2Th);
+
+            const columnItemLabelRow = correlationTable.insertRow();
+            columnItemLabelRow.insertCell(); // Empty cell for Player 1 vertical label column
+            const cornerTh = document.createElement('th'); // Empty top-left cell of the actual data matrix part
+            columnItemLabelRow.appendChild(cornerTh);
+
+            labels.forEach(label => {
+                const th = document.createElement('th');
+                th.textContent = label || '?';
+                th.classList.add('corr-matrix-col-item-label'); // Added class
+                columnItemLabelRow.appendChild(th);
+            });
+            
+            matrixData.forEach((rowData, rowIndex) => {
+                if (rowIndex >= numLabels) return; // Should be caught by earlier checks
+
+                const dataRow = correlationTable.insertRow();
+
+                // Player 1 Vertical Label (only in the first data row, spans all data rows)
+                if (rowIndex === 0) {
+                    const player1Th = document.createElement('th');
+                    player1Th.rowSpan = numLabels;
+                    player1Th.textContent = 'Player 1';
+                    player1Th.classList.add('corr-matrix-player1-label');
+                    dataRow.appendChild(player1Th);
+                }
+
+                // Row Item Label (A, B, X, Y for Player 1)
+                const rowItemLabelTh = document.createElement('th');
+                rowItemLabelTh.textContent = labels[rowIndex] || '?';
+                rowItemLabelTh.classList.add('corr-matrix-row-item-label'); // Added class
+                dataRow.appendChild(rowItemLabelTh);
+                
+                // Add correlation values
+                if (Array.isArray(rowData)) {
+                    rowData.forEach(cellTuple => { // cellTuple is [numerator, denominator]
+                        const cell = dataRow.insertCell();
+                        cell.classList.add('corr-matrix-data-cell'); // Added class
+                        if (Array.isArray(cellTuple) && cellTuple.length === 2) {
+                            const num = parseFloat(cellTuple[0]);
+                            const den = parseFloat(cellTuple[1]);
+
+                            if (isNaN(num) || isNaN(den)) {
+                                cell.textContent = "—"; // Invalid data in tuple
+                            } else if (den !== 0) {
+                                cell.textContent = (num / den).toFixed(3);
+                            } else if (num !== 0 && den === 0) {
+                                cell.textContent = "Inf"; // Infinity
+                            } else { // num is 0 and den is 0, or other unhandled cases
+                                cell.textContent = "—"; // Or "0.000" if 0/0 should be 0
+                            }
+                        } else {
+                             // Fallback if cellTuple is not the expected [num, den] array
+                            cell.textContent = "—";
+                        }
+                    });
+                } else {
+                    // Fill row with placeholders if rowData is not an array
+                    for (let i = 0; i < numLabels; i++) {
+                        const cell = dataRow.insertCell();
+                        cell.classList.add('corr-matrix-data-cell'); // Added class
+                        cell.textContent = "—";
+                    }
+                }
+            });
+        } catch (error) {
+            console.error("Error rendering correlation matrix in showTeamDetails:", error);
+            correlationTable.innerHTML = ''; 
+            const errorRow = correlationTable.insertRow();
+            const errorCell = errorRow.insertCell();
+            errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 3; 
+            errorCell.textContent = "Error rendering correlation data";
+            errorCell.style.textAlign = "center";
+            errorCell.style.padding = "10px";
+        }
+    } else {
+        const errorRow = correlationTable.insertRow();
+        const errorCell = errorRow.insertCell();
+        errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
+        errorCell.textContent = "No correlation data available";
+        errorCell.classList.add('corr-matrix-error-cell');
+    }
+
+    modal.style.display = "block";
+
+    // Close modal logic
+    const closeModalBtn = modal.querySelector('.close-modal');
+    closeModalBtn.onclick = closeTeamDetails; // Direct assignment for the button
+
+    // For clicks outside the modal
+    if (window._modalClickHandler) { // Remove any existing listener
         window.removeEventListener('click', window._modalClickHandler);
     }
-    
-    // Create and store a reference to the handler
-    window._modalClickHandler = (event) => {
-        if (event.target === modal) {
+    window._modalClickHandler = function(event) {
+        if (event.target === modal) { // Check if the click is on the modal backdrop
             closeTeamDetails();
         }
     };
-    
-    // Add the event listener
     window.addEventListener('click', window._modalClickHandler);
 }
