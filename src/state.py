@@ -11,6 +11,8 @@ class AppState:
         self.previous_sessions = {} # {previous_sid: current_sid}
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
+        # Store recently disconnected player SIDs and their team position
+        self.recently_disconnected_sids = {} # {previous_sid: {'team_id': team_id, 'original_slot': 0 or 1, 'timestamp': datetime}}
 
     def reset(self):
         self.active_teams.clear()
@@ -19,6 +21,7 @@ class AppState:
         self.dashboard_clients.clear()
         self.previous_sessions.clear()
         self.team_id_to_name.clear()
+        self.recently_disconnected_sids.clear()
         self.game_started = False
         self.game_paused = False
         self.answer_stream_enabled = False
