@@ -32,6 +32,24 @@ const noAnswersLogMsg = document.getElementById("no-answers-log");
 
 let currentAnswersCount = 0;
 
+// Helper function to format statistics with uncertainty
+function formatStatWithUncertainty(magnitude, uncertainty, precision = 3) {
+    if (typeof magnitude !== 'number' || isNaN(magnitude)) {
+        return "—"; // Or "N/A"
+    }
+    let magStr = magnitude.toFixed(precision);
+    let uncStr;
+
+    if (uncertainty === null || (typeof uncertainty === 'number' && uncertainty > 9.9999)) {
+        uncStr = '∞';
+    } else if (typeof uncertainty === 'number' && !isNaN(uncertainty)) {
+        uncStr = uncertainty.toFixed(precision);
+    } else {
+        uncStr = "?"; // Or "N/A" if uncertainty is missing/invalid
+    }
+    return `${magStr} ± ${uncStr}`;
+}
+
 // Utility function to reset button to initial state
 function resetButtonToInitialState(btn) {
     if (!btn) return;
@@ -524,28 +542,24 @@ function updateActiveTeams(teams) {
         statsCell.textContent = team.min_stats_sig ? '✅' : '⏳';
         statsCell.style.textAlign = 'center';
         
-        // Add trace_avg column with robust error handling
+        // Add trace_avg column (now Trace Average Statistic)
         const traceAvgCell = row.insertCell();
-        if (team.correlation_stats && team.correlation_stats.trace_avg !== undefined && 
-            team.correlation_stats.trace_avg !== null && !isNaN(team.correlation_stats.trace_avg)) {
-            try {
-                const traceAvg = parseFloat(team.correlation_stats.trace_avg);
-                traceAvgCell.textContent = Math.abs(traceAvg).toFixed(3); // Display absolute value
-                
-                // Add visual indicator for interesting values
-                if (Math.abs(traceAvg) >= 0.5) {
-                    traceAvgCell.style.fontWeight = "bold";
-                    traceAvgCell.style.color = "#0022aa"; // Blue
-                }
-            } catch (e) {
-                console.error("Error formatting trace_avg", e);
-                traceAvgCell.textContent = "Error";
+        if (team.correlation_stats) {
+            traceAvgCell.textContent = formatStatWithUncertainty(
+                team.correlation_stats.trace_average_statistic,
+                team.correlation_stats.trace_average_statistic_uncertainty
+            );
+            // Retain visual indicator logic if desired, e.g., based on nominal value
+            if (typeof team.correlation_stats.trace_average_statistic === 'number' &&
+                Math.abs(team.correlation_stats.trace_average_statistic) >= 0.5) { // Example, adjust as needed
+                traceAvgCell.style.fontWeight = "bold";
+                traceAvgCell.style.color = "#0022aa"; // Blue
             }
         } else {
             traceAvgCell.textContent = "—";
         }
         
-        // Add Same Item Balance column with robust error handling
+        // Add Same Item Balance column
         const balanceCell = row.insertCell();
         if (team.correlation_stats && team.correlation_stats.same_item_balance !== undefined && 
             team.correlation_stats.same_item_balance !== null && !isNaN(team.correlation_stats.same_item_balance)) {
@@ -569,17 +583,24 @@ function updateActiveTeams(teams) {
         // Add Balanced Random column with robust error handling
         const balancedRandomCell = row.insertCell();
         if (team.correlation_stats && 
-            team.correlation_stats.trace_avg !== undefined && 
-            team.correlation_stats.trace_avg !== null && 
-            !isNaN(team.correlation_stats.trace_avg) &&
+            team.correlation_stats.trace_average_statistic !== undefined && 
+            team.correlation_stats.trace_average_statistic !== null && 
+            !isNaN(team.correlation_stats.trace_average_statistic) &&
             team.correlation_stats.same_item_balance !== undefined && 
             team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance)) {
+            !isNaN(team.correlation_stats.same_item_balance) &&
+            team.correlation_stats.trace_average_statistic_uncertainty !== undefined) { // Added check for uncertainty
             try {
-                const traceAvg = parseFloat(team.correlation_stats.trace_avg);
+                const traceAvg = parseFloat(team.correlation_stats.trace_average_statistic);
                 const balance = parseFloat(team.correlation_stats.same_item_balance);
                 const balancedRandom = (traceAvg + balance) / 2;
-                balancedRandomCell.textContent = balancedRandom.toFixed(3);
+                
+                // Calculate uncertainty for balancedRandom
+                // Assuming same_item_balance has negligible uncertainty or is not provided
+                const traceAvgUncertainty = parseFloat(team.correlation_stats.trace_average_statistic_uncertainty);
+                const balancedRandomUncertainty = !isNaN(traceAvgUncertainty) ? traceAvgUncertainty / 2 : null;
+
+                balancedRandomCell.textContent = formatStatWithUncertainty(balancedRandom, balancedRandomUncertainty);
                 
                 // Add visual indicator for interesting values
                 if (Math.abs(balancedRandom) >= 0.5) {
@@ -594,28 +615,25 @@ function updateActiveTeams(teams) {
             balancedRandomCell.textContent = "—";
         }
         
-        // Add CHSH value column with robust error handling (now displays stat3)
-        const chshValueCell = row.insertCell();
-        if (team.correlation_stats && team.correlation_stats.chsh_value_stat3 !== undefined && 
-            team.correlation_stats.chsh_value_stat3 !== null && !isNaN(team.correlation_stats.chsh_value_stat3)) {
-            try {
-                const chshValue_stat3 = parseFloat(team.correlation_stats.chsh_value_stat3);
-                chshValueCell.textContent = chshValue_stat3.toFixed(3);
-                
-                // Add visual indicator for interesting values (using stat3)
-                if (Math.abs(chshValue_stat3) > 2.8) { // Example threshold, adjust as needed
-                    chshValueCell.style.fontWeight = "bold";
-                    chshValueCell.style.color = "#cc0000"; // Red
-                } else if (Math.abs(chshValue_stat3) > 2.0) { // Example threshold
-                    chshValueCell.style.fontWeight = "bold";
-                    chshValueCell.style.color = "#008000"; // Green
+        // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
+        const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
+        if (team.correlation_stats) {
+            crossTermChshCell.textContent = formatStatWithUncertainty(
+                team.correlation_stats.cross_term_combination_statistic,
+                team.correlation_stats.cross_term_combination_statistic_uncertainty
+            );
+             if (typeof team.correlation_stats.cross_term_combination_statistic === 'number') {
+                const val = team.correlation_stats.cross_term_combination_statistic;
+                 if (Math.abs(val) > 2.8) { 
+                    crossTermChshCell.style.fontWeight = "bold";
+                    crossTermChshCell.style.color = "#cc0000"; // Red
+                } else if (Math.abs(val) > 2.0) { 
+                    crossTermChshCell.style.fontWeight = "bold";
+                    crossTermChshCell.style.color = "#008000"; // Green
                 }
-            } catch (e) {
-                console.error("Error formatting chsh_value_stat3", e);
-                chshValueCell.textContent = "Error";
             }
         } else {
-            chshValueCell.textContent = "—";
+            crossTermChshCell.textContent = "—";
         }
         
         // Details button cell
@@ -794,8 +812,9 @@ function updateModalContent(team) {
     const modalHash1 = document.getElementById('modal-hash1');
     const modalHash2 = document.getElementById('modal-hash2');
     const correlationTable = document.getElementById('correlation-matrix-table');
-    const modalChshStat2 = document.getElementById('modal-chsh-stat2');
-    const modalChshStat3 = document.getElementById('modal-chsh-stat3');
+    const modalTraceAvg = document.getElementById('modal-trace-avg'); // New ID from HTML
+    const modalChshValue = document.getElementById('modal-chsh-value'); // New ID from HTML (was modal-chsh-stat2)
+    const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh'); // New ID from HTML (was modal-chsh-stat3)
     
     // Set team name in modal
     modalTeamName.textContent = team.team_name;
@@ -923,15 +942,24 @@ function updateModalContent(team) {
         errorCell.classList.add('corr-matrix-error-cell');
     }
 
-    // Populate CHSH Stat2 and Stat3
+    // Populate CHSH Statistics in modal
     if (team.correlation_stats) {
-        modalChshStat2.textContent = (team.correlation_stats.chsh_value !== undefined && team.correlation_stats.chsh_value !== null && !isNaN(team.correlation_stats.chsh_value))
-            ? parseFloat(team.correlation_stats.chsh_value).toFixed(3) : "—";
-        modalChshStat3.textContent = (team.correlation_stats.chsh_value_stat3 !== undefined && team.correlation_stats.chsh_value_stat3 !== null && !isNaN(team.correlation_stats.chsh_value_stat3))
-            ? parseFloat(team.correlation_stats.chsh_value_stat3).toFixed(3) : "—";
+        modalTraceAvg.textContent = formatStatWithUncertainty(
+            team.correlation_stats.trace_average_statistic,
+            team.correlation_stats.trace_average_statistic_uncertainty
+        );
+        modalChshValue.textContent = formatStatWithUncertainty(
+            team.correlation_stats.chsh_value_statistic,
+            team.correlation_stats.chsh_value_statistic_uncertainty
+        );
+        modalCrossTermChsh.textContent = formatStatWithUncertainty(
+            team.correlation_stats.cross_term_combination_statistic,
+            team.correlation_stats.cross_term_combination_statistic_uncertainty
+        );
     } else {
-        modalChshStat2.textContent = "—";
-        modalChshStat3.textContent = "—";
+        modalTraceAvg.textContent = "—";
+        modalChshValue.textContent = "—";
+        modalCrossTermChsh.textContent = "—";
     }
 }
 
