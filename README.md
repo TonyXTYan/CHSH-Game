@@ -83,7 +83,7 @@ Feel free to change the port number `8080` in the command above.
 
 **Deploying to Render.com:**  
 Start command:  
-```
+```bash
 gunicorn wsgi:app --worker-class eventlet
 ```
 
