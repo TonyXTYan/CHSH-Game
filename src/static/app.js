@@ -246,12 +246,12 @@ function updateTeamStatus(status) {
     const header = document.getElementById('teamStatusHeader');
     if (status === 'created') {
         header.textContent = 'Team Created!';
-    } else if (status === 'full') {
+    } else if (status === 'full' || status === 'active') { // 'active' is internal server state for full
         header.textContent = 'Team Paired Up!';
-    } else if (status === 'waiting_pair') { // Changed from waiting_for_player
+    } else if (status === 'waiting_pair') {
         header.textContent = 'Waiting for Player...';
     } else {
-        header.textContent = 'Team Up!';
+        header.textContent = 'Team Up!'; // Default or initial state
     }
 }
 
@@ -327,46 +327,60 @@ const callbacks = {
         updateGameState();
     },
 
-    onTeamJoined: (data) => {
+    onTeamJoined: (data) => { // For the player who just joined
         currentTeam = data.team_name;
-        isCreator = false;
+        isCreator = false; // Player joining is never the creator of an existing team
         gameStarted = data.game_started;
+        teamId = data.team_id; // Assuming team_id is sent, if not, it might be part of team_status_update
+
+        gameHeader.textContent = `Team: ${data.team_name}`;
+        showStatus(data.message, 'success');
         
-        // Hide both create and join team sections when joining a team
+        // The 'team_status_update' event will follow and handle UI based on whether team is full
+        // So, updateGameState() here might be premature for showing question section if game started
+        // but we can hide the join/create sections.
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
         
-        // Update header with team name
-        gameHeader.textContent = `Team: ${data.team_name}`;
-        
-        showStatus(data.message, 'success');
-        updateGameState();
-    },
-
-    onPlayerJoined: (data) => {
-        showStatus(data.message, 'success');
-        gameStarted = data.game_started;
-        updateGameState();
-    },
-
-    onTeamStatusUpdate: (data) => {
-        console.log('Team status update:', data);
-        gameStarted = data.game_started;
-        
-        if (data.status === 'full') {
-            if (gameStarted) {
-                showStatus('Your team is paired up! Game has started!', 'success');
-            } else {
-                showStatus('Your team is paired up! Waiting for game to start.', 'success');
+        // If the team_status is part of this event, we can use it
+        if (data.team_status) {
+            updateTeamStatus(data.team_status);
+            if (data.team_status === 'full' && gameStarted) {
+                 // If game started and team is full, expect new_question soon
+            } else if (data.team_status === 'waiting_pair') {
+                // Still waiting
             }
-        } else if (data.status === 'waiting_pair') { // Changed from waiting_for_player
-            showStatus('Waiting for another player to join...', 'info');
         }
-        
-        updateGameState();
+        updateGameState(); // Call to ensure UI reflects currentTeam being set
     },
 
-    onGameStart: () => {
+    onPlayerJoined: (data) => { // Generic notification, less critical now with team_status_update
+        showStatus(data.message, 'success');
+        // gameStarted = data.game_started; // This should come from team_status_update
+        // updateGameState(); // team_status_update will handle this
+    },
+
+    onTeamStatusUpdate: (data) => { // For all members of a team when its status changes
+        console.log('Team status update:', data);
+        gameStarted = data.game_started; // Update global gameStarted state
+
+        if (currentTeam === data.team_name) { // Ensure this update is for the current player's team
+            updateTeamStatus(data.status); // Update the "Team Paired Up!" or "Waiting for Player..." header
+
+            if (data.status === 'full') {
+                if (gameStarted) {
+                    showStatus('Your team is paired up! Game is active.', 'success');
+                } else {
+                    showStatus('Your team is paired up! Waiting for game to start.', 'success');
+                }
+            } else if (data.status === 'waiting_pair') {
+                showStatus('Waiting for another player to join...', 'info');
+            }
+        }
+        updateGameState(); // Refresh main game UI (team vs question section)
+    },
+
+    onGameStart: () => { // Global game start event from dashboard
         gameStarted = true;
         showStatus('Game has started! Get ready for questions.', 'success');
         updateGameState();
