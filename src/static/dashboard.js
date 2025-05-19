@@ -920,8 +920,7 @@ function updateModalContent(team) {
         // Adjust colspan based on the new table structure (assuming 0 labels if none provided)
         errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
         errorCell.textContent = "No correlation data available";
-        errorCell.style.textAlign = "center";
-        errorCell.style.padding = "10px";
+        errorCell.classList.add('corr-matrix-error-cell');
     }
 
     // Populate CHSH Stat2 and Stat3

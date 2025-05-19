@@ -305,6 +305,27 @@ th {
     table-layout: fixed; 
 }
 
+/* Styles for new classes in correlation matrix */
+.corr-matrix-player1-label {
+    writing-mode: vertical-lr; /* Lines stack left-to-right */
+    width: 0px;
+    vertical-align: middle;
+    text-align: center;
+}
+
+.corr-matrix-player2-header { /* New class for Player 2 header */
+    text-align: center;
+}
+
+.corr-matrix-error-cell { /* New class for error cell */
+    text-align: center;
+    padding: 10px;
+}
+
+.corr-matrix-row-item-label {
+    width: 10%; /* Narrower for A/B/X/Y row labels */
+}
+
 
 .view-details-btn {
     background-color: #0056b3;
