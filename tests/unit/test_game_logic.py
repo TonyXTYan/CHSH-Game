@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, MagicMock
 import random
 from src.models.quiz_models import ItemEnum
-from src.game_logic import start_new_round_for_pair, QUESTION_ITEMS, TARGET_COMBO_REPEATS
+from src.game_logic import start_new_round_for_pair, calculate_score, QUESTION_ITEMS, TARGET_COMBO_REPEATS
 
 @pytest.fixture
 def mock_team_info():
@@ -15,6 +15,54 @@ def mock_team_info():
         'current_db_round_id': None,
         'answered_current_round': {}
     }
+
+def test_calculate_score_with_a():
+    """Test scoring when player1 has item A - answers should match for success"""
+    # When answers match
+    assert calculate_score(ItemEnum.A, ItemEnum.X, True, True) == 1
+    assert calculate_score(ItemEnum.A, ItemEnum.X, False, False) == 1
+    assert calculate_score(ItemEnum.A, ItemEnum.Y, True, True) == 1
+    assert calculate_score(ItemEnum.A, ItemEnum.Y, False, False) == 1
+    
+    # When answers don't match
+    assert calculate_score(ItemEnum.A, ItemEnum.X, True, False) == 0
+    assert calculate_score(ItemEnum.A, ItemEnum.X, False, True) == 0
+    assert calculate_score(ItemEnum.A, ItemEnum.Y, True, False) == 0
+    assert calculate_score(ItemEnum.A, ItemEnum.Y, False, True) == 0
+
+def test_calculate_score_with_b():
+    """Test scoring when player1 has item B - answers should match for X and differ for Y"""
+    # With X - answers should match
+    assert calculate_score(ItemEnum.B, ItemEnum.X, True, True) == 1
+    assert calculate_score(ItemEnum.B, ItemEnum.X, False, False) == 1
+    assert calculate_score(ItemEnum.B, ItemEnum.X, True, False) == 0
+    assert calculate_score(ItemEnum.B, ItemEnum.X, False, True) == 0
+    
+    # With Y - answers should differ
+    assert calculate_score(ItemEnum.B, ItemEnum.Y, True, False) == 1
+    assert calculate_score(ItemEnum.B, ItemEnum.Y, False, True) == 1
+    assert calculate_score(ItemEnum.B, ItemEnum.Y, True, True) == 0
+    assert calculate_score(ItemEnum.B, ItemEnum.Y, False, False) == 0
+
+def test_calculate_score_input_validation():
+    """Test input validation for the calculate_score function"""
+    with pytest.raises(ValueError, match="Items must be ItemEnum values"):
+        calculate_score("A", ItemEnum.X, True, True)
+    
+    with pytest.raises(ValueError, match="Items must be ItemEnum values"):
+        calculate_score(ItemEnum.A, "X", True, True)
+    
+    with pytest.raises(ValueError, match="Answers must be boolean values"):
+        calculate_score(ItemEnum.A, ItemEnum.X, "yes", True)
+    
+    with pytest.raises(ValueError, match="Answers must be boolean values"):
+        calculate_score(ItemEnum.A, ItemEnum.X, True, "no")
+    
+    with pytest.raises(ValueError, match="Player 1 must have item A or B"):
+        calculate_score(ItemEnum.X, ItemEnum.Y, True, True)
+    
+    with pytest.raises(ValueError, match="Player 2 must have item X or Y"):
+        calculate_score(ItemEnum.A, ItemEnum.A, True, True)
 
 @patch('src.game_logic.state')
 @patch('src.game_logic.PairQuestionRounds')
