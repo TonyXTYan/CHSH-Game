@@ -48,42 +48,16 @@ function showStatus(message, type = 'info') {
     statusMessage.className = 'status-message ' + type;
 }
 
-// Save session data to localStorage
-function saveSessionData() {
-    if (currentTeam) {
-        const sessionData = {
-            teamName: currentTeam,
-            sessionId: socket.id,
-            isCreator: isCreator,
-            teamId: teamId
-        };
-        localStorage.setItem('quizSessionData', JSON.stringify(sessionData));
-        console.log('Session data saved:', sessionData);
-    }
-}
-
-// Try to restore session from localStorage
-function tryRestoreSession() {
-    try {
-        const sessionData = localStorage.getItem('quizSessionData');
-        if (sessionData) {
-            const data = JSON.parse(sessionData);
-            console.log('Found previous session:', data);
-            
-            // Verify team membership with server
-            socket.emit('verify_team_membership', {
-                team_name: data.teamName,
-                previous_sid: data.sessionId,
-                team_id: data.teamId
-            });
-            
-            showStatus('Attempting to reconnect to your team...', 'info');
-            return true;
-        }
-    } catch (error) {
-        console.error('Error restoring session:', error);
-    }
-    return false;
+// Function to reset UI to initial state
+function resetToInitialView() {
+    currentTeam = null;
+    isCreator = false;
+    currentRound = null;
+    teamId = null;
+    localStorage.removeItem('quizSessionData');
+    gameHeader.textContent = 'CHSH Game';
+    updateGameState(); // This will show team creation/joining
+    showStatus('Disconnected. Please create or join a team.', 'info');
 }
 
 // Update UI based on game state
@@ -334,7 +308,7 @@ const callbacks = {
     updateSessionInfo: (id) => sessionInfo.innerHTML = `Session ID: <span class="session-id">${id}</span>`,
     setAnswerButtonsEnabled,
     getCurrentRoundInfo: () => currentRound,
-    tryRestoreSession,
+    resetToInitialView,
 
     onTeamCreated: (data) => {
         currentTeam = data.team_name;
@@ -350,7 +324,6 @@ const callbacks = {
         gameHeader.textContent = `Team: ${data.team_name}`;
         
         showStatus(data.message, 'success');
-        saveSessionData();
         updateGameState();
     },
 
@@ -367,7 +340,6 @@ const callbacks = {
         gameHeader.textContent = `Team: ${data.team_name}`;
         
         showStatus(data.message, 'success');
-        saveSessionData();
         updateGameState();
     },
 
@@ -418,7 +390,7 @@ const callbacks = {
         currentTeam = null;
         isCreator = false;
         currentRound = null;
-        lastClickedButton = null;  // Reset when rejoin fails
+        lastClickedButton = null;
         localStorage.removeItem('quizSessionData');
         // Reset header
         gameHeader.textContent = 'CHSH Game';
@@ -434,37 +406,6 @@ const callbacks = {
         // Reset header
         gameHeader.textContent = 'CHSH Game';
         showStatus(data.message, 'success');
-        updateGameState();
-    },
-
-    onRejoinTeamSuccess: (data) => {
-        console.log('Successfully rejoined team:', data);
-        currentTeam = data.team_name;
-        isCreator = data.is_creator;
-        gameStarted = data.game_started;
-        
-        if (data.current_round) {
-            currentRound = data.current_round;
-            currentRound.alreadyAnswered = data.already_answered;
-        }
-        
-        // Update header with team name
-        gameHeader.textContent = `Team: ${data.team_name}`;
-        
-        showStatus(data.status_message, 'success');
-        saveSessionData();
-        updateGameState();
-    },
-
-    onRejoinTeamFailed: (data) => {
-        console.log('Failed to rejoin team:', data);
-        localStorage.removeItem('quizSessionData');
-        showStatus(data.message, 'error');
-        currentTeam = null;
-        isCreator = false;
-        currentRound = null;
-        // Reset header
-        gameHeader.textContent = 'CHSH Game';
         updateGameState();
     }
 };

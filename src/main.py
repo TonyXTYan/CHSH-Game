@@ -89,9 +89,7 @@ from src.sockets.team_management import (
     on_leave_team
 )
 from src.sockets.game import (
-    on_submit_answer, 
-    on_verify_team_membership, 
-    on_rejoin_team
+    on_submit_answer
 )
 
 if __name__ == '__main__':

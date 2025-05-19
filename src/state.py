@@ -7,8 +7,6 @@ class AppState:
         self.game_started = False # Track if game has started
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
-        # Store previous session mappings for reconnection
-        self.previous_sessions = {} # {previous_sid: current_sid}
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
 
@@ -17,7 +15,6 @@ class AppState:
         self.player_to_team.clear()
         self.connected_players.clear()
         self.dashboard_clients.clear()
-        self.previous_sessions.clear()
         self.team_id_to_name.clear()
         self.game_started = False
         self.game_paused = False

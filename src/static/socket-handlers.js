@@ -4,16 +4,17 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.updateConnectionStatus('Connected to server!');
         callbacks.sessionId = socket.id;
         callbacks.updateSessionInfo(socket.id);
-        
-        // If not restoring session, show ready status
-        if (!callbacks.tryRestoreSession()) {
-            callbacks.showStatus('Connected to server!', 'success');
-        }
+        callbacks.showStatus('Connected to server!', 'success');
     });
 
     socket.on('disconnect', () => {
         callbacks.updateConnectionStatus('Disconnected from server');
-        callbacks.showStatus('Disconnected from server. Attempting to reconnect...', 'error');
+        // Call resetToInitialView to clear state and show appropriate message
+        if (typeof callbacks.resetToInitialView === 'function') {
+            callbacks.resetToInitialView();
+        } else {
+            callbacks.showStatus('Disconnected. Please create or join a team.', 'error');
+        }
     });
 
     socket.on('server_shutdown', () => {
@@ -36,8 +37,8 @@ function initializeSocketHandlers(socket, callbacks) {
 
     socket.on('reconnect', () => {
         callbacks.updateConnectionStatus('Connected to server!');
-        callbacks.showStatus('Reconnected to server!', 'success');
-        callbacks.tryRestoreSession();
+        callbacks.showStatus('Reconnected to server! Please create or join a team.', 'success');
+        // No longer trying to restore session, player starts fresh.
     });
 
     socket.on('connection_established', (data) => {
@@ -133,16 +134,16 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onLeftTeam(data);
     });
 
-    socket.on('player_reconnected', (data) => {
-        callbacks.showStatus(data.message, 'success');
+    socket.on('player_left', (data) => {
+        callbacks.showStatus(data.message, 'warning');
     });
 
-    socket.on('rejoin_team_success', (data) => {
-        callbacks.onRejoinTeamSuccess(data);
+    socket.on('team_disbanded', (data) => {
+        callbacks.onTeamDisbanded(data);
     });
 
-    socket.on('rejoin_team_failed', (data) => {
-        callbacks.onRejoinTeamFailed(data);
+    socket.on('left_team_success', (data) => {
+        callbacks.onLeftTeam(data);
     });
 
     socket.on('game_reset', () => {
