@@ -7,34 +7,48 @@ from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update
 from src.game_logic import start_new_round_for_pair
 
+print("Debug: Registering 'submit_answer' event with namespace '/'")
 @socketio.on('submit_answer')
 def on_submit_answer(data):
     try:
+        print("Debug: on_submit_answer function invoked")
+        print("Debug: on_submit_answer function called")
         sid = request.sid
+        print("Debug: Checking if SID is in player_to_team")
         if sid not in state.player_to_team:
+            print("Debug: SID not in player_to_team")
             emit('error', {'message': 'You are not in a team or session expired.'}); return
             
+        print("Debug: Checking if game is paused")
         if state.game_paused:
+            print("Debug: Game is paused")
             emit('error', {'message': 'Game is currently paused.'}); return
         team_name = state.player_to_team[sid]
         team_info = state.active_teams.get(team_name)
+        print(f"Debug: Team info: {team_info}")
         if not team_info or len(team_info['players']) != 2:
+            print("Debug: Team not valid or other player missing")
             emit('error', {'message': 'Team not valid or other player missing.'}); return
 
         round_id = data.get('round_id')
         assigned_item_str = data.get('item')
         response_bool = data.get('answer')
 
+        print(f"Debug: round_id={round_id}, assigned_item_str={assigned_item_str}, response_bool={response_bool}")
         if round_id != team_info.get('current_db_round_id') or assigned_item_str is None or response_bool is None:
+            print("Debug: Invalid answer submission data")
             emit('error', {'message': 'Invalid answer submission data.'}); return
 
         try:
             assigned_item_enum = ItemEnum(assigned_item_str)
         except ValueError:
+            print("Debug: Invalid item in answer")
             emit('error', {'message': 'Invalid item in answer.'}); return
 
         player_idx = team_info['players'].index(sid)
+        print(f"Debug: answered_current_round={team_info['answered_current_round']}")
         if team_info['answered_current_round'].get(sid):
+            print("Debug: Player has already answered this round")
             emit('error', {'message': 'You have already answered this round.'}); return
 
         new_answer_db = Answers(
