@@ -6,6 +6,8 @@ from pathlib import Path
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
 def serve(path):
+    print(f"[DEBUG] Serving path: {path}")
+    print(f"[DEBUG] Static folder: {app.static_folder}")
     static_folder_path = app.static_folder
     
     # Handle root path explicitly
