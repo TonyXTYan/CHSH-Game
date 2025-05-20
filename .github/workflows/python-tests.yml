@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main, master ]
 
+# Setting default permissions to read-only
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -44,6 +48,8 @@ jobs:
   release:
     needs: test
     if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    permissions:
+      contents: write  # Required for creating releases
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
