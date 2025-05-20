@@ -4,3 +4,4 @@
 venv
 .ai-generated-md
 .coverage
+.coverage.*

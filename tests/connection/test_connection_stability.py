@@ -22,7 +22,7 @@ class SlowClient(socketio.Client):
 def slow_client(server_thread):
     """Create a Socket.IO client with simulated slow connection."""
     client = SlowClient(delay_min=0.2, delay_max=0.8)
-    client.connect('http://127.0.0.1:5000')
+    client.connect('http://127.0.0.1:8080')
     yield client
     if client.connected:
         client.disconnect()
@@ -47,7 +47,7 @@ def test_slow_client_answer_submission(server_thread, reset_state):
     """Test answer submission with slow client connections."""
     # Create regular client for dashboard
     dashboard = socketio.Client()
-    dashboard.connect('http://127.0.0.1:5000')
+    dashboard.connect('http://127.0.0.1:8080')
     dashboard.emit('register_dashboard')
     time.sleep(0.5)
     
@@ -55,8 +55,8 @@ def test_slow_client_answer_submission(server_thread, reset_state):
     player1 = socketio.Client()
     player2 = SlowClient(delay_min=0.3, delay_max=1.0)
     
-    player1.connect('http://127.0.0.1:5000')
-    player2.connect('http://127.0.0.1:5000')
+    player1.connect('http://127.0.0.1:8080')
+    player2.connect('http://127.0.0.1:8080')
     
     # Create team with regular client
     team_created = threading.Event()
@@ -156,12 +156,12 @@ def test_delayed_server_response(server_thread, reset_state):
     clients = []
     for i in range(5):
         client = socketio.Client()
-        client.connect('http://127.0.0.1:5000')
+        client.connect('http://127.0.0.1:8080')
         clients.append(client)
     
     # Create dashboard
     dashboard = socketio.Client()
-    dashboard.connect('http://127.0.0.1:5000')
+    dashboard.connect('http://127.0.0.1:8080')
     dashboard.emit('register_dashboard')
     
     # Create teams with all clients simultaneously to increase server load
@@ -195,7 +195,7 @@ def test_connection_timeout_recovery(server_thread, reset_state):
     """Test recovery from connection timeout."""
     # Create client and team
     client = socketio.Client()
-    client.connect('http://127.0.0.1:5000')
+    client.connect('http://127.0.0.1:8080')
     
     team_created = threading.Event()
     team_data = {}
@@ -215,7 +215,7 @@ def test_connection_timeout_recovery(server_thread, reset_state):
     
     # Reconnect and try to reactivate team
     new_client = socketio.Client()
-    new_client.connect('http://127.0.0.1:5000')
+    new_client.connect('http://127.0.0.1:8080')
     
     reactivated = threading.Event()
     reactivate_data = {}

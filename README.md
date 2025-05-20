@@ -120,7 +120,7 @@ pip install -r requirements.txt
 
 **Run locally:**
 ```bash
-gunicorn wsgi:app --worker-class eventlet --bind 0.0.0.0:8080
+gunicorn wsgi:app --worker-class eventlet --bind 127.0.0.0:8080
 ```
 Visit [http://localhost:8080/](http://localhost:8080/) for the player view, and [http://localhost:8080/dashboard](http://localhost:8080/dashboard) for the dashboard.
 Feel free to change the port number `8080` in the command above.
@@ -134,7 +134,7 @@ gunicorn wsgi:app --worker-class eventlet
 Untested
 ```bash
 gunicorn wsgi:app --worker-class eventlet --workers 4
-gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
+gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 127.0.0.0:8080
 ```
 
 

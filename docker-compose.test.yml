@@ -7,7 +7,7 @@ services:
       dockerfile: Dockerfile.test
     ports:
       - "8080:8080"
-    command: gunicorn wsgi:app --worker-class eventlet --bind 0.0.0.0:8080
+    command: gunicorn wsgi:app --worker-class eventlet --bind 127.0.0.0:8080
     environment:
       - FLASK_ENV=testing
   

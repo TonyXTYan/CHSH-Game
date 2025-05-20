@@ -14,7 +14,7 @@ def many_clients(server_thread, request):
     for i in range(num_clients):
         client = socketio.Client()
         try:
-            client.connect('http://127.0.0.1:5000')
+            client.connect('http://127.0.0.1:8080')
             clients.append(client)
         except Exception as e:
             print(f"Failed to connect client {i}: {e}")
@@ -91,7 +91,7 @@ def test_rapid_answer_submissions(server_thread, reset_state):
     """Test rapid answer submissions from multiple teams."""
     # Create dashboard
     dashboard = socketio.Client()
-    dashboard.connect('http://127.0.0.1:5000')
+    dashboard.connect('http://127.0.0.1:8080')
     dashboard.emit('register_dashboard')
     time.sleep(0.5)
     
@@ -101,8 +101,8 @@ def test_rapid_answer_submissions(server_thread, reset_state):
         player1 = socketio.Client()
         player2 = socketio.Client()
         
-        player1.connect('http://127.0.0.1:5000')
-        player2.connect('http://127.0.0.1:5000')
+        player1.connect('http://127.0.0.1:8080')
+        player2.connect('http://127.0.0.1:8080')
         
         team_created = threading.Event()
         team_joined = threading.Event()
@@ -198,7 +198,7 @@ def test_concurrent_game_actions(server_thread, reset_state):
     """Test concurrent game actions from multiple clients."""
     # Create dashboard
     dashboard = socketio.Client()
-    dashboard.connect('http://127.0.0.1:5000')
+    dashboard.connect('http://127.0.0.1:8080')
     dashboard.emit('register_dashboard')
     time.sleep(0.5)
     
@@ -208,8 +208,8 @@ def test_concurrent_game_actions(server_thread, reset_state):
         player1 = socketio.Client()
         player2 = socketio.Client()
         
-        player1.connect('http://127.0.0.1:5000')
-        player2.connect('http://127.0.0.1:5000')
+        player1.connect('http://127.0.0.1:8080')
+        player2.connect('http://127.0.0.1:8080')
         
         team_created = threading.Event()
         team_joined = threading.Event()

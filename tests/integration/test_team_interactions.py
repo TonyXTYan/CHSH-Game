@@ -121,7 +121,7 @@ def test_team_reactivation(player_client, reset_state):
     # Disconnect and reconnect
     player_client.disconnect()
     time.sleep(0.5)
-    player_client.connect('http://127.0.0.1:5000')
+    player_client.connect('http://127.0.0.1:8080')
     
     # Try to reactivate the team
     reactivated = threading.Event()

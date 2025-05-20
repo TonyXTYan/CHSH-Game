@@ -11,7 +11,7 @@ def test_player_refresh_before_joining(player_client, reset_state):
     time.sleep(0.5)
     
     # Reconnect
-    player_client.connect('http://127.0.0.1:5000')
+    player_client.connect('http://127.0.0.1:8080')
     assert player_client.connected
     
     # Verify can still create team after refresh
@@ -47,7 +47,7 @@ def test_player_refresh_after_creating_team(player_client, reset_state):
     time.sleep(0.5)
     
     # Reconnect
-    player_client.connect('http://127.0.0.1:5000')
+    player_client.connect('http://127.0.0.1:8080')
     assert player_client.connected
     
     # Try to reactivate the team
@@ -94,7 +94,7 @@ def test_player_refresh_during_game(complete_team, dashboard_client, reset_state
     
     # Reconnect player1
     player1 = socketio.Client()
-    player1.connect('http://127.0.0.1:5000')
+    player1.connect('http://127.0.0.1:8080')
     
     # Try to reactivate the team
     reactivated = threading.Event()
@@ -141,7 +141,7 @@ def test_host_refresh_during_game(complete_team, dashboard_client, reset_state):
     
     # Reconnect dashboard
     dashboard_client = socketio.Client()
-    dashboard_client.connect('http://127.0.0.1:5000')
+    dashboard_client.connect('http://127.0.0.1:8080')
     
     # Register as dashboard
     dashboard_registered = threading.Event()
@@ -172,8 +172,8 @@ def test_both_players_refresh(server_thread, reset_state):
     player1 = socketio.Client()
     player2 = socketio.Client()
     
-    player1.connect('http://127.0.0.1:5000')
-    player2.connect('http://127.0.0.1:5000')
+    player1.connect('http://127.0.0.1:8080')
+    player2.connect('http://127.0.0.1:8080')
     
     team_created = threading.Event()
     team_joined = threading.Event()
@@ -199,7 +199,7 @@ def test_both_players_refresh(server_thread, reset_state):
     
     # Create dashboard and start game
     dashboard = socketio.Client()
-    dashboard.connect('http://127.0.0.1:5000')
+    dashboard.connect('http://127.0.0.1:8080')
     dashboard.emit('register_dashboard')
     time.sleep(0.5)
     
@@ -221,8 +221,8 @@ def test_both_players_refresh(server_thread, reset_state):
     new_player1 = socketio.Client()
     new_player2 = socketio.Client()
     
-    new_player1.connect('http://127.0.0.1:5000')
-    new_player2.connect('http://127.0.0.1:5000')
+    new_player1.connect('http://127.0.0.1:8080')
+    new_player2.connect('http://127.0.0.1:8080')
     
     # First player reactivates the team
     reactivated = threading.Event()
