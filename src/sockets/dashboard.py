@@ -2,6 +2,7 @@ from flask import jsonify
 import math
 from uncertainties import ufloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
+import warnings
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -286,7 +287,15 @@ def get_all_teams():
             # Average of the four diagonal correlations
             raw_trace_avg_ufloat = (1 / 4) * sum_of_cii_ufloats
             # Force the magnitude to be positive
-            trace_average_statistic_ufloat = um.fabs(raw_trace_avg_ufloat)
+            # Suppress UserWarning about std_dev==0 and avoid using deprecated functions
+            with warnings.catch_warnings():
+                warnings.filterwarnings('ignore', message='Using UFloat objects with std_dev==0 may give unexpected results.')
+                # Handle absolute value without using abs() or um.fabs() which are deprecated
+                if raw_trace_avg_ufloat.nominal_value >= 0:
+                    trace_average_statistic_ufloat = raw_trace_avg_ufloat
+                else:
+                    # Create a new ufloat with positive nominal value but same std_dev
+                    trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
 
             # Stat2: CHSH Value Statistic
             chsh_sum_ufloat = ufloat(0, 0)

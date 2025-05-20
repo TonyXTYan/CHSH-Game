@@ -1,10 +1,24 @@
 import pytest
 import sys
 import os
+import warnings
 from unittest.mock import MagicMock
 
 # Add the project root to the path so we can import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Filter specific warnings
+# @pytest.fixture(autouse=True)
+# def filter_warnings():
+#     # Filter warning about uncertainties with std_dev==0
+#     warnings.filterwarnings("ignore", message="Using UFloat objects with std_dev==0 may give unexpected results.")
+#     # Filter warning about deprecated umath.fabs()
+#     warnings.filterwarnings("ignore", message="umath.fabs() is deprecated.")
+#     # Filter warning about deprecated AffineScalarFunc.__abs__()
+#     warnings.filterwarnings("ignore", message="AffineScalarFunc.__abs__() is deprecated.")
+#     # Filter SQLAlchemy deprecation warnings
+#     warnings.filterwarnings("ignore", message="The Query.get() method is considered legacy")
+#     yield
 
 # Mock Flask app and SocketIO
 @pytest.fixture

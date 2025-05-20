@@ -5,6 +5,7 @@ from wsgi import app
 from src.config import socketio, db
 from src.models.quiz_models import Teams
 from src.state import state
+import warnings
 
 @pytest.fixture
 def app_context():
@@ -292,7 +293,8 @@ def test_join_team_success(mock_request_context, active_team):
         on_join_team({'team_name': 'active_team'})
         
         # Verify database updates
-        team = Teams.query.get(active_team.team_id)
+        # Using Session.get() instead of Query.get()
+        team = db.session.get(Teams, active_team.team_id)
         assert team.player2_session_id == 'test_sid'
         
         # Verify state updates

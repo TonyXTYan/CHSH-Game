@@ -76,7 +76,8 @@ def handle_disconnect():
             team_name = state.player_to_team[sid]
             team_info = state.active_teams.get(team_name)
             if team_info:
-                db_team = Teams.query.get(team_info['team_id'])
+                # Using Session.get() instead of Query.get()
+                db_team = db.session.get(Teams, team_info['team_id'])
                 if db_team:
                     # Check if the team was full before this player disconnected
                     was_full_team = len(team_info['players']) == 2
@@ -204,7 +205,8 @@ def on_join_team(data):
         state.player_to_team[sid] = team_name
         join_room(team_name)
         
-        db_team = Teams.query.get(team_info['team_id'])
+        # Using Session.get() instead of Query.get()
+        db_team = db.session.get(Teams, team_info['team_id'])
         if db_team:
             if not db_team.player1_session_id:
                 db_team.player1_session_id = sid
@@ -335,7 +337,8 @@ def on_leave_team(data):
                  del state.player_to_team[sid]
             emit('error', {'message': 'Team info not found, you have been removed.'}); return
 
-        db_team = Teams.query.get(team_info['team_id'])
+        # Using Session.get() instead of Query.get()
+        db_team = db.session.get(Teams, team_info['team_id'])
         if sid in team_info['players']:
             team_info['players'].remove(sid)
             
