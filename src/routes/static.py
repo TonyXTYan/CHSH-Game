@@ -13,8 +13,9 @@ def serve(path):
         return send_from_directory(static_folder_path, 'about.html')
     
     # Prevent path traversal attacks by ensuring the resolved path is within the static folder
-    requested_path = os.path.abspath(os.path.join(static_folder_path, path))
-    if not requested_path.startswith(os.path.abspath(static_folder_path)):
+    requested_path = os.path.realpath(os.path.join(static_folder_path, path))
+    static_folder_realpath = os.path.realpath(static_folder_path)
+    if not requested_path.startswith(static_folder_realpath + os.sep):
         abort(403)  # Forbidden - attempt to access outside of static folder
     
     # Check if the file exists
