@@ -13,13 +13,14 @@ primary_region = 'syd'  # You can choose a region closer to your users
 
 [env]
   PORT = "8080" # The port your app will listen on inside the container
+  FLY_SCALE_TO_ZERO = "1h"
 
 [http_service]
   internal_port = 8080 # Matches the PORT env var
   force_https = true
-  auto_stop_machines = true # Automatically stop machines when idle
-  auto_start_machines = false # Automatically start machines on new requests
-  min_machines_running = 1 # Set to 1 or more for higher availability
+  auto_stop_machines = "suspend" # Automatically stop machines when idle
+  auto_start_machines = true # Automatically start machines on new requests
+  min_machines_running = 0 # Set to 1 or more for higher availability
   processes = ['app']
 
   [http_service.concurrency]

@@ -50,6 +50,54 @@ It allows teams to compete in a game to explore quantum-classical boundaries. Th
 ## The Physics
 TODO 
 
+This game ask players to respond to questions, {A, B} and {X, Y},  
+these correspond a measurement of the Bell state 
+$$
+\left| \psi \right\rangle = \frac{1}{\sqrt{2}} \left( \left| \uparrow_z \uparrow_z \right\rangle + \left| \downarrow_z \downarrow_z \right\rangle \right)
+$$
+in the basis of 
+$$
+\hat \sigma_\theta = \cos(\theta) \hat \sigma_z + \sin(\theta) \hat \sigma_x 
+= \begin{pmatrix}
+\cos(\theta) & \sin(\theta) \\
+\sin(\theta) & -\cos(\theta)  
+\end{pmatrix}
+$$
+where $\hat \sigma_z$ and $\hat \sigma_x$ are the Pauli matrices,
+and
+$$
+\begin{align}
+\begin{cases}
+A: & \theta = 0 \\
+B: & \theta = \frac{\pi}{2}
+\end{cases}
+\quad
+\begin{cases}
+X: & \theta = \frac{+\pi}{4} \\
+Y: & \theta = \frac{-\pi}{4}
+\end{cases}
+\end{align}
+$$
+are the relavent angles of the measurement.
+
+Some algebra excercises can show the expectation value of 
+$$
+\mathcal P(\uparrow_{\theta_A} \uparrow_{\theta_B}) + 
+\mathcal P(\downarrow_{\theta_A} \downarrow_{\theta_B}) -
+\mathcal P(\uparrow_{\theta_A} \downarrow_{\theta_B}) -
+\mathcal P(\downarrow_{\theta_A} \uparrow_{\theta_B}) 
+= 
+\left\langle \hat \sigma_{\theta_A} \hat \sigma_{\theta_B} \right\rangle
+= 
+\cos(\theta_A - \theta_B). 
+$$
+
+Hence getting the CHSH 
+$$
+\mathcal S = E(A, X) + E(A, Y) + E(B, X) - E(B, Y) = 2\sqrt 2.
+$$
+
+
 [CHSH Inequality - Wikipedia](https://en.wikipedia.org/wiki/CHSH_inequality)
 
 [LHVT - Wikipedia](https://en.wikipedia.org/wiki/Local_hidden-variable_theory)
@@ -106,3 +154,4 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 - [ ] optimise server side CPU / RAM utilisation
 - [ ] persistent storage of game state, re-downloadable
 - [ ] multiple game instances
+- [ ] more unit tests, increase coverage for now
