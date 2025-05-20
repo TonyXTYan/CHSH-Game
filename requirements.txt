@@ -24,3 +24,4 @@ gunicorn==23.0.0
 eventlet==0.35.2
 uncertainties==3.2.3
 pytest==8.3.3
+pytest-cov

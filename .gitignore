@@ -3,3 +3,4 @@
 *.db
 venv
 .ai-generated-md
+.coverage
