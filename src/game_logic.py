@@ -5,7 +5,7 @@ from src.models.quiz_models import ItemEnum, PairQuestionRounds, Answers
 from src.state import state
 
 QUESTION_ITEMS = [ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y]
-TARGET_COMBO_REPEATS = 3
+TARGET_COMBO_REPEATS = 2
 
 def start_new_round_for_pair(team_name):
     try:
