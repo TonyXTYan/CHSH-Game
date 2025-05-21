@@ -1,25 +1,20 @@
-import os
-import eventlet
-eventlet.monkey_patch()
-
+# Add throttling constant to config.py
 from flask import Flask
 from flask_socketio import SocketIO
-from src.models.quiz_models import db
+from flask_sqlalchemy import SQLAlchemy
+import os
 
-app = Flask(__name__, static_folder=os.path.join(os.path.dirname(__file__), 'static'))
-app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'asdf#FGSgvasgf$5$WGT')
+# Create Flask app
+app = Flask(__name__)
 
-# Fix for SQLite URL format in render.com
-database_url = os.environ.get('DATABASE_URL')
-if database_url and database_url.startswith('postgres://'):
-    database_url = database_url.replace('postgres://', 'postgresql://', 1)
-
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///' + os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'quiz_app.db')
+# Configure database
+app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('DATABASE_URL', 'sqlite:///chsh_game.db')
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+db = SQLAlchemy(app)
 
-db.init_app(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=5, ping_interval=5)
+# Configure SocketIO
+socketio = SocketIO(app, cors_allowed_origins="*", ping_timeout=60, ping_interval=25)
 
-# Create database tables
-with app.app_context():
-    db.create_all()
+# Dashboard update throttling configuration (1Hz maximum)
+DASHBOARD_UPDATE_THROTTLE_RATE = 1.0  # Maximum updates per second (1Hz)
+DASHBOARD_MIN_UPDATE_INTERVAL = 1.0 / DASHBOARD_UPDATE_THROTTLE_RATE  # Minimum time between updates in seconds

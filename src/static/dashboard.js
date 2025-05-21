@@ -31,6 +31,7 @@ const answerLogTableBody = document.querySelector("#answer-log-table tbody");
 const noAnswersLogMsg = document.getElementById("no-answers-log");
 
 let currentAnswersCount = 0;
+let lastReceivedTeams = []; // Store last received teams data
 
 // Helper function to format statistics with uncertainty
 function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
@@ -144,6 +145,7 @@ window.addEventListener('load', () => {
     const startBtn = document.getElementById("start-game-btn");
     const pauseBtn = document.getElementById("pause-game-btn");
     const gameControlText = document.getElementById("game-control-text");
+    const refreshBtn = document.getElementById("refresh-dashboard-btn");
 
     if (gameStarted) {
         if (startBtn) {
@@ -173,7 +175,31 @@ window.addEventListener('load', () => {
             gameControlText.textContent = "Game Control";
         }
     }
+    
+    // Initialize refresh button
+    if (refreshBtn) {
+        refreshBtn.onclick = requestDashboardRefresh;
+    }
 });
+
+// Function to request immediate dashboard refresh
+function requestDashboardRefresh() {
+    console.log("Requesting dashboard refresh");
+    const refreshBtn = document.getElementById("refresh-dashboard-btn");
+    if (refreshBtn) {
+        refreshBtn.disabled = true;
+        refreshBtn.textContent = "Refreshing...";
+        
+        // Request refresh from server
+        socket.emit("request_dashboard_refresh");
+        
+        // Re-enable button after a short delay
+        setTimeout(() => {
+            refreshBtn.disabled = false;
+            refreshBtn.textContent = "Refresh Dashboard";
+        }, 2000);
+    }
+}
 
 let confirmingStop = false;
 let countdownActive = false;
@@ -354,6 +380,13 @@ socket.on("error", (data) => {
     if (startBtn && startBtn.disabled) {
         resetButtonToInitialState(startBtn);
     }
+    
+    // Reset refresh button if needed
+    const refreshBtn = document.getElementById("refresh-dashboard-btn");
+    if (refreshBtn && refreshBtn.disabled) {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = "Refresh Dashboard";
+    }
 });
 
 socket.on("dashboard_update", (data) => {
@@ -410,7 +443,7 @@ socket.on("dashboard_update", (data) => {
                 startBtn.className = "reset-game";
                 startBtn.onclick = handleResetGame;
             } else if (!data.game_state.started && startBtn.textContent === "Reset game stats") {
-                console.log("Resetting button to Start Game state");
+                console.log("Updating button to Start state");
                 startBtn.disabled = false;
                 startBtn.textContent = "Start Game";
                 startBtn.className = "";
@@ -418,640 +451,463 @@ socket.on("dashboard_update", (data) => {
             }
         }
     }
-});
-
-socket.on("new_answer_for_dashboard", (data) => {
-    console.log("New answer for dashboard:", data);
-    currentAnswersCount++;
-    totalResponsesCountEl.textContent = currentAnswersCount;
     
-    if (answerStreamEnabled) {
-        // The answer data is directly in the data object, not nested under 'answer'
-        addAnswerToLog(data);
-    } else {
-        console.log("Answer received but streaming is disabled - not showing in log");
-    }
-
-    // Refresh team details if this answer is from the currently viewed team
-    if (data.team_id === currentlyViewedTeamId) {
-        // Get fresh team data
-        socket.emit('dashboard_join');
+    // Reset refresh button if it was in refreshing state
+    const refreshBtn = document.getElementById("refresh-dashboard-btn");
+    if (refreshBtn && refreshBtn.disabled) {
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = "Refresh Dashboard";
     }
 });
 
+// Handle partial team updates
 socket.on("team_status_changed_for_dashboard", (data) => {
-    console.log("Team status changed for dashboard:", data);
-    lastReceivedTeams = data.teams;
-    updateActiveTeams(data.teams);
-    updateMetrics(data.teams, currentAnswersCount, data.connected_players_count);
+    console.log("Team status update received:", data);
     
-    // Refresh team details popup if open
-    if (data.teams) {
-        refreshTeamDetailsIfOpen(data.teams);
+    // Update metrics
+    if (data.connected_players_count !== undefined) {
+        connectedPlayersCountEl.textContent = data.connected_players_count;
     }
-});
-
-function updateMetrics(teams, totalAnswers, connectedCount) {
-    if (teams) {
-        // Count active teams
-        const activeTeams = teams.filter(team => team.is_active);
-        activeTeamsCountEl.textContent = activeTeams.length;
-        
-        // Count ready players (only from active teams)
-        let readyPlayerCount = 0;
-        activeTeams.forEach(team => {
-            if(team.player1_sid) readyPlayerCount++;
-            if(team.player2_sid) readyPlayerCount++;
+    
+    if (data.total_answers_count !== undefined) {
+        totalResponsesCountEl.textContent = data.total_answers_count;
+        currentAnswersCount = data.total_answers_count;
+    }
+    
+    // Update teams that have changed
+    if (data.teams && data.teams.length > 0) {
+        // Merge updated teams into lastReceivedTeams
+        data.teams.forEach(updatedTeam => {
+            const existingIndex = lastReceivedTeams.findIndex(team => team.team_id === updatedTeam.team_id);
+            if (existingIndex >= 0) {
+                lastReceivedTeams[existingIndex] = updatedTeam;
+            } else {
+                lastReceivedTeams.push(updatedTeam);
+            }
         });
-        readyPlayersCountEl.textContent = readyPlayerCount;
-    }
-    
-    // Update connected players count
-    if (typeof connectedCount === 'number') {
-        console.log('Updating connected players count:', connectedCount);
-        connectedPlayersCountEl.textContent = connectedCount;
-    }
-    
-    if (totalAnswers !== undefined) {
-        currentAnswersCount = totalAnswers;
-        totalResponsesCountEl.textContent = currentAnswersCount;
-    }
-}
-
-
-// Add event listener for show-inactive toggle
-document.getElementById('show-inactive').addEventListener('change', () => {
-    if (lastReceivedTeams) {
+        
+        // Update the UI with all teams
         updateActiveTeams(lastReceivedTeams);
     }
-});
-
-function updateActiveTeams(teams) {
-    if (!teams) {
-        teams = [];
-    }
-
-    const showInactive = document.getElementById('show-inactive').checked;
-    const sortBy = document.getElementById('sort-teams').value;
     
-    // Filter teams based on status
-    let filteredTeams = showInactive ? teams : teams.filter(team =>
-        team.is_active || team.status === 'waiting_pair'
-    );
-    
-    // Sort teams
-    filteredTeams.sort((a, b) => {
-        if (sortBy === 'status') {
-            if (a.is_active === b.is_active) return 0;
-            return a.is_active ? -1 : 1;
-        } else if (sortBy === 'date') {
-            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+    // Update game state if provided
+    if (data.game_state) {
+        if (data.game_state.started !== undefined) {
+            localStorage.setItem('game_started', data.game_state.started.toString());
         }
-        return a.team_name.localeCompare(b.team_name);
-    });
-    
-    // Show/hide no teams message
-    noActiveTeamsMsg.style.display = filteredTeams.length === 0 ? "block" : "none";
-    activeTeamsTableBody.innerHTML = ""; // Clear existing rows
-
-    // --- BEGIN MODIFICATION: Determine top performers ---
-    let highestBalancedTrTeamId = null;
-    let maxBalancedTrValue = -Infinity;
-    let highestChshTeamId = null;
-    let maxChshValue = -Infinity;
-
-    const eligibleTeams = teams.filter(team => team.min_stats_sig === true);
-
-    eligibleTeams.forEach(team => {
-        const stats = team.correlation_stats;
-
-        // Calculate Balanced |Tr|
-        if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
-            const traceAvg = stats.trace_average_statistic;
-            const balance = stats.same_item_balance;
-            const balancedTr = (traceAvg + balance) / 2;
-            if (balancedTr > maxBalancedTrValue) {
-                maxBalancedTrValue = balancedTr;
-                highestBalancedTrTeamId = team.team_id;
+        if (data.game_state.paused !== undefined) {
+            localStorage.setItem('game_paused', data.game_state.paused.toString());
+            
+            // Update pause button state
+            updatePauseButtonState(data.game_state.paused);
+            
+            // Update game control text
+            const gameControlText = document.getElementById("game-control-text");
+            if (gameControlText) {
+                gameControlText.textContent = data.game_state.paused ? "Game paused" : "Game in progress";
             }
         }
-
-        // Calculate CHSH Value
-        if (stats && typeof stats.cross_term_combination_statistic === 'number') {
-            const chshValue = stats.cross_term_combination_statistic;
-            if (chshValue > maxChshValue) {
-                maxChshValue = chshValue;
-                highestChshTeamId = team.team_id;
-            }
-        }
-    });
-    // --- END MODIFICATION ---
-    
-    filteredTeams.forEach(team => {
-        const row = activeTeamsTableBody.insertRow();
-        row.className = team.is_active ? 'team-row active' : 'team-row inactive';
-        
-        // Team name cell with status indicator
-        const nameCell = row.insertCell();
-        const statusDot = document.createElement('span');
-        let statusClass = 'inactive';
-        if (team.is_active) {
-            statusClass = team.status === 'waiting_pair' ? 'waiting' : 'active';
-        }
-        statusDot.className = `team-status ${statusClass}`;
-        nameCell.appendChild(statusDot);
-        nameCell.appendChild(document.createTextNode(team.team_name));
-        
-        // Status cell
-        let statusText = 'Inactive';
-        if (team.is_active) {
-            statusText = team.status === 'waiting_pair' ? 'Waiting Pair' : 'Active';
-        }
-        row.insertCell().textContent = statusText;
-        row.insertCell().textContent = team.current_round_number || 0;
-        
-        // Statistics significance column
-        const statsCell = row.insertCell();
-        let baseStatus = team.min_stats_sig ? '✅' : '⏳';
-        let awardsString = "";
-
-        if (team.team_id === highestBalancedTrTeamId && highestBalancedTrTeamId !== null) {
-            awardsString += "🎯";
-        }
-        if (team.team_id === highestChshTeamId && highestChshTeamId !== null) {
-            awardsString += (awardsString ? " " : "") + "🏆";
-        }
-        statsCell.textContent = baseStatus + (awardsString ? " " + awardsString : "");
-        statsCell.style.textAlign = 'center';
-        
-        // Add trace_avg column (now Trace Average Statistic)
-        const traceAvgCell = row.insertCell();
-        if (team.correlation_stats) {
-            traceAvgCell.innerHTML = formatStatWithUncertainty(
-                team.correlation_stats.trace_average_statistic,
-                team.correlation_stats.trace_average_statistic_uncertainty
-            );
-            // Retain visual indicator logic if desired, e.g., based on nominal value
-            if (typeof team.correlation_stats.trace_average_statistic === 'number' &&
-                Math.abs(team.correlation_stats.trace_average_statistic) >= 0.5) { // Example, adjust as needed
-                traceAvgCell.style.fontWeight = "bold";
-                traceAvgCell.style.color = "#0022aa"; // Blue
-            }
-        } else {
-            traceAvgCell.innerHTML = "—";
-        }
-        
-        // Add Same Item Balance column
-        const balanceCell = row.insertCell();
-        if (team.correlation_stats && 
-            team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance)) {
-            try {
-                const balanceValue = parseFloat(team.correlation_stats.same_item_balance);
-                const balanceUncertainty = team.correlation_stats.same_item_balance_uncertainty !== undefined ? 
-                                           parseFloat(team.correlation_stats.same_item_balance_uncertainty) : null;
-                balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
-                
-                // Add visual indicator for interesting values
-                if (Math.abs(balanceValue) >= 0.5) {
-                    balanceCell.style.fontWeight = "bold";
-                    balanceCell.style.color = "#0022aa";                }
-            } catch (e) {
-                console.error("Error formatting same_item_balance", e);
-                balanceCell.innerHTML = "Error";
-            }
-        } else {
-            balanceCell.innerHTML = "—";
-        }
-
-        // Add Balanced Random column with robust error handling
-        const balancedRandomCell = row.insertCell();
-        if (team.correlation_stats && 
-            team.correlation_stats.trace_average_statistic !== undefined && 
-            team.correlation_stats.trace_average_statistic !== null && 
-            !isNaN(team.correlation_stats.trace_average_statistic) &&
-            team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance) &&
-            team.correlation_stats.trace_average_statistic_uncertainty !== undefined &&
-            team.correlation_stats.same_item_balance_uncertainty !== undefined) { 
-            try {
-                const traceAvg = parseFloat(team.correlation_stats.trace_average_statistic);
-                const balance = parseFloat(team.correlation_stats.same_item_balance);
-                const balancedRandom = (traceAvg + balance) / 2;
-                
-                const traceAvgUncInput = team.correlation_stats.trace_average_statistic_uncertainty;
-                const balanceUncInput = team.correlation_stats.same_item_balance_uncertainty;
-                let uncBalancedRandom = null;
-
-                if (typeof traceAvgUncInput === 'number' && !isNaN(traceAvgUncInput) &&
-                    typeof balanceUncInput === 'number' && !isNaN(balanceUncInput)) {
-                    const traceAvgUnc = parseFloat(traceAvgUncInput);
-                    const balanceUnc = parseFloat(balanceUncInput);
-                    uncBalancedRandom = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
-                }
-                
-                balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedRandom, uncBalancedRandom);
-            } catch (e) {
-                console.error("Error calculating or formatting balancedRandom", e);
-                balancedRandomCell.innerHTML = "Error";
-            }
-        } else {
-            balancedRandomCell.innerHTML = "—";
-        }
-        
-        // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
-        const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
-        if (team.correlation_stats) {
-            crossTermChshCell.innerHTML = formatStatWithUncertainty(
-                team.correlation_stats.cross_term_combination_statistic,
-                team.correlation_stats.cross_term_combination_statistic_uncertainty
-            );
-             if (typeof team.correlation_stats.cross_term_combination_statistic === 'number') {
-                // Example: Highlight significant CHSH values
-                if (Math.abs(team.correlation_stats.cross_term_combination_statistic) > 2) {
-                    crossTermChshCell.style.fontWeight = "bold";
-                    crossTermChshCell.style.color = team.correlation_stats.cross_term_combination_statistic > 2 ? "green" : "red"; // Green for >2, Red for < -2
-                }
-             }
-        } else {
-            crossTermChshCell.innerHTML = "—";
-        }
-        
-        // Details button cell
-        const detailsCell = row.insertCell();
-        const detailsBtn = document.createElement('button');
-        detailsBtn.className = 'view-details-btn';
-        detailsBtn.textContent = 'View Details';
-        detailsBtn.onclick = () => showTeamDetails(team);
-        detailsCell.appendChild(detailsBtn);
-    });
-}
-
-function addAnswerToLog(answer) {
-    if (!answer) {
-        console.error("Received null or undefined answer object");
-        return;
-    }
-    
-    try {
-        noAnswersLogMsg.style.display = "none";
-        const row = answerLogTableBody.insertRow(0); // Add to top
-        
-        // Handle timestamp with fallback to current time
-        const timestamp = answer.timestamp ? new Date(answer.timestamp) : new Date();
-        row.insertCell().textContent = timestamp.toLocaleTimeString();
-        
-        // Add other fields with null checks
-        row.insertCell().textContent = answer.team_name || '—';
-        row.insertCell().textContent = (answer.player_session_id || '').substring(0, 8) + "...";
-        row.insertCell().textContent = answer.question_round_id || '—';
-        row.insertCell().textContent = answer.assigned_item || '—';
-        row.insertCell().textContent = answer.response_value !== undefined ? answer.response_value : '—';
-        
-        // Limit log size if needed
-        if (answerLogTableBody.rows.length > 100) { // Keep last 100 answers
-            answerLogTableBody.deleteRow(-1);
-        }
-    } catch (error) {
-        console.error("Error adding answer to log:", error, "Answer:", answer);
-    }
-}
-
-function updateAnswerLog(answers) {
-    if (answers && answers.length > 0) {
-        noAnswersLogMsg.style.display = "none";
-        answers.forEach(addAnswerToLog);
-    }
-}
-
-let answerStreamEnabled = false;
-const answerTable = document.getElementById('answer-log-table');
-const noAnswersMsg = document.getElementById('no-answers-log');
-const toggleBtn = document.getElementById('toggle-answers-btn');
-const toggleChevron = document.getElementById('toggle-chevron');
-
-// Initialize to OFF state
-toggleBtn.textContent = 'OFF';
-toggleBtn.className = 'toggle-off';
-answerTable.style.display = 'none';
-noAnswersMsg.style.display = 'none';
-toggleChevron.textContent = '▶';
-
-function updateStreamingUI() {
-    if (answerStreamEnabled) {
-        toggleBtn.textContent = 'ON';
-        toggleBtn.className = 'toggle-on';
-        answerTable.style.display = 'table';
-        toggleChevron.textContent = '▼';
-    } else {
-        toggleBtn.textContent = 'OFF';
-        toggleBtn.className = 'toggle-off';
-        answerTable.style.display = 'none';
-        toggleChevron.textContent = '▶';
-    }
-}
-
-function toggleAnswerStream() {
-    answerStreamEnabled = !answerStreamEnabled;
-    updateStreamingUI();
-}
-
-function togglePause() {
-    const pauseBtn = document.getElementById("pause-game-btn");
-    if (pauseBtn && !pauseBtn.disabled) {
-        pauseBtn.disabled = true;  // Prevent double-click
-        socket.emit("pause_game");
-    }
-}
-
-function updatePauseButtonState(isPaused) {
-    const pauseBtn = document.getElementById("pause-game-btn");
-    if (pauseBtn) {
-        pauseBtn.disabled = false;
-        if (isPaused) {
-            pauseBtn.textContent = "Resume";
-            pauseBtn.classList.add("resume");
-        } else {
-            pauseBtn.textContent = "Pause";
-            pauseBtn.classList.remove("resume");
-        }
-    }
-}
-
-socket.on("game_state_update", (data) => {
-    console.log("Game state update received:", data);
-    if (data.hasOwnProperty('paused')) {
-        updatePauseButtonState(data.paused);
-        document.getElementById("game-control-text").textContent =
-            data.paused ? "Game paused" : "Game in progress";
-        
-        // Persist the current state
-        localStorage.setItem('game_paused', data.paused.toString());
         localStorage.setItem('game_state_last_update', Date.now().toString());
     }
 });
 
+function updatePauseButtonState(isPaused) {
+    const pauseBtn = document.getElementById("pause-game-btn");
+    if (!pauseBtn) return;
+    
+    if (isPaused) {
+        pauseBtn.textContent = "Resume";
+        pauseBtn.className = "resume-game";
+    } else {
+        pauseBtn.textContent = "Pause";
+        pauseBtn.className = "";
+    }
+}
+
 function startGame() {
     const startBtn = document.getElementById("start-game-btn");
-    if (startBtn && !startBtn.disabled) {
-        startBtn.disabled = true;  // Prevent double-click
-        socket.emit("start_game");
-    }
+    startBtn.disabled = true;
+    startBtn.textContent = "Starting...";
+    socket.emit("start_game");
 }
 
-async function downloadData() {
-    try {
-        const response = await fetch('/api/dashboard/data');
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
+function togglePause() {
+    socket.emit("pause_game");
+}
+
+// Update active teams table
+function updateActiveTeams(teams) {
+    if (!teams || !Array.isArray(teams)) {
+        console.error("Invalid teams data:", teams);
+        return;
+    }
+    
+    // Filter teams based on checkbox
+    const showInactive = document.getElementById("show-inactive").checked;
+    const filteredTeams = showInactive ? teams : teams.filter(team => team.is_active);
+    
+    // Sort teams based on dropdown
+    const sortBy = document.getElementById("sort-teams").value;
+    filteredTeams.sort((a, b) => {
+        if (sortBy === "name") {
+            return a.team_name.localeCompare(b.team_name);
+        } else if (sortBy === "date") {
+            return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        } else { // status
+            // First by active/inactive
+            if (a.is_active !== b.is_active) {
+                return a.is_active ? -1 : 1;
+            }
+            // Then by paired/unpaired
+            const aPaired = a.player1_sid && a.player2_sid;
+            const bPaired = b.player1_sid && b.player2_sid;
+            if (aPaired !== bPaired) {
+                return aPaired ? -1 : 1;
+            }
+            // Then by name
+            return a.team_name.localeCompare(b.team_name);
         }
-        const data = await response.json();
-        
-        // Convert data to CSV
-        const csvRows = [];
-        csvRows.push(['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/X/Y)', 'Answer (True/False)']);
-        
-        data.answers.forEach(answer => {
-            csvRows.push([
-                new Date(answer.timestamp).toLocaleString(),
-                answer.team_name,
-                answer.team_id,
-                answer.player_session_id, // Use full SID for CSV export
-                answer.question_round_id,
-                answer.assigned_item,
-                answer.response_value
-            ]);
-        });
-        
-        // Generate CSV content
-        const csvContent = csvRows.map(row => row.join(',')).join('\n');
-        
-        // Create and trigger download
-        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-        const link = document.createElement('a');
-        link.href = URL.createObjectURL(blob);
-        link.setAttribute('download', 'chsh-game-data.csv');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (error) {
-        console.error('Error downloading data:', error);
-        alert('Error downloading data. Please try again.');
-    }
-}
-
-// Track current team details popup state
-let currentlyViewedTeamId = null;
-let isDetailsPopupOpen = false;
-
-// Function to update team details modal content
-function updateModalContent(team) {
-    const modalTeamName = document.getElementById('modal-team-name');
-    const modalTeamId = document.getElementById('modal-team-id');
-    const modalPlayer1Sid = document.getElementById('modal-player1-sid');
-    const modalPlayer2Sid = document.getElementById('modal-player2-sid');
-    const modalHash1 = document.getElementById('modal-hash1');
-    const modalHash2 = document.getElementById('modal-hash2');
-    const correlationTable = document.getElementById('correlation-matrix-table');
-    const modalChshValue = document.getElementById('modal-chsh-value'); // New ID from HTML (was modal-chsh-stat2)
-    const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh'); // New ID from HTML (was modal-chsh-stat3)
+    });
     
-    // Set team name in modal
-    modalTeamName.textContent = team.team_name;
-
-    // Set team details
-    modalTeamId.textContent = team.team_id;
-    modalPlayer1Sid.textContent = team.player1_sid || "—";
-    modalPlayer2Sid.textContent = team.player2_sid || "—";
+    // Update table
+    activeTeamsTableBody.innerHTML = "";
     
-    // Set hash values
-    modalHash1.textContent = team.history_hash1 || "—";
-    modalHash2.textContent = team.history_hash2 || "—";
-    
-    // Clear existing correlation matrix
-    correlationTable.innerHTML = '';
-
-    // Populate correlation matrix table if available with validation
-    if (team.correlation_matrix && team.correlation_labels && 
-        Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
-        team.correlation_matrix.length > 0 && team.correlation_labels.length > 0 &&
-        team.correlation_matrix.length === team.correlation_labels.length &&
-        team.correlation_matrix.every(row => Array.isArray(row) && row.length === team.correlation_labels.length)) {
+    if (filteredTeams.length === 0) {
+        noActiveTeamsMsg.style.display = "block";
+        activeTeamsCountEl.textContent = "0";
+    } else {
+        noActiveTeamsMsg.style.display = "none";
         
-        try {
-            const labels = team.correlation_labels;
-            const numLabels = labels.length;
-            const matrixData = team.correlation_matrix;
-
-            // Create thead and tbody elements for better structure (optional but good practice)
-            // However, to minimize changes to existing patterns, we'll append rows directly to the table.
-
-            // Row 0: Player 2 Label
-            const player2LabelRow = correlationTable.insertRow();
-            player2LabelRow.insertCell(); // Empty cell for Player 1 vertical label column
-            player2LabelRow.insertCell(); // Empty cell above Row Item Labels for Player 1
-            const player2Th = document.createElement('th');
-            player2Th.colSpan = numLabels;
-            player2Th.textContent = 'Player 2';
-            player2Th.style.textAlign = 'center';
-            player2LabelRow.appendChild(player2Th);
-
-            // Row 1: Column Item Labels (A, B, X, Y for Player 2)
-            const columnItemLabelRow = correlationTable.insertRow();
-            columnItemLabelRow.insertCell(); // Empty cell for Player 1 vertical label column
-            const cornerTh = document.createElement('th'); // Empty top-left cell of the actual data matrix part
-            columnItemLabelRow.appendChild(cornerTh);
-
-            labels.forEach(label => {
-                const th = document.createElement('th');
-                th.textContent = label || '?';
-                th.classList.add('corr-matrix-col-item-label'); // Added class
-                columnItemLabelRow.appendChild(th);
-            });
+        // Count active teams and ready players
+        const activeTeams = teams.filter(team => team.is_active);
+        activeTeamsCountEl.textContent = activeTeams.length;
+        
+        // Count players in active teams
+        let readyPlayersCount = 0;
+        for (const team of activeTeams) {
+            if (team.player1_sid) readyPlayersCount++;
+            if (team.player2_sid) readyPlayersCount++;
+        }
+        readyPlayersCountEl.textContent = readyPlayersCount;
+        
+        // Populate table
+        for (const team of filteredTeams) {
+            const row = document.createElement("tr");
             
-            // Add data rows
-            matrixData.forEach((rowData, rowIndex) => {
-                if (rowIndex >= numLabels) return; // Should be caught by earlier checks
-
-                const dataRow = correlationTable.insertRow();
-
-                // Player 1 Vertical Label (only in the first data row, spans all data rows)
-                if (rowIndex === 0) {
-                    const player1Th = document.createElement('th');
-                    player1Th.rowSpan = numLabels;
-                    player1Th.textContent = 'Player 1';
-                    player1Th.classList.add('corr-matrix-player1-label');
-                    dataRow.appendChild(player1Th);
-                }
-
-                // Row Item Label (A, B, X, Y for Player 1)
-                const rowItemLabelTh = document.createElement('th');
-                rowItemLabelTh.textContent = labels[rowIndex] || '?';
-                rowItemLabelTh.classList.add('corr-matrix-row-item-label'); // Added class
-                dataRow.appendChild(rowItemLabelTh);
+            // Determine status text and class
+            let statusText, statusClass;
+            if (!team.is_active) {
+                statusText = "Inactive";
+                statusClass = "status-inactive";
+            } else if (team.status === "waiting_pair") {
+                statusText = "Waiting for pair";
+                statusClass = "status-waiting";
+            } else if (team.status === "active") {
+                statusText = "Active";
+                statusClass = "status-active";
+            } else {
+                statusText = team.status || "Unknown";
+                statusClass = "status-unknown";
+            }
+            
+            // Format statistics with uncertainty
+            const traceAvg = formatStatWithUncertainty(
+                team.correlation_stats?.trace_average_statistic,
+                team.correlation_stats?.trace_average_statistic_uncertainty
+            );
+            
+            const balance = formatStatWithUncertainty(
+                team.correlation_stats?.same_item_balance,
+                team.correlation_stats?.same_item_balance_uncertainty
+            );
+            
+            // Calculate balanced trace (trace * balance)
+            let balancedTrace = "—";
+            if (typeof team.correlation_stats?.trace_average_statistic === 'number' &&
+                typeof team.correlation_stats?.same_item_balance === 'number') {
+                const balancedValue = team.correlation_stats.trace_average_statistic * 
+                                     team.correlation_stats.same_item_balance;
                 
-                // Add correlation values
-                if (Array.isArray(rowData)) {
-                    rowData.forEach(cellTuple => { // cellTuple is [numerator, denominator]
-                        const cell = dataRow.insertCell();
-                        cell.classList.add('corr-matrix-data-cell'); // Added class
-                        if (Array.isArray(cellTuple) && cellTuple.length === 2) {
-                            const num = parseFloat(cellTuple[0]);
-                            const den = parseFloat(cellTuple[1]);
-
-                            if (isNaN(num) || isNaN(den)) {
-                                cell.textContent = "—"; // Invalid data in tuple
-                            } else if (den !== 0) {
-                                cell.textContent = (num / den).toFixed(3);
-                            } else if (num !== 0 && den === 0) {
-                                cell.textContent = "Inf"; // Infinity
-                            } else { // num is 0 and den is 0, or other unhandled cases
-                                cell.textContent = "—"; // Or "0.000" if 0/0 should be 0
-                            }
-                        } else {
-                             // Fallback if cellTuple is not the expected [num, den] array
-                            cell.textContent = "—";
-                        }
-                    });
-                } else {
-                    // Fill row with placeholders if rowData is not an array
-                    for (let i = 0; i < numLabels; i++) {
-                        const cell = dataRow.insertCell();
-                        cell.classList.add('corr-matrix-data-cell'); // Added class
-                        cell.textContent = "—";
-                    }
+                // Simplified uncertainty calculation (product rule)
+                let balancedUncertainty = null;
+                if (typeof team.correlation_stats?.trace_average_statistic_uncertainty === 'number' &&
+                    typeof team.correlation_stats?.same_item_balance_uncertainty === 'number') {
+                    
+                    const relUncTrace = team.correlation_stats.trace_average_statistic_uncertainty / 
+                                       Math.abs(team.correlation_stats.trace_average_statistic || 1);
+                    
+                    const relUncBalance = team.correlation_stats.same_item_balance_uncertainty /
+                                         Math.abs(team.correlation_stats.same_item_balance || 1);
+                    
+                    balancedUncertainty = Math.abs(balancedValue) * Math.sqrt(relUncTrace*relUncTrace + relUncBalance*relUncBalance);
                 }
-            });
-        } catch (error) {
-            console.error("Error rendering correlation matrix:", error);
-            correlationTable.innerHTML = ''; // Clear partially rendered table on error
-            const errorRow = correlationTable.insertRow();
-            const errorCell = errorRow.insertCell();
-            // Adjust colspan based on the new table structure: 1 (P1) + 1 (Row Labels) + numLabels (Data)
-            errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 3; 
-            errorCell.textContent = "Error rendering correlation data";
-            errorCell.style.textAlign = "center";
-            errorCell.style.padding = "10px";
+                
+                balancedTrace = formatStatWithUncertainty(balancedValue, balancedUncertainty);
+            }
+            
+            const chshValue = formatStatWithUncertainty(
+                team.correlation_stats?.chsh_value_statistic,
+                team.correlation_stats?.chsh_value_statistic_uncertainty
+            );
+            
+            // Create row content
+            row.innerHTML = `
+                <td>${team.team_name}</td>
+                <td class="${statusClass}">${statusText}</td>
+                <td>${team.current_round_number || 0}</td>
+                <td>${team.min_stats_sig ? "✓" : "✗"}</td>
+                <td>${traceAvg}</td>
+                <td>${balance}</td>
+                <td>${balancedTrace}</td>
+                <td>${chshValue}</td>
+                <td><button class="details-btn" onclick="showTeamDetails('${team.team_id}')">Details</button></td>
+            `;
+            
+            activeTeamsTableBody.appendChild(row);
         }
-    } else {
-        const errorRow = correlationTable.insertRow();
-        const errorCell = errorRow.insertCell();
-        // Adjust colspan based on the new table structure (assuming 0 labels if none provided)
-        errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
-        errorCell.textContent = "No correlation data available";
-        errorCell.classList.add('corr-matrix-error-cell');
-    }
-
-    // Populate CHSH Statistics in modal
-    if (team.correlation_stats) {
-        modalChshValue.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.chsh_value_statistic,
-            team.correlation_stats.chsh_value_statistic_uncertainty
-        );
-        modalCrossTermChsh.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.cross_term_combination_statistic,
-            team.correlation_stats.cross_term_combination_statistic_uncertainty
-        );
-    } else {
-        modalChshValue.innerHTML = "—";
-        modalCrossTermChsh.innerHTML = "—";
     }
 }
 
-// Function to close team details modal
-function closeTeamDetails() {
-    const modal = document.getElementById('team-details-modal');
-    currentlyViewedTeamId = null;
-    isDetailsPopupOpen = false;
-    if (modal) {
-        modal.style.display = 'none';
+// Global variable to track current team details being viewed
+let currentTeamDetailsId = null;
+
+// Show team details in modal
+function showTeamDetails(teamId) {
+    const team = lastReceivedTeams.find(t => t.team_id === teamId);
+    if (!team) {
+        console.error(`Team with ID ${teamId} not found`);
+        return;
     }
     
-    // Clean up event listener
-    if (window._modalClickHandler) {
-        window.removeEventListener('click', window._modalClickHandler);
-        window._modalClickHandler = null; // Clear the stored handler
+    currentTeamDetailsId = teamId;
+    
+    // Populate modal with team details
+    document.getElementById("modal-team-name").textContent = team.team_name;
+    document.getElementById("modal-team-id").textContent = team.team_id;
+    document.getElementById("modal-player1-sid").textContent = team.player1_sid || "—";
+    document.getElementById("modal-player2-sid").textContent = team.player2_sid || "—";
+    document.getElementById("modal-hash1").textContent = team.history_hash1 || "—";
+    document.getElementById("modal-hash2").textContent = team.history_hash2 || "—";
+    
+    // Format CHSH values with uncertainty
+    document.getElementById("modal-chsh-value").innerHTML = formatStatWithUncertainty(
+        team.correlation_stats?.chsh_value_statistic,
+        team.correlation_stats?.chsh_value_statistic_uncertainty
+    );
+    
+    document.getElementById("modal-cross-term-chsh").innerHTML = formatStatWithUncertainty(
+        team.correlation_stats?.cross_term_combination_statistic,
+        team.correlation_stats?.cross_term_combination_statistic_uncertainty
+    );
+    
+    // Populate correlation matrix
+    const matrixTable = document.getElementById("correlation-matrix-table");
+    matrixTable.innerHTML = "";
+    
+    if (team.correlation_matrix && team.correlation_labels) {
+        // Create header row with labels
+        const headerRow = document.createElement("tr");
+        headerRow.innerHTML = "<th></th>"; // Empty corner cell
+        
+        for (const label of team.correlation_labels) {
+            headerRow.innerHTML += `<th>${label}</th>`;
+        }
+        matrixTable.appendChild(headerRow);
+        
+        // Create data rows
+        for (let i = 0; i < team.correlation_matrix.length; i++) {
+            const row = document.createElement("tr");
+            row.innerHTML = `<th>${team.correlation_labels[i]}</th>`;
+            
+            for (let j = 0; j < team.correlation_matrix[i].length; j++) {
+                const [num, den] = team.correlation_matrix[i][j];
+                let cellContent;
+                
+                if (den === 0) {
+                    cellContent = "—";
+                } else {
+                    const value = num / den;
+                    const uncertainty = 1 / Math.sqrt(den);
+                    cellContent = formatStatWithUncertainty(value, uncertainty);
+                }
+                
+                row.innerHTML += `<td>${cellContent}</td>`;
+            }
+            
+            matrixTable.appendChild(row);
+        }
+    } else {
+        matrixTable.innerHTML = "<tr><td>No correlation data available</td></tr>";
     }
+    
+    // Show modal
+    document.getElementById("team-details-modal").style.display = "block";
 }
 
-// Function to refresh team details if modal is open
+// Refresh team details if modal is open
 function refreshTeamDetailsIfOpen(teams) {
-    if (!isDetailsPopupOpen || !currentlyViewedTeamId) return;
-    
-    const updatedTeam = teams.find(t => t.team_id === currentlyViewedTeamId);
-    if (updatedTeam) {
-        updateModalContent(updatedTeam);
-    }
-}
-
-// Function to show team details in modal
-function showTeamDetails(team) {
-    currentlyViewedTeamId = team.team_id;
-    isDetailsPopupOpen = true;
-
-    // Show the modal first
-    const modal = document.getElementById('team-details-modal');
-
-    // Re‑use the existing helper to populate every field (team info, CHSH stats,
-    // correlation matrix, etc.) instead of duplicating that logic here.
-    updateModalContent(team);
-
-    modal.style.display = 'block';
-
-    // Close‑button handler
-    const closeModalBtn = modal.querySelector('.close-modal');
-    closeModalBtn.onclick = closeTeamDetails;
-
-    // Click‑outside‑to‑close logic (ensure only one listener)
-    if (window._modalClickHandler) {
-        window.removeEventListener('click', window._modalClickHandler);
-    }
-    window._modalClickHandler = function (event) {
-        if (event.target === modal) {
-            closeTeamDetails();
+    if (currentTeamDetailsId) {
+        const updatedTeam = teams.find(t => t.team_id === currentTeamDetailsId);
+        if (updatedTeam) {
+            showTeamDetails(currentTeamDetailsId);
         }
-    };
-    window.addEventListener('click', window._modalClickHandler);
+    }
 }
+
+// Close modal when clicking X or outside
+document.querySelector(".close-modal").addEventListener("click", () => {
+    document.getElementById("team-details-modal").style.display = "none";
+    currentTeamDetailsId = null;
+});
+
+window.addEventListener("click", (event) => {
+    const modal = document.getElementById("team-details-modal");
+    if (event.target === modal) {
+        modal.style.display = "none";
+        currentTeamDetailsId = null;
+    }
+});
+
+// Update metrics
+function updateMetrics(activeTeams, totalAnswers, connectedPlayers) {
+    if (typeof connectedPlayers === 'number') {
+        connectedPlayersCountEl.textContent = connectedPlayers;
+    }
+    
+    if (typeof totalAnswers === 'number') {
+        totalResponsesCountEl.textContent = totalAnswers;
+        currentAnswersCount = totalAnswers;
+    }
+}
+
+// Handle answer log
+let answerStreamEnabled = false;
+
+function toggleAnswerStream() {
+    answerStreamEnabled = !answerStreamEnabled;
+    updateStreamingUI();
+    socket.emit("toggle_answer_stream", { enabled: answerStreamEnabled });
+}
+
+function updateStreamingUI() {
+    const toggleBtn = document.getElementById("toggle-answers-btn");
+    const chevron = document.getElementById("toggle-chevron");
+    
+    if (answerStreamEnabled) {
+        toggleBtn.textContent = "ON";
+        toggleBtn.className = "toggle-on";
+        chevron.textContent = "▼";
+    } else {
+        toggleBtn.textContent = "OFF";
+        toggleBtn.className = "toggle-off";
+        chevron.textContent = "▶";
+    }
+}
+
+// Add new answer to log
+socket.on("new_answer", (data) => {
+    if (!answerStreamEnabled) return;
+    
+    const row = document.createElement("tr");
+    const timestamp = new Date(data.timestamp).toLocaleTimeString();
+    
+    row.innerHTML = `
+        <td>${timestamp}</td>
+        <td>${data.team_name}</td>
+        <td>${data.player_sid.substring(0, 6)}...</td>
+        <td>${data.round_id}</td>
+        <td>${data.item}</td>
+        <td>${data.response ? "True" : "False"}</td>
+    `;
+    
+    // Add to top of table
+    if (answerLogTableBody.firstChild) {
+        answerLogTableBody.insertBefore(row, answerLogTableBody.firstChild);
+    } else {
+        answerLogTableBody.appendChild(row);
+    }
+    
+    // Limit to 100 rows
+    while (answerLogTableBody.children.length > 100) {
+        answerLogTableBody.removeChild(answerLogTableBody.lastChild);
+    }
+    
+    // Hide "no answers" message
+    noAnswersLogMsg.style.display = "none";
+    
+    // Update total count
+    currentAnswersCount++;
+    totalResponsesCountEl.textContent = currentAnswersCount;
+});
+
+// Update answer log with recent answers
+function updateAnswerLog(answers) {
+    if (!answers || !Array.isArray(answers) || !answerStreamEnabled) return;
+    
+    // Clear existing log if we're getting a full refresh
+    if (answers.length > 0) {
+        answerLogTableBody.innerHTML = "";
+        noAnswersLogMsg.style.display = "none";
+    }
+    
+    // Add answers in reverse order (newest first)
+    for (let i = answers.length - 1; i >= 0; i--) {
+        const data = answers[i];
+        const row = document.createElement("tr");
+        const timestamp = new Date(data.timestamp).toLocaleTimeString();
+        
+        row.innerHTML = `
+            <td>${timestamp}</td>
+            <td>${data.team_name}</td>
+            <td>${data.player_sid.substring(0, 6)}...</td>
+            <td>${data.round_id}</td>
+            <td>${data.item}</td>
+            <td>${data.response ? "True" : "False"}</td>
+        `;
+        
+        answerLogTableBody.appendChild(row);
+    }
+    
+    // Limit to 100 rows
+    while (answerLogTableBody.children.length > 100) {
+        answerLogTableBody.removeChild(answerLogTableBody.lastChild);
+    }
+}
+
+// Filter and sort handlers
+document.getElementById("show-inactive").addEventListener("change", () => {
+    updateActiveTeams(lastReceivedTeams);
+});
+
+document.getElementById("sort-teams").addEventListener("change", () => {
+    updateActiveTeams(lastReceivedTeams);
+});
+
+// Download data as CSV
+function downloadData() {
+    socket.emit("request_data_download", {}, (response) => {
+        if (response && response.csv_data) {
+            // Create blob and download
+            const blob = new Blob([response.csv_data], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.style.display = 'none';
+            a.href = url;
+            a.download = 'chsh_game_data.csv';
+            document.body.appendChild(a);
+            a.click();
+            window.URL.revokeObjectURL(url);
+        } else {
+            alert("Error downloading data. Please try again.");
+        }
+    });
+}
+
+// Make functions available globally
+window.showTeamDetails = showTeamDetails;
+window.toggleAnswerStream = toggleAnswerStream;
+window.downloadData = downloadData;
+window.startGame = startGame;
+window.togglePause = togglePause;
+window.handleResetGame = handleResetGame;
+window.requestDashboardRefresh = requestDashboardRefresh;

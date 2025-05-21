@@ -3,7 +3,7 @@ import math
 from uncertainties import ufloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
 import warnings
-from src.config import app, socketio, db
+from src.config import app, socketio, db, DASHBOARD_UPDATE_THROTTLE_RATE, DASHBOARD_MIN_UPDATE_INTERVAL
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
 from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
@@ -11,9 +11,17 @@ from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
 from time import time
 import hashlib
+import json
+import copy
 
 # Store last activity time for each dashboard client
 dashboard_last_activity = {}
+
+# Throttling and batching variables
+last_update_time = 0  # Last time an update was sent
+pending_updates = {}  # Store pending updates by team_id
+teams_with_changes = set()  # Track which teams have changes
+force_update_clients = set()  # Track clients requesting immediate updates
 
 @socketio.on('keep_alive')
 def on_keep_alive():
@@ -417,15 +425,160 @@ def get_all_teams():
         traceback.print_exc()
         return []
 
+# Function to check if team data has changed significantly
+def has_team_data_changed(old_data, new_data):
+    if not old_data:
+        return True
+    
+    # Check for basic changes in team status or player composition
+    if (old_data.get('is_active') != new_data.get('is_active') or
+        old_data.get('status') != new_data.get('status') or
+        old_data.get('player1_sid') != new_data.get('player1_sid') or
+        old_data.get('player2_sid') != new_data.get('player2_sid') or
+        old_data.get('current_round_number') != new_data.get('current_round_number')):
+        return True
+    
+    # Check for significant changes in statistics
+    old_stats = old_data.get('correlation_stats', {})
+    new_stats = new_data.get('correlation_stats', {})
+    
+    # Check if any key statistics have changed by more than 1%
+    key_stats = ['trace_average_statistic', 'chsh_value_statistic', 'same_item_balance']
+    for stat in key_stats:
+        old_val = old_stats.get(stat, 0)
+        new_val = new_stats.get(stat, 0)
+        
+        # If either value is zero, check if they're different
+        if old_val == 0 or new_val == 0:
+            if old_val != new_val:
+                return True
+        # Otherwise check for percentage change
+        elif abs((new_val - old_val) / old_val) > 0.01:  # 1% change threshold
+            return True
+    
+    return False
+
+# Throttled update function
+def throttled_dashboard_update():
+    global last_update_time, pending_updates, teams_with_changes, force_update_clients
+    
+    current_time = time()
+    time_since_last_update = current_time - last_update_time
+    
+    # Check if we should send an update (either due to time or forced update)
+    if (time_since_last_update >= DASHBOARD_MIN_UPDATE_INTERVAL or force_update_clients):
+        try:
+            # Get all teams data
+            all_teams = get_all_teams()
+            
+            # If we have forced updates, send full update to those clients
+            if force_update_clients:
+                with app.app_context():
+                    total_answers = Answers.query.count()
+                
+                # For forced updates, send all teams
+                update_data = {
+                    'teams': all_teams,
+                    'total_answers_count': total_answers,
+                    'connected_players_count': len(state.connected_players),
+                    'game_state': {
+                        'started': state.game_started,
+                        'paused': state.game_paused,
+                        'streaming_enabled': state.answer_stream_enabled
+                    }
+                }
+                
+                # Send to clients that requested immediate update
+                for client_sid in force_update_clients:
+                    if client_sid in state.dashboard_clients:
+                        socketio.emit('dashboard_update', update_data, room=client_sid)
+                
+                # Clear the force update set after sending
+                force_update_clients.clear()
+                
+                # Update the last update time
+                last_update_time = current_time
+                
+                # Update pending_updates with latest data
+                for team_data in all_teams:
+                    if 'team_id' in team_data:
+                        pending_updates[team_data['team_id']] = copy.deepcopy(team_data)
+                
+                # Clear teams with changes since we just sent everything
+                teams_with_changes.clear()
+                
+            # Otherwise, check for regular updates with changed teams
+            elif teams_with_changes:
+                # Check which teams have changes compared to pending_updates
+                updated_teams = []
+                for team_data in all_teams:
+                    if 'team_id' not in team_data:
+                        continue  # Skip teams without team_id
+                        
+                    team_id = team_data['team_id']
+                    
+                    # If this team has changes, include it
+                    if team_id in teams_with_changes:
+                        updated_teams.append(team_data)
+                        # Store the latest data for this team
+                        pending_updates[team_id] = copy.deepcopy(team_data)
+                
+                # If we have teams with changes, send the update
+                if updated_teams:
+                    with app.app_context():
+                        total_answers = Answers.query.count()
+                    
+                    # Prepare update data with only changed teams
+                    update_data = {
+                        'teams': updated_teams,
+                        'total_answers_count': total_answers,
+                        'connected_players_count': len(state.connected_players),
+                        'game_state': {
+                            'started': state.game_started,
+                            'paused': state.game_paused,
+                            'streaming_enabled': state.answer_stream_enabled
+                        }
+                    }
+                    
+                    # Send to all dashboard clients
+                    for dash_sid in state.dashboard_clients:
+                        socketio.emit('team_status_changed_for_dashboard', update_data, room=dash_sid)
+                    
+                    # Reset the teams with changes
+                    teams_with_changes.clear()
+                    
+                    # Update the last update time
+                    last_update_time = current_time
+                
+        except Exception as e:
+            print(f"Error in throttled_dashboard_update: {str(e)}")
+            import traceback
+            traceback.print_exc()
+    
+    # If we didn't send an update but have pending changes, schedule another check
+    elif teams_with_changes:
+        # This would be handled by the game loop or a scheduler in a real implementation
+        pass
+
+# Replace the original emit functions with throttled versions
 def emit_dashboard_team_update():
     try:
-        serialized_teams = get_all_teams()
-        update_data = {
-            'teams': serialized_teams,
-            'connected_players_count': len(state.connected_players)
-        }
-        for sid in state.dashboard_clients:
-            socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
+        # Get current teams data
+        current_teams = get_all_teams()
+        
+        # Check for changes compared to last sent data
+        for team_data in current_teams:
+            if 'team_id' not in team_data:
+                continue  # Skip teams without team_id
+                
+            team_id = team_data['team_id']
+            if team_id not in pending_updates or has_team_data_changed(pending_updates[team_id], team_data):
+                teams_with_changes.add(team_id)
+                # Store the pending update
+                pending_updates[team_id] = copy.deepcopy(team_data)
+        
+        # Trigger the throttled update mechanism
+        throttled_dashboard_update()
     except Exception as e:
         print(f"Error in emit_dashboard_team_update: {str(e)}")
         import traceback
@@ -433,24 +586,16 @@ def emit_dashboard_team_update():
 
 def emit_dashboard_full_update(client_sid=None):
     try:
-        with app.app_context():
-            total_answers = Answers.query.count()
-
-        update_data = {
-            'teams': get_all_teams(),
-            'total_answers_count': total_answers,
-            'connected_players_count': len(state.connected_players),
-            'game_state': {
-                'started': state.game_started,
-                'paused': state.game_paused,
-                'streaming_enabled': state.answer_stream_enabled
-            }
-        }
         if client_sid:
-            socketio.emit('dashboard_update', update_data, room=client_sid)
+            # If a specific client requested an update, force immediate update for that client
+            force_update_clients.add(client_sid)
         else:
+            # For broadcast updates, force update for all dashboard clients
             for dash_sid in state.dashboard_clients:
-                socketio.emit('dashboard_update', update_data, room=dash_sid)
+                force_update_clients.add(dash_sid)
+        
+        # Trigger the throttled update mechanism
+        throttled_dashboard_update()
     except Exception as e:
         print(f"Error in emit_dashboard_full_update: {str(e)}")
         import traceback
@@ -467,33 +612,46 @@ def on_dashboard_join(data=None, callback=None):
         dashboard_last_activity[sid] = time()
         print(f"Dashboard client connected: {sid}")
         
-        # Whenever a dashboard client joins, emit updated status to all dashboards
-        emit_dashboard_full_update()
-        
-        # Prepare update data
-        with app.app_context():
-            total_answers = Answers.query.count()
-        update_data = {
-            'teams': get_all_teams(),
-            'total_answers_count': total_answers,
-            'connected_players_count': len(state.connected_players),
-            'game_state': {
-                'started': state.game_started,
-                'streaming_enabled': state.answer_stream_enabled
-            }
-        }
+        # Force an immediate update for this client
+        emit_dashboard_full_update(sid)
         
         # If callback provided, use it to return data directly
         if callback:
+            # Get all data for the callback
+            with app.app_context():
+                total_answers = Answers.query.count()
+            
+            update_data = {
+                'teams': get_all_teams(),
+                'total_answers_count': total_answers,
+                'connected_players_count': len(state.connected_players),
+                'game_state': {
+                    'started': state.game_started,
+                    'streaming_enabled': state.answer_stream_enabled
+                }
+            }
             callback(update_data)
-        else:
-            # Otherwise emit as usual
-            socketio.emit('dashboard_update', update_data, room=sid)
     except Exception as e:
         print(f"Error in on_dashboard_join: {str(e)}")
         import traceback
         traceback.print_exc()
         emit('error', {'message': f'Error joining dashboard: {str(e)}'})
+
+@socketio.on('request_dashboard_refresh')
+def on_request_dashboard_refresh():
+    try:
+        from flask import request
+        sid = request.sid
+        
+        if sid in state.dashboard_clients:
+            print(f"Dashboard refresh requested by {sid}")
+            # Force an immediate full update for this client
+            emit_dashboard_full_update(sid)
+    except Exception as e:
+        print(f"Error in on_request_dashboard_refresh: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        emit('error', {'message': f'Error refreshing dashboard: {str(e)}'})
 
 @socketio.on('start_game')
 def on_start_game(data=None):
@@ -559,6 +717,8 @@ def on_disconnect():
             state.dashboard_clients.remove(sid)
             if sid in dashboard_last_activity:
                 del dashboard_last_activity[sid]
+            if sid in force_update_clients:
+                force_update_clients.remove(sid)
     except Exception as e:
         print(f"Error in on_disconnect: {str(e)}")
         import traceback
@@ -600,55 +760,36 @@ def on_restart_game():
             emit_dashboard_full_update()
             emit('game_reset_complete', room=request.sid)
             return
-        
-        # Reset team state after successful database clear
-        for team_name, team_info in state.active_teams.items():
-            if team_info:  # Validate team info exists
-                team_info['current_round_number'] = 0
-                team_info['current_db_round_id'] = None
-                team_info['answered_current_round'] = {}
-                team_info['combo_tracker'] = {}
-        
-        # Notify all teams about the reset
-        for team_name in state.active_teams.keys():
+
+        # Reset all active teams
+        for team_name, team_info in list(state.active_teams.items()):
+            # Reset round number
+            team_info['current_round_number'] = 0
+            # Reset combo tracker
+            team_info['combo_tracker'] = {}
+            # Reset status
+            if 'status' in team_info:
+                team_info['status'] = 'active'
+            
+            # Notify team members that game has been reset
             socketio.emit('game_reset', room=team_name)
-        
-        # Ensure all clients are notified of the state change
+            
+            # If team has two players, notify them that they are paired
+            if len(team_info['players']) == 2:
+                socketio.emit('team_paired', room=team_name)
+
+        # Notify all clients about game state change
         socketio.emit('game_state_changed', {'game_started': False})
         
         # Update dashboard with reset state
         emit_dashboard_full_update()
-
-        # Notify dashboard clients that reset is complete
-        print("Emitting game_reset_complete to all dashboard clients")
-        for dash_sid in state.dashboard_clients:
-            socketio.emit('game_reset_complete', room=dash_sid)
-            
+        
+        # Notify the dashboard client that reset is complete
+        emit('game_reset_complete', room=request.sid)
+        
     except Exception as e:
         print(f"Error in on_restart_game: {str(e)}")
         import traceback
         traceback.print_exc()
         emit('error', {'message': f'Error restarting game: {str(e)}'})
-
-@app.route('/api/dashboard/data', methods=['GET'])
-def get_dashboard_data():
-    try:
-        all_answers = Answers.query.order_by(Answers.timestamp.asc()).all()
-        answers_data = [
-            {
-                'answer_id': ans.answer_id,
-                'team_id': ans.team_id,
-                'team_name': Teams.query.get(ans.team_id).team_name if Teams.query.get(ans.team_id) else 'N/A',
-                'player_session_id': ans.player_session_id,
-                'question_round_id': ans.question_round_id,
-                'assigned_item': ans.assigned_item.value,
-                'response_value': ans.response_value,
-                'timestamp': ans.timestamp.isoformat()
-            } for ans in all_answers
-        ]
-        return jsonify({'answers': answers_data}), 200
-    except Exception as e:
-        print(f"Error in get_dashboard_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'error': str(e)}), 500
+        emit('game_reset_complete', room=request.sid)
