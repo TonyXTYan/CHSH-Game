@@ -105,7 +105,7 @@ class LoadTestConfig(BaseModel):
     max_rounds_per_team: int = Field(
         default=50,
         ge=5,
-        le=200,
+        le=2000,
         description="Maximum rounds per team before stopping"
     )
     
