@@ -26,7 +26,7 @@ It allows teams to compete in a game to explore quantum-classical boundaries. Th
     - Host: [chsh-game.***fly.dev***/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.on***render.com***/dashboard](https://chsh-game.onrender.com/dashboard))
     - Player: [chsh-game.***fly.dev***](https://chsh-game.fly.dev) ([chsh-game.on***render.com***](https://chsh-game.onrender.com))
 
-![Player QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=0&frame_text=SCAN%20ME&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=https%3A%2F%2Fchsh-game.fly.dev&width=300&height=300&bordersize=2)
+![Player QR Code](booa)
 
 
 

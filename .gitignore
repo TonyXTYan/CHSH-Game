@@ -4,3 +4,4 @@
 venv
 .ai-generated-md
 .coverage
+load_test_results/*

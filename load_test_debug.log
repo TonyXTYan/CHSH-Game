@@ -1,0 +1,569 @@
+2025-06-21 18:29:40 | INFO     | load_test.team_manager:create_players:70 - Creating 4 players for 2 teams
+2025-06-21 18:29:40 | INFO     | load_test.team_manager:establish_connections:95 - Establishing connections using gradual strategy
+2025-06-21 18:29:40 | INFO     | load_test.team_manager:_connect_gradual:163 - Connecting players gradually at 10/second
+2025-06-21 18:29:40 | DEBUG    | load_test.player:connection_established:139 - Player player_0001 connection established: {'game_started': False, 'available_teams': []}
+2025-06-21 18:29:40 | DEBUG    | load_test.player:connect:128 - Player player_0001 Socket.io connected
+2025-06-21 18:29:40 | DEBUG    | load_test.player:connect:104 - Player player_0001 connected in 0.02s
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connection_established:139 - Player player_0002 connection established: {'game_started': False, 'available_teams': []}
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connect:128 - Player player_0002 Socket.io connected
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connect:104 - Player player_0002 connected in 0.01s
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connection_established:139 - Player player_0003 connection established: {'game_started': False, 'available_teams': []}
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connect:128 - Player player_0003 Socket.io connected
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connect:104 - Player player_0003 connected in 0.01s
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connection_established:139 - Player player_0004 connection established: {'game_started': False, 'available_teams': []}
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connect:128 - Player player_0004 Socket.io connected
+2025-06-21 18:29:41 | DEBUG    | load_test.player:connect:104 - Player player_0004 connected in 0.01s
+2025-06-21 18:29:41 | DEBUG    | load_test.team_manager:_connect_gradual:179 - Connected 4/4 players (4 successful)
+2025-06-21 18:29:41 | INFO     | load_test.team_manager:_connect_gradual:186 - Gradual connection: 4/4 successful (100.0%)
+2025-06-21 18:29:41 | INFO     | load_test.team_manager:create_teams:202 - Creating 2 teams
+2025-06-21 18:29:41 | INFO     | load_test.team_manager:create_teams:231 - Created 2 teams
+2025-06-21 18:29:41 | INFO     | load_test.team_manager:_execute_team_creation:273 - Executing team creation on server
+2025-06-21 18:29:41 | DEBUG    | load_test.player:team_created:156 - Player player_0001 created team YellowgreenGriffith-468
+2025-06-21 18:29:41 | DEBUG    | load_test.player:team_joined:165 - Player player_0002 joined team YellowgreenGriffith-468
+2025-06-21 18:29:42 | DEBUG    | load_test.team_manager:_execute_team_creation:303 - Team YellowgreenGriffith-468 created and paired successfully (1/2)
+2025-06-21 18:29:42 | DEBUG    | load_test.player:team_created:156 - Player player_0003 created team StevenBrown807
+2025-06-21 18:29:42 | DEBUG    | load_test.player:team_joined:165 - Player player_0004 joined team StevenBrown807
+2025-06-21 18:29:42 | DEBUG    | load_test.team_manager:_execute_team_creation:303 - Team StevenBrown807 created and paired successfully (2/2)
+2025-06-21 18:29:43 | INFO     | load_test.team_manager:_execute_team_creation:311 - Successfully created and paired 2/2 teams
+2025-06-21 18:29:43 | INFO     | load_test.dashboard:connect:46 - Connecting dashboard simulator...
+2025-06-21 18:29:43 | DEBUG    | load_test.dashboard:connect:88 - Dashboard Socket.io connected
+2025-06-21 18:29:43 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=False
+2025-06-21 18:29:43 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=False
+2025-06-21 18:29:45 | INFO     | load_test.dashboard:connect:70 - Dashboard simulator connected successfully
+2025-06-21 18:29:45 | INFO     | load_test.dashboard:wait_for_teams:155 - Waiting for 2 teams to be ready...
+2025-06-21 18:29:45 | DEBUG    | load_test.dashboard:wait_for_teams:166 - Teams status: 2 active, 2 full
+2025-06-21 18:29:45 | INFO     | load_test.dashboard:wait_for_teams:169 - All 2 teams are ready!
+2025-06-21 18:29:45 | INFO     | load_test.dashboard:start_game:193 - Starting game via dashboard...
+2025-06-21 18:29:45 | DEBUG    | load_test.player:game_start:171 - Player player_0001 game started
+2025-06-21 18:29:45 | DEBUG    | load_test.player:game_start:171 - Player player_0002 game started
+2025-06-21 18:29:45 | DEBUG    | load_test.player:game_start:171 - Player player_0003 game started
+2025-06-21 18:29:45 | DEBUG    | load_test.player:game_start:171 - Player player_0004 game started
+2025-06-21 18:29:45 | INFO     | load_test.dashboard:game_started:121 - Dashboard received game start confirmation
+2025-06-21 18:29:45 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 1, Item Y
+2025-06-21 18:29:45 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 1, Item A
+2025-06-21 18:29:45 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 1, Item A
+2025-06-21 18:29:45 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 1, Item A
+2025-06-21 18:29:45 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:45 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:45 | INFO     | load_test.dashboard:start_game:207 - Game started successfully!
+2025-06-21 18:29:47 | INFO     | load_test.team_manager:monitor_game_progress:344 - Monitoring game progress...
+2025-06-21 18:29:47 | INFO     | load_test.dashboard:monitor_dashboard:298 - Starting dashboard monitoring for 30s...
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.50s)
+2025-06-21 18:29:49 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 1 answer received
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:29:49 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 1 answer received
+2025-06-21 18:29:49 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 1
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:29:49 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 1
+2025-06-21 18:29:49 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 1 answer received
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 2, Item X
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 2, Item A
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:49 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 1 answer received
+2025-06-21 18:29:49 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 1
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:29:49 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 1
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 2, Item B
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:49 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 2, Item Y
+2025-06-21 18:29:49 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:29:54 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 2 answer received
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: True (delay: 4.50s)
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:29:54 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 2 answer received
+2025-06-21 18:29:54 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 2
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:29:54 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 2
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 3, Item X
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 3, Item X
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:54 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 2 answer received
+2025-06-21 18:29:54 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 2
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:29:54 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 2 answer received
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 3, Item A
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:54 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 2
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:29:54 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 3, Item A
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:54 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 3.86s)
+2025-06-21 18:29:58 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 3 answer received
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:29:58 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 3 answer received
+2025-06-21 18:29:58 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 3
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:29:58 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 3 answer received
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 4, Item Y
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:58 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 3
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 4, Item Y
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:58 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 3 answer received
+2025-06-21 18:29:58 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 3
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:29:58 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 3
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 4, Item B
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:29:58 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 4, Item B
+2025-06-21 18:29:58 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:03 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 4 answer received
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 4 answer received
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:03 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 4
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:03 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 4
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 5, Item B
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 5, Item X
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 4 answer received
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 4 answer received
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:03 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 4
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 4
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 5, Item X
+2025-06-21 18:30:03 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:03 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 5, Item Y
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=True
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.19s)
+2025-06-21 18:30:07 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 5 answer received
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=True
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=True
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.47s)
+2025-06-21 18:30:07 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 5 answer received
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:07 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 5 answer received
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:07 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 5
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:07 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 5
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 6, Item B
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 6, Item A
+2025-06-21 18:30:07 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 5 answer received
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:07 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 5
+2025-06-21 18:30:07 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 5
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 6, Item B
+2025-06-21 18:30:07 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 6, Item Y
+2025-06-21 18:30:07 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:12 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 6 answer received
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:12 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 6 answer received
+2025-06-21 18:30:12 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 6
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:12 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 6
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 7, Item A
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 7, Item Y
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:12 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 6 answer received
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:12 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 6 answer received
+2025-06-21 18:30:12 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 6
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:12 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 6
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 7, Item B
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:12 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 7, Item A
+2025-06-21 18:30:12 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:16 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:16 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:17 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 7 answer received
+2025-06-21 18:30:17 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 7
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:17 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 7 answer received
+2025-06-21 18:30:17 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 8, Item B
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:17 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 7
+2025-06-21 18:30:17 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:17 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:17 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 8, Item A
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:17 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 7 answer received
+2025-06-21 18:30:17 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 7
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:17 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 7 answer received
+2025-06-21 18:30:17 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 8, Item B
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:17 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 7
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:17 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 8, Item B
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:17 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:17 | INFO     | load_test.team_manager:_log_progress_report:370 - Progress: 4 players connected, 28 rounds completed, 28 answers submitted
+2025-06-21 18:30:17 | INFO     | load_test.dashboard:monitor_dashboard:314 - Dashboard monitoring completed
+2025-06-21 18:30:20 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 3.58s)
+2025-06-21 18:30:20 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 8 answer received
+2025-06-21 18:30:20 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:20 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: True (delay: 4.26s)
+2025-06-21 18:30:21 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 8 answer received
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:21 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 8
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:21 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 8
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 9, Item Y
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 9, Item B
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:21 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 8 answer received
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:21 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 8 answer received
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:21 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 8
+2025-06-21 18:30:21 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 8
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 9, Item B
+2025-06-21 18:30:21 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 9, Item B
+2025-06-21 18:30:21 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:25 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.25s)
+2025-06-21 18:30:25 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 9 answer received
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:25 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:25 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 9 answer received
+2025-06-21 18:30:25 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 9
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:25 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 9
+2025-06-21 18:30:25 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 10, Item X
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:25 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 10, Item A
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:25 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.44s)
+2025-06-21 18:30:25 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 9 answer received
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:25 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:26 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:26 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 9 answer received
+2025-06-21 18:30:26 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:26 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 9
+2025-06-21 18:30:26 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:26 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 9
+2025-06-21 18:30:26 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 10, Item B
+2025-06-21 18:30:26 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:26 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 10, Item B
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:30 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 10 answer received
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:30 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 10 answer received
+2025-06-21 18:30:30 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 10
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:30 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 10
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 11, Item Y
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 11, Item B
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:30 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 10 answer received
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:30 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 10 answer received
+2025-06-21 18:30:30 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 10
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:30 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 10
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 11, Item B
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:30 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 11, Item A
+2025-06-21 18:30:30 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:34 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 3.84s)
+2025-06-21 18:30:34 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 11 answer received
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:34 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:34 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:34 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 11 answer received
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:34 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 11 answer received
+2025-06-21 18:30:34 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 11
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:34 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 11
+2025-06-21 18:30:34 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 12, Item Y
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:34 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 12, Item X
+2025-06-21 18:30:34 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:35 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:35 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 11 answer received
+2025-06-21 18:30:35 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:35 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 11
+2025-06-21 18:30:35 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 11
+2025-06-21 18:30:35 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:35 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 12, Item Y
+2025-06-21 18:30:35 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 12, Item Y
+2025-06-21 18:30:35 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.23s)
+2025-06-21 18:30:39 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 12 answer received
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:39 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 12 answer received
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:39 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 12 answer received
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:39 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 12
+2025-06-21 18:30:39 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 12
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 13, Item A
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 13, Item B
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:39 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 12 answer received
+2025-06-21 18:30:39 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 12
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:39 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 12
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 13, Item B
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:39 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 13, Item Y
+2025-06-21 18:30:39 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:43 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:43 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:43 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 13 answer received
+2025-06-21 18:30:43 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:43 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:43 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 13 answer received
+2025-06-21 18:30:43 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 13
+2025-06-21 18:30:43 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:43 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 13
+2025-06-21 18:30:43 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 14, Item X
+2025-06-21 18:30:43 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:43 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 14, Item A
+2025-06-21 18:30:43 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:44 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:44 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:44 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 13 answer received
+2025-06-21 18:30:44 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:44 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:44 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 13 answer received
+2025-06-21 18:30:44 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:44 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 13
+2025-06-21 18:30:44 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:44 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 13
+2025-06-21 18:30:44 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 14, Item B
+2025-06-21 18:30:44 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:44 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 14, Item Y
+2025-06-21 18:30:47 | INFO     | load_test.team_manager:_log_progress_report:370 - Progress: 4 players connected, 52 rounds completed, 52 answers submitted
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:48 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 14 answer received
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:48 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 14 answer received
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:48 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 14
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:48 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 14
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 15, Item A
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 15, Item X
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:48 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 14 answer received
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:48 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 14 answer received
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:48 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 14
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:48 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 14
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 15, Item Y
+2025-06-21 18:30:48 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:48 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 15, Item B
+2025-06-21 18:30:52 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.23s)
+2025-06-21 18:30:52 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 15 answer received
+2025-06-21 18:30:52 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:52 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:52 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:52 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 15 answer received
+2025-06-21 18:30:52 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:52 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 15
+2025-06-21 18:30:52 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 15
+2025-06-21 18:30:52 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:52 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 16, Item B
+2025-06-21 18:30:52 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 16, Item X
+2025-06-21 18:30:52 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:53 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:53 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:53 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 15 answer received
+2025-06-21 18:30:53 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:53 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:53 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 15 answer received
+2025-06-21 18:30:53 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 15
+2025-06-21 18:30:53 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:53 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 15
+2025-06-21 18:30:53 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 16, Item X
+2025-06-21 18:30:53 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:53 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 16, Item Y
+2025-06-21 18:30:53 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: False (delay: 4.50s)
+2025-06-21 18:30:57 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 16 answer received
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 16 answer received
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:30:57 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 16
+2025-06-21 18:30:57 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 16
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 17, Item B
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 17, Item A
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 4.45s)
+2025-06-21 18:30:57 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 16 answer received
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:30:57 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 16 answer received
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:30:57 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 16
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 16
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 17, Item A
+2025-06-21 18:30:57 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:30:57 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 17, Item X
+2025-06-21 18:31:01 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.21s)
+2025-06-21 18:31:01 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 17 answer received
+2025-06-21 18:31:01 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:31:01 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:01 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: True (delay: 4.50s)
+2025-06-21 18:31:01 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 17 answer received
+2025-06-21 18:31:01 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:31:01 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 17
+2025-06-21 18:31:01 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:01 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 17
+2025-06-21 18:31:01 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 18, Item X
+2025-06-21 18:31:01 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:01 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 18, Item Y
+2025-06-21 18:31:02 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:31:02 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:31:02 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 17 answer received
+2025-06-21 18:31:02 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:31:02 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:02 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 17 answer received
+2025-06-21 18:31:02 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 17
+2025-06-21 18:31:02 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:31:02 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 17
+2025-06-21 18:31:02 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 18, Item B
+2025-06-21 18:31:02 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:02 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 18, Item Y
+2025-06-21 18:31:02 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.50s)
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:31:06 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 18 answer received
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:06 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 18 answer received
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:31:06 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 18
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:06 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 18
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 19, Item X
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 19, Item B
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: True (delay: 4.50s)
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: False (delay: 4.50s)
+2025-06-21 18:31:06 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 18 answer received
+2025-06-21 18:31:06 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 18
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:31:06 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 18 answer received
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 19, Item A
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:06 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 18
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:31:06 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 19, Item B
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:06 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:10 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0001 submitted answer: False (delay: 3.40s)
+2025-06-21 18:31:10 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0001 answer confirmed: Round 19 answer received
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:10 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0004 submitted answer: False (delay: 4.19s)
+2025-06-21 18:31:10 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0004 answer confirmed: Round 19 answer received
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:10 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0003 submitted answer: True (delay: 4.50s)
+2025-06-21 18:31:10 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0003 answer confirmed: Round 19 answer received
+2025-06-21 18:31:10 | DEBUG    | load_test.player:round_complete:189 - Player player_0003 completed round 19
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team StevenBrown807
+2025-06-21 18:31:10 | DEBUG    | load_test.player:round_complete:189 - Player player_0004 completed round 19
+2025-06-21 18:31:10 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0003 received question: Round 20, Item Y
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:10 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0004 received question: Round 20, Item A
+2025-06-21 18:31:10 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:11 | DEBUG    | load_test.player:_handle_new_question:316 - Player player_0002 submitted answer: True (delay: 4.50s)
+2025-06-21 18:31:11 | DEBUG    | load_test.player:answer_confirmed:182 - Player player_0002 answer confirmed: Round 19 answer received
+2025-06-21 18:31:11 | DEBUG    | load_test.player:round_complete:189 - Player player_0002 completed round 19
+2025-06-21 18:31:11 | DEBUG    | load_test.dashboard:new_answer_for_dashboard:133 - Dashboard received answer from team YellowgreenGriffith-468
+2025-06-21 18:31:11 | DEBUG    | load_test.player:round_complete:189 - Player player_0001 completed round 19
+2025-06-21 18:31:11 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0002 received question: Round 20, Item X
+2025-06-21 18:31:11 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:11 | DEBUG    | load_test.player:_handle_new_question:286 - Player player_0001 received question: Round 20, Item Y
+2025-06-21 18:31:11 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:132 - Player player_0001 Socket.io disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:132 - Player player_0002 Socket.io disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:132 - Player player_0003 Socket.io disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=True
+2025-06-21 18:31:14 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:132 - Player player_0004 Socket.io disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=True
+2025-06-21 18:31:14 | DEBUG    | load_test.dashboard:team_status_changed_for_dashboard:115 - Team status update: 2 teams
+2025-06-21 18:31:14 | DEBUG    | load_test.dashboard:disconnect:92 - Dashboard Socket.io disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.dashboard:dashboard_update:108 - Dashboard update: 2 teams, game_started=True
+2025-06-21 18:31:14 | INFO     | load_test.orchestrator:shutdown:287 - Initiating graceful shutdown...
+2025-06-21 18:31:14 | INFO     | load_test.team_manager:shutdown:400 - Shutting down team manager...
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:374 - Player player_0001 disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:374 - Player player_0002 disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:374 - Player player_0003 disconnected
+2025-06-21 18:31:14 | DEBUG    | load_test.player:disconnect:374 - Player player_0004 disconnected
+2025-06-21 18:31:14 | INFO     | load_test.team_manager:shutdown:412 - Team manager shutdown complete
+2025-06-21 18:31:14 | INFO     | load_test.orchestrator:shutdown:302 - Shutdown complete
+2025-06-21 18:31:14 | INFO     | load_test.reporter:_save_detailed_data:375 - Detailed data saved to: load_test_results

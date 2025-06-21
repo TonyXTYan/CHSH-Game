@@ -1,0 +1,36 @@
+# CHSH Game Load Test Configuration
+# Sample configuration file for load testing
+
+# Server Configuration
+# deployment_url: "http://localhost:8080"
+deployment_url: "https://chsh-game.fly.dev"
+
+# Load Parameters
+num_teams: 100                    # Number of teams to create (200 players total)
+
+# Connection Strategy
+connection_strategy: "gradual"    # Options: gradual, burst, immediate
+connections_per_second: 10        # For gradual strategy
+burst_size: 50                    # For burst strategy
+
+# Response Simulation
+response_pattern: "human_like"    # Options: random, burst, steady, human_like
+min_response_delay: 0.2           # Minimum response delay in seconds
+max_response_delay: 2.0           # Maximum response delay in seconds
+
+# Test Duration & Limits
+max_test_duration: 300            # Maximum test duration in seconds (5 minutes)
+max_rounds_per_team: 1000           # Maximum rounds per team before stopping
+connection_timeout: 5.0          # Socket.io connection timeout
+answer_timeout: 3.0               # Answer submission timeout
+
+# Output & Reporting
+output_format: "console"          # Options: console, json, csv
+save_results: true                # Save detailed results to files
+results_dir: "./load_test_results" # Directory to save results
+log_level: "INFO"                 # Options: DEBUG, INFO, WARNING, ERROR
+
+# Advanced Options
+enable_dashboard_simulation: false # Simulate dashboard game control
+simulate_disconnections: false    # Randomly simulate player disconnections
+disconnection_rate: 0.05          # Probability of random disconnection per player
