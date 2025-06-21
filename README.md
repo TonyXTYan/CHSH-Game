@@ -5,13 +5,13 @@
 [![cicd](https://img.shields.io/github/actions/workflow/status/TonyXTYan/CHSH-Game/python-tests.yml?label=ci%20cd&logo=githubactions&logoColor=white)](https://github.com/TonyXTYan/CHSH-Game/actions/workflows/python-tests.yml)
 [![Codecov](https://img.shields.io/codecov/c/github/TonyXTYan/CHSH-Game?token=4A0LZVD95V&logo=codecov&logoColor=white)](https://app.codecov.io/gh/TonyXTYan/CHSH-Game/)
 
-[![Python](https://img.shields.io/badge/python-black.svg?style=flat&logo=python&logoColor=white&labelColor=black)](https://docs.python.org/3/whatsnew/3.12.html)
+[![Python](https://img.shields.io/badge/python-3.11-grey.svg?style=flat&logo=python&logoColor=white&labelColor=black)](https://docs.python.org/3/whatsnew/3.12.html)
 [![Socket.io](https://img.shields.io/badge/socket.io-black?logo=socketdotio&logoColor=white)](https://socket.io/)
 [![Flask](https://img.shields.io/badge/flask-black?logo=flask&logoColor=white)](https://flask.palletsprojects.com/)
 [![Gunicorn](https://img.shields.io/badge/gunicorn-black?logo=gunicorn&logoColor=white)](https://gunicorn.org/)
 [![render](https://img.shields.io/badge/render-black?logo=render&logoColor=white)](https://render.com/)
 [![Fly.io](https://img.shields.io/badge/fly.io-black?logo=flydotio&logoColor=white)](https://fly.io/)
-
+[![Eventlet](https://img.shields.io/badge/eventlet-black?logo=eventlet&logoColor=white)](https://eventlet.net/)
 
 
 
@@ -31,7 +31,7 @@ It allows teams to compete in a game to explore quantum-classical boundaries. Th
 
 
 ## How to play
-- The game is designed to be played in a group setting, such as a classroom, auditorium, or at pubs.
+- The game is designed to be played in a group setting, such as a classroom, auditorium, or at pubs. 
 
 - To play this game, you need **at least two players** (one team of two), the more the better. 
     - Each round, every players in a team receive a randomly selected questions (**A**,**B**,**X**,**Y**), each player gets their own random question.
@@ -143,8 +143,7 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 
 
 
-# TODO
-- [ ] details stats shouldn't stream, should be on request, it also needs auto update upon team stats change
+# TODOs
 - [ ] button clear all inactive teams
 - [ ] perhaps use cookies to store game state?
 - [ ] compact rows
@@ -159,3 +158,8 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 - [ ] persistent storage of game state, re-downloadable, maybe use browser storage too?
 - [ ] multiple game instances on multiple server machines
 - [ ] more unit tests, increase coverage for now
+- [ ] bug in the two CHSH value calc, once should be lower by 1/sqrt(2) ??
+
+# Harder TODOs
+- [ ] details stats shouldn't stream, should be on request, it also needs auto update upon team stats change
+- [ ] batch load dashboard, i.e. don't instant update
