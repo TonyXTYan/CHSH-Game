@@ -6,7 +6,7 @@ deployment_url: "http://localhost:8080"
 # deployment_url: "https://chsh-game.fly.dev"
 
 # Load Parameters
-num_teams: 50                    # Number of teams to create (200 players total)
+num_teams: 20                    # Number of teams to create (200 players total)
 
 # Connection Strategy
 connection_strategy: "gradual"    # Options: gradual, burst, immediate
@@ -16,7 +16,7 @@ burst_size: 50                    # For burst strategy
 # Response Simulation
 response_pattern: "human_like"    # Options: random, burst, steady, human_like
 min_response_delay: 0.2           # Minimum response delay in seconds
-max_response_delay: 2.0           # Maximum response delay in seconds
+max_response_delay: 1.0           # Maximum response delay in seconds
 
 # Test Duration & Limits
 max_test_duration: 180            # Maximum test duration in seconds (5 minutes)

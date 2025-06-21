@@ -3,6 +3,8 @@ import math
 from uncertainties import ufloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
 import warnings
+import functools
+import logging
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -17,6 +19,80 @@ import io
 # Store last activity time for each dashboard client
 dashboard_last_activity = {}
 
+# Cache invalidation and monitoring functions
+#
+# IMPORTANT: get_all_teams() contains dynamic data that changes with:
+# - Answer submissions (correlation stats, round numbers, team status)
+# - Team operations (player join/leave, team creation/deletion)
+# - Game state changes (start/pause/reset)
+# Therefore, get_all_teams cache must be invalidated frequently to maintain data consistency.
+def get_cache_stats():
+    """Return cache statistics for monitoring"""
+    stats = {}
+    
+    # Get stats for each cached function
+    if hasattr(compute_correlation_matrix, 'cache_info'):
+        stats['compute_correlation_matrix'] = compute_correlation_matrix.cache_info()._asdict()
+    
+    if hasattr(compute_team_hashes, 'cache_info'):
+        stats['compute_team_hashes'] = compute_team_hashes.cache_info()._asdict()
+    
+    if hasattr(get_all_teams, 'cache_info'):
+        stats['get_all_teams'] = get_all_teams.cache_info()._asdict()
+    
+    return stats
+
+def invalidate_all_dashboard_caches():
+    """Clear all dashboard-related caches"""
+    try:
+        if hasattr(compute_correlation_matrix, 'cache_clear'):
+            compute_correlation_matrix.cache_clear()
+        if hasattr(compute_team_hashes, 'cache_clear'):
+            compute_team_hashes.cache_clear()
+        if hasattr(get_all_teams, 'cache_clear'):
+            get_all_teams.cache_clear()
+        logging.info("All dashboard caches cleared")
+    except Exception as e:
+        logging.error(f"Error clearing all dashboard caches: {str(e)}")
+
+def invalidate_team_correlation_cache(team_id):
+    """Clear correlation cache for specific team only"""
+    try:
+        # Unfortunately, functools.lru_cache doesn't support selective invalidation
+        # So we need to clear the entire correlation cache
+        # In a production system, consider using a more sophisticated caching solution
+        if hasattr(compute_correlation_matrix, 'cache_clear'):
+            compute_correlation_matrix.cache_clear()
+        if hasattr(compute_team_hashes, 'cache_clear'):
+            compute_team_hashes.cache_clear()
+        logging.info(f"Team correlation cache cleared for team_id: {team_id}")
+    except Exception as e:
+        logging.error(f"Error clearing team correlation cache for team_id {team_id}: {str(e)}")
+
+def invalidate_teams_list_cache():
+    """Clear get_all_teams cache - this contains dynamic team data that changes frequently"""
+    try:
+        if hasattr(get_all_teams, 'cache_clear'):
+            get_all_teams.cache_clear()
+        # Also clear correlation caches since get_all_teams calls them internally
+        if hasattr(compute_correlation_matrix, 'cache_clear'):
+            compute_correlation_matrix.cache_clear()
+        if hasattr(compute_team_hashes, 'cache_clear'):
+            compute_team_hashes.cache_clear()
+        logging.info("Teams list cache and dependent caches cleared")
+    except Exception as e:
+        logging.error(f"Error clearing teams list cache: {str(e)}")
+
+def log_cache_stats():
+    """Log cache statistics for monitoring"""
+    try:
+        stats = get_cache_stats()
+        for func_name, cache_stats in stats.items():
+            hit_rate = cache_stats['hits'] / (cache_stats['hits'] + cache_stats['misses']) if (cache_stats['hits'] + cache_stats['misses']) > 0 else 0
+            logging.info(f"Cache stats for {func_name}: hits={cache_stats['hits']}, misses={cache_stats['misses']}, hit_rate={hit_rate:.2%}, current_size={cache_stats['currsize']}, max_size={cache_stats['maxsize']}")
+    except Exception as e:
+        logging.error(f"Error logging cache stats: {str(e)}")
+
 @socketio.on('keep_alive')
 def on_keep_alive():
     try:
@@ -30,6 +106,7 @@ def on_keep_alive():
         import traceback
         traceback.print_exc()
 
+@functools.lru_cache(maxsize=256, typed=False)
 def compute_team_hashes(team_id):
     return "disabled", "disabled"
     # # This function is disabled for now due to performance concerns
@@ -60,6 +137,7 @@ def compute_team_hashes(team_id):
     #     print(f"Error computing team hashes: {str(e)}")
     #     return "ERROR", "ERROR"
 
+@functools.lru_cache(maxsize=512, typed=False)
 def compute_correlation_matrix(team_id):
     try:
         # Get all rounds and their corresponding answers for this team
@@ -192,6 +270,7 @@ def compute_correlation_matrix(team_id):
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
+
 def compute_correlation_stats(team_id): # NOT USED
     try:
         # Get the correlation matrix and new metrics
@@ -243,6 +322,7 @@ def compute_correlation_stats(team_id): # NOT USED
         return 0.0, 0.0, 0.0
 
 
+@functools.lru_cache(maxsize=8, typed=False)
 def get_all_teams():
     try:
         # Query all teams from database
@@ -433,6 +513,15 @@ def emit_dashboard_team_update():
         }
         for sid in state.dashboard_clients:
             socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
+        
+        # Log cache statistics periodically (every 10th call)
+        if hasattr(emit_dashboard_team_update, '_call_count'):
+            emit_dashboard_team_update._call_count += 1
+        else:
+            emit_dashboard_team_update._call_count = 1
+            
+        if emit_dashboard_team_update._call_count % 10 == 0:
+            log_cache_stats()
     except Exception as e:
         print(f"Error in emit_dashboard_team_update: {str(e)}")
         import traceback
@@ -585,6 +674,9 @@ def on_restart_game():
         state.game_started = False
         # print("Set game_started=False")
         
+        # Clear all caches before database operations
+        invalidate_all_dashboard_caches()
+        
         # Even if there are no active teams, clear the database
         try:
             # Clear database entries within a transaction
@@ -656,6 +748,54 @@ def get_dashboard_data():
         return jsonify({'answers': answers_data}), 200
     except Exception as e:
         print(f"Error in get_dashboard_data: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard/cache-stats', methods=['GET'])
+def get_cache_statistics():
+    """Return cache statistics for monitoring"""
+    try:
+        stats = get_cache_stats()
+        return jsonify({
+            'cache_stats': stats,
+            'timestamp': time()
+        }), 200
+    except Exception as e:
+        print(f"Error in get_cache_statistics: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/dashboard/invalidate-cache', methods=['POST'])
+def invalidate_cache_endpoint():
+    """Endpoint to manually invalidate caches"""
+    try:
+        from flask import request
+        cache_type = request.json.get('cache_type', 'all') if request.json else 'all'
+        
+        if cache_type == 'all':
+            invalidate_all_dashboard_caches()
+            message = 'All caches invalidated'
+        elif cache_type == 'teams':
+            invalidate_teams_list_cache()
+            message = 'Teams list cache invalidated'
+        elif cache_type == 'correlation':
+            # For correlation, we need a team_id but we'll clear all for simplicity
+            if hasattr(compute_correlation_matrix, 'cache_clear'):
+                compute_correlation_matrix.cache_clear()
+            if hasattr(compute_team_hashes, 'cache_clear'):
+                compute_team_hashes.cache_clear()
+            message = 'Correlation caches invalidated'
+        else:
+            return jsonify({'error': 'Invalid cache_type. Use: all, teams, or correlation'}), 400
+            
+        return jsonify({
+            'message': message,
+            'cache_stats': get_cache_stats()
+        }), 200
+    except Exception as e:
+        print(f"Error in invalidate_cache_endpoint: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
