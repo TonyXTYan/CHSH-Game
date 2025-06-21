@@ -271,7 +271,7 @@ def get_all_teams():
             # --- Calculate statistics with uncertainties using ufloat ---
 
             # Stat1: Trace Average Statistic
-            sum_of_cii_ufloats = ufloat(0, 0)
+            sum_of_cii_ufloats = 0
             if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples):
                 for i in range(4):
                     num, den = corr_matrix_tuples[i][i]
@@ -298,7 +298,7 @@ def get_all_teams():
                     trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
 
             # Stat2: CHSH Value Statistic
-            chsh_sum_ufloat = ufloat(0, 0)
+            chsh_sum_ufloat = 0
             if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples) and all(item in item_values for item in ['A', 'B', 'X', 'Y']):
                 try:
                     A_idx = item_values.index('A')
@@ -328,7 +328,7 @@ def get_all_teams():
             chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
 
             # Stat3: Cross-Term Combination Statistic
-            cross_term_sum_ufloat = ufloat(0, 0)
+            cross_term_sum_ufloat = 0
             # Ensure item_values contains A,B,X,Y before proceeding
             if all(item in item_values for item in ['A', 'B', 'X', 'Y']):
                 term_item_pairs_coeffs = [
@@ -361,7 +361,12 @@ def get_all_teams():
                         p_true = ufloat(p_val, float("inf"))
                     else:
                         p_true = ufloat(p_val, math.sqrt(var_p))
-                    balance_ufloat = 1 - um.fabs(2 * p_true - 1)
+                    p_val2 = 2 * p_true - 1
+                    if p_val2.nominal_value >= 0:
+                        abs_p_val2 = p_val2
+                    else:
+                        abs_p_val2 = ufloat(-p_val2.nominal_value, p_val2.std_dev)
+                    balance_ufloat = 1 - abs_p_val2
                     same_item_balance_ufloats.append(balance_ufloat)
                 else:
                     # Not enough statistics – propagate infinite uncertainty

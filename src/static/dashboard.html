@@ -45,8 +45,8 @@
             <div class="metric-card">
                 <h3 id="game-control-text">Game Control</h3>
                 <div class="game-controls">
-                    <button id="start-game-btn" onclick="startGame()">Start Game</button>
-                    <button id="pause-game-btn" onclick="togglePause()">Pause</button>
+                    <button id="start-game-btn" onclick="startGame()" style="border: 2px solid #4CAF50;">Start Game</button>
+                    <button id="pause-game-btn" onclick="togglePause()" style="border: 2px solid #FFC107;">Pause</button>
                 </div>
             </div>
         </div>
@@ -137,7 +137,7 @@
                 <h2 >Live Answer Log</h2>
                 <span id="toggle-chevron">▶</span>
                 <span class="streaming-text">streaming</span>
-                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off">OFF</button>
+                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off" style="border: 2px solid #F44336;">OFF</button>
             </div>
             <table id="answer-log-table">
                 <thead><tr><th>Timestamp</th><th>Team Name</th><th>Player SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
@@ -154,6 +154,7 @@
         <a href="https://github.com/TonyXTYan/CHSH-Game" target="_blank">
             Source code on GitHub: github.com/TonyXTYan/CHSH-Game
         </a>
+        <div class="session-info" id="sessionInfo">Server ID: <span class="session-id"></span></div>
     </footer>
 
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>

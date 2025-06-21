@@ -46,6 +46,17 @@ function updateConnectionStatus(status) {
 function showStatus(message, type = 'info') {
     statusMessage.textContent = message;
     statusMessage.className = 'status-message ' + type;
+
+    // Add visual feedback for success, error, or warning
+    if (type === 'success') {
+        statusMessage.style.border = '2px solid #4CAF50';
+    } else if (type === 'error') {
+        statusMessage.style.border = '2px solid #F44336';
+    } else if (type === 'warning') {
+        statusMessage.style.border = '2px solid #FFC107';
+    } else {
+        statusMessage.style.border = '2px solid #1565C0';
+    }
 }
 
 // Function to reset UI to initial state
@@ -137,9 +148,18 @@ function resetGameControls() {
 // Update available teams list
 function updateTeamsList(teams) {
     if (!teams || teams.length === 0) {
-        availableTeams.innerHTML = '<div class="team-item">No teams available to join currently. Create one or wait!</div>';
-        inactiveTeams.innerHTML = '<div class="team-item inactive">No inactive teams available.</div>';
+        availableTeams.innerHTML = '<div class="team-item">No active teams available to join currently. Create one or wait!</div>';
+        inactiveTeams.innerHTML = '<div class="team-item inactive">No inactive teams available. Reactivate a team to join!';
         return;
+    }
+
+    // Add visual feedback for empty lists
+    if (teams.length === 0) {
+        availableTeams.style.border = '2px dashed #FFC107';
+        inactiveTeams.style.border = '2px dashed #FFC107';
+    } else {
+        availableTeams.style.border = 'none';
+        inactiveTeams.style.border = 'none';
     }
     
     // Split teams into active and inactive

@@ -78,6 +78,15 @@ socket.on("connect", async () => {
             clearAllUITables();
             localStorage.setItem('server_instance_id', instance_id);
         }
+        
+        // Display full server ID at the bottom
+        const sessionInfo = document.getElementById('sessionInfo');
+        if (sessionInfo) {
+            const sessionIdSpan = sessionInfo.querySelector('.session-id');
+            if (sessionIdSpan) {
+                sessionIdSpan.textContent = instance_id;
+            }
+        }
     } catch (error) {
         console.error('Error checking server ID:', error);
     }
@@ -290,7 +299,8 @@ function handleResetGame() {
             `Reset game stats? (${secondsLeft})`;
         
         startBtn.textContent = message;
-        
+        startBtn.style.border = '2px solid #FFC107'; // Add visual feedback for confirmation
+
         countdownInterval = setInterval(() => {
             if (!countdownActive) {
                 clearInterval(countdownInterval);
@@ -326,6 +336,7 @@ function handleResetGame() {
         cleanupResetConfirmation(startBtn);
         startBtn.disabled = true;
         startBtn.textContent = "Resetting...";
+        startBtn.style.border = '2px solid #4CAF50'; // Add visual feedback for resetting
         startResetTimeout();
         socket.emit("restart_game");
     }
@@ -756,6 +767,14 @@ function updateStreamingUI() {
 function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
+
+    // Add visual feedback for toggling
+    const toggleBtn = document.getElementById('toggle-answers-btn');
+    if (answerStreamEnabled) {
+        toggleBtn.style.border = '2px solid #4CAF50';
+    } else {
+        toggleBtn.style.border = '2px solid #F44336';
+    }
 }
 
 function togglePause() {
@@ -815,7 +834,7 @@ async function downloadData() {
         
         data.answers.forEach(answer => {
             csvRows.push([
-                new Date(answer.timestamp).toLocaleString(),
+                new Date(answer.timestamp).toLocaleString().replace(/,/g, ' -'),
                 answer.team_name,
                 answer.team_id,
                 answer.player_session_id, // Use full SID for CSV export

@@ -168,11 +168,12 @@ th {
     padding: 8px 8px;
     background-color: #0056b3;
     color: white;
-    border: none;
+    border: 2px solid transparent; /* Default border for visual feedback */
     border-radius: 4px;
     cursor: pointer;
     font-size: 1em;
     margin-top: 5px;
+    transition: border-color 0.3s ease, background-color 0.3s ease;
 }
 
 #pause-game-btn {
@@ -193,18 +194,22 @@ th {
 
 .metric-card button:hover {
     background-color: #003d82;
+    border-color: #4CAF50; /* Add hover border color for feedback */
 }
 
 .metric-card button.reset-game {
     background-color: #6c757d;
+    border-color: #FFC107; /* Add border color for reset confirmation */
 }
 
 .metric-card button.toggle-on {
     background-color: #28a745;
+    border-color: #4CAF50; /* Add border color for active state */
 }
 
 .metric-card button.toggle-off {
     background-color: #dc3545;
+    border-color: #F44336; /* Add border color for inactive state */
 }
 
 .metric-card button.confirm-reset {
@@ -407,4 +412,15 @@ footer {
 footer a {
     color: #666;
     text-decoration: none;
+}
+
+.session-info {
+    /* font-size: 12px; */
+    color: #757575;
+    text-align: center;
+    margin-top: 20px;
+}
+
+.session-id {
+    font-family: monospace;
 }

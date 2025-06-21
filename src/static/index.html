@@ -19,7 +19,7 @@
     <div class="connection-status" id="connectionStatus"></div>
     <div class="container">
         <h1 id="gameHeader">CHSH Game</h1>
-        <div id="statusMessage" class="status-message info">Connecting to server...</div>
+        <div id="statusMessage" class="status-message info" style="border: 2px solid #1565C0;">Connecting to server...</div>
         
         <!-- Team Creation/Join Section -->
         <div id="teamSection">
@@ -43,15 +43,15 @@
                 </div>
 
                 <!-- Inactive Teams Section -->
-                <div class="collapsible-section">
-                    <div class="collapsible-header">
-                        <h3 class="toggle-target">Reactivate Previous Team</h3>
-                        <span class="toggle-indicator">▼</span>
-                    </div>
-                    <div id="inactiveTeams" class="team-list" style="display: none;">
-                        <div class="team-item inactive">No inactive teams available.</div>
-                    </div>
-                </div>
+<div class="collapsible-section">
+    <div class="collapsible-header">
+        <h3 class="toggle-target">Reactivate Previous Team</h3>
+        <span class="toggle-indicator">▼</span>
+    </div>
+    <div id="inactiveTeams" class="team-list" style="display: none; border: 2px dashed #FFC107; padding: 10px;">
+        <div class="team-item inactive">No inactive teams available. Reactivate a team to join!</div>
+    </div>
+</div>
             </div>
         </div>
         
