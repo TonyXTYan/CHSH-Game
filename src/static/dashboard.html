@@ -38,10 +38,6 @@
                 <h3>Total Responses</h3>
                 <p id="total-responses-count">0</p>
             </div>
-            <div class="metric-card download-card">
-                <h3>Download Data</h3>
-                <button id="download-data-btn" onclick="downloadData()">Download CSV</button>
-            </div>
             <div class="metric-card">
                 <h3 id="game-control-text">Game Control</h3>
                 <div class="game-controls">
@@ -137,7 +133,7 @@
                 <h2 >Live Answer Log</h2>
                 <span id="toggle-chevron">▶</span>
                 <span class="streaming-text">streaming</span>
-                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off" style="border: 2px solid #F44336;">OFF</button>
+                <button id="toggle-answers-btn" onclick="event.stopPropagation(); toggleAnswerStream()" class="toggle-off">OFF</button>
             </div>
             <table id="answer-log-table">
                 <thead><tr><th>Timestamp</th><th>Team Name</th><th>Player SID</th><th>Round ID</th><th>Item</th><th>Answer</th></tr></thead>
@@ -148,13 +144,34 @@
     </div>
 
     <footer>
-        <br> 
-        <a href="/" target="_blank">Go to Game (player's page)</a>
-        <br> <br> 
-        <a href="https://github.com/TonyXTYan/CHSH-Game" target="_blank">
-            Source code on GitHub: github.com/TonyXTYan/CHSH-Game
-        </a>
-        <div class="session-info" id="sessionInfo">Server ID: <span class="session-id"></span></div>
+        <div class="footer-content">
+            <div class="footer-link">
+                <a href="/" target="_blank">Go to Game (player's page)</a>
+            </div>
+            
+            <div class="footer-link download-section">
+                Download CSV: 
+                <a href="#" onclick="downloadData(); return false;" class="download-link">CSV from JS</a>
+                <span class="download-separator">|</span>
+                <a href="/download" class="download-link">CSV from Python</a>
+            </div>
+            
+            <div class="footer-link">
+                <a href="https://github.com/TonyXTYan/CHSH-Game" target="_blank">
+                    Source code on GitHub: github.com/TonyXTYan/CHSH-Game
+                </a>
+            </div>
+
+            <div> 
+                <span class="footer-text"><strong>Made with LLMs by Tony Yan 2025 </strong></span>
+            </div>
+            
+            <div class="session-info" id="sessionInfo">
+                Server ID: <span class="session-id"></span>
+            </div>
+
+
+        </div>
     </footer>
 
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>

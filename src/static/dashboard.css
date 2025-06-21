@@ -202,15 +202,6 @@ th {
     border-color: #FFC107; /* Add border color for reset confirmation */
 }
 
-.metric-card button.toggle-on {
-    background-color: #28a745;
-    border-color: #4CAF50; /* Add border color for active state */
-}
-
-.metric-card button.toggle-off {
-    background-color: #dc3545;
-    border-color: #F44336; /* Add border color for inactive state */
-}
 
 .metric-card button.confirm-reset {
     background-color: #dc3545;
@@ -397,30 +388,75 @@ th {
     margin-right: 3px;
 }
 
-#toggle-answers-btn {
-    padding: 4px 8px;
-    font-size: 0.9em;
-}
 
 footer {
     text-align: center;
-    margin-top: 10px;
-    padding: 10px;
+    margin-top: 30px;
+    padding: 20px;
     color: #666;
+    /* background-color: #f8f9fa; */
+    /* border-top: 1px solid #dee2e6; */
 }
 
-footer a {
-    color: #666;
+.footer-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    max-width: 600px;
+    margin: 0 auto;
+}
+
+.footer-link {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.footer-link a {
+    color: #495057;
     text-decoration: none;
+    transition: color 0.2s ease;
+}
+
+.footer-link a:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+.download-section {
+    gap: 8px;
+}
+
+.download-section strong {
+    color: #495057;
+    margin-right: 8px;
+}
+
+.download-link {
+    color: #007bff;
+    text-decoration: none;
+    margin: 0 6px;
+    transition: color 0.2s ease;
+}
+
+.download-link:hover {
+    color: #0056b3;
+    text-decoration: underline;
+}
+
+.download-separator {
+    color: #6c757d;
+    margin: 0 6px;
 }
 
 .session-info {
-    /* font-size: 12px; */
-    color: #757575;
-    text-align: center;
-    margin-top: 20px;
+    color: #6c757d;
+    /* font-size: 0.9em; */
+    margin-top: 0px 6px;
 }
 
 .session-id {
     font-family: monospace;
+    color: #495057;
+    /* font-weight: 500; */
 }

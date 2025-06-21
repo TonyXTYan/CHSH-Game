@@ -527,3 +527,76 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
                     'streaming_enabled': True
                 }
             }, room='test_dashboard_sid')
+
+def test_download_csv_endpoint(test_client, mock_db_session):
+    """Test the /download CSV endpoint"""
+    mock_answer = MagicMock()
+    mock_answer.answer_id = 1
+    mock_answer.team_id = 1
+    mock_answer.player_session_id = "player1"
+    mock_answer.question_round_id = 1
+    mock_answer.assigned_item = MockQuestionItem.A
+    mock_answer.response_value = True
+    mock_answer.timestamp = datetime.now(UTC)
+    
+    mock_team = MagicMock()
+    mock_team.team_name = "Test Team"
+    
+    with patch('src.sockets.dashboard.Answers') as mock_answers:
+        mock_answers.query.order_by.return_value.all.return_value = [mock_answer]
+        
+        with patch('src.sockets.dashboard.Teams') as mock_teams:
+            mock_teams.query.get.return_value = mock_team
+            
+            response = test_client.get('/download')
+            assert response.status_code == 200
+            assert response.headers['Content-Type'] == 'text/csv; charset=utf-8'
+            assert 'attachment' in response.headers.get('Content-Disposition', '')
+            assert 'chsh-game-data.csv' in response.headers.get('Content-Disposition', '')
+            
+            # Check CSV content
+            csv_content = response.get_data(as_text=True)
+            lines = csv_content.strip().split('\n')
+            
+            # Should have header + 1 data row
+            assert len(lines) >= 2
+            
+            # Check header
+            header = lines[0]
+            expected_headers = ['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/X/Y)', 'Answer (True/False)']
+            assert all(h in header for h in expected_headers)
+            
+            # Check data row
+            data_row = lines[1].split(',')
+            assert 'Test Team' in data_row
+            assert 'player1' in data_row
+            assert 'A' in data_row
+            assert 'True' in data_row
+
+def test_download_csv_endpoint_error(test_client, mock_db_session):
+    """Test error handling in the /download CSV endpoint"""
+    with patch('src.sockets.dashboard.Answers') as mock_answers:
+        mock_answers.query.order_by.side_effect = Exception("Database error")
+        
+        response = test_client.get('/download')
+        assert response.status_code == 500
+        assert 'Error generating CSV' in response.get_data(as_text=True)
+
+def test_download_csv_endpoint_empty_data(test_client, mock_db_session):
+    """Test the /download CSV endpoint with no data"""
+    with patch('src.sockets.dashboard.Answers') as mock_answers:
+        mock_answers.query.order_by.return_value.all.return_value = []
+        
+        response = test_client.get('/download')
+        assert response.status_code == 200
+        assert response.headers['Content-Type'] == 'text/csv; charset=utf-8'
+        
+        # Should still have header row
+        csv_content = response.get_data(as_text=True)
+        lines = csv_content.strip().split('\n')
+        assert len(lines) >= 1  # At least header row
+        
+        # Check header is present
+        header = lines[0]
+        expected_headers = ['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/X/Y)', 'Answer (True/False)']
+        assert all(h in header for h in expected_headers)

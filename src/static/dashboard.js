@@ -745,7 +745,6 @@ const toggleChevron = document.getElementById('toggle-chevron');
 
 // Initialize to OFF state
 toggleBtn.textContent = 'OFF';
-toggleBtn.className = 'toggle-off';
 answerTable.style.display = 'none';
 noAnswersMsg.style.display = 'none';
 toggleChevron.textContent = '▶';
@@ -753,12 +752,10 @@ toggleChevron.textContent = '▶';
 function updateStreamingUI() {
     if (answerStreamEnabled) {
         toggleBtn.textContent = 'ON';
-        toggleBtn.className = 'toggle-on';
         answerTable.style.display = 'table';
         toggleChevron.textContent = '▼';
     } else {
         toggleBtn.textContent = 'OFF';
-        toggleBtn.className = 'toggle-off';
         answerTable.style.display = 'none';
         toggleChevron.textContent = '▶';
     }
@@ -767,14 +764,6 @@ function updateStreamingUI() {
 function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
-
-    // Add visual feedback for toggling
-    const toggleBtn = document.getElementById('toggle-answers-btn');
-    if (answerStreamEnabled) {
-        toggleBtn.style.border = '2px solid #4CAF50';
-    } else {
-        toggleBtn.style.border = '2px solid #F44336';
-    }
 }
 
 function togglePause() {

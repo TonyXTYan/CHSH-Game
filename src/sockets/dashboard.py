@@ -1,4 +1,4 @@
-from flask import jsonify
+from flask import jsonify, Response
 import math
 from uncertainties import ufloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
@@ -11,6 +11,8 @@ from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
 from time import time
 import hashlib
+import csv
+import io
 
 # Store last activity time for each dashboard client
 dashboard_last_activity = {}
@@ -657,3 +659,54 @@ def get_dashboard_data():
         import traceback
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
+
+@app.route('/download', methods=['GET'])
+def download_csv():
+    try:
+        # Get all answers from database
+        all_answers = Answers.query.order_by(Answers.timestamp.asc()).all()
+        
+        # Create CSV content in memory
+        output = io.StringIO()
+        writer = csv.writer(output)
+        
+        # Write CSV header
+        writer.writerow(['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/X/Y)', 'Answer (True/False)'])
+        
+        # Write data rows
+        for ans in all_answers:
+            team_name = Teams.query.get(ans.team_id).team_name if Teams.query.get(ans.team_id) else 'N/A'
+            writer.writerow([
+                ans.timestamp.strftime('%m/%d/%Y, %I:%M:%S %p'),  # Format timestamp like JavaScript toLocaleString()
+                team_name,
+                ans.team_id,
+                ans.player_session_id,
+                ans.question_round_id,
+                ans.assigned_item.value,
+                ans.response_value
+            ])
+        
+        # Get the CSV content
+        csv_content = output.getvalue()
+        output.close()
+        
+        # Create response with appropriate headers for CSV download
+        response = Response(
+            csv_content,
+            mimetype='text/csv',
+            headers={
+                'Content-Disposition': 'attachment; filename=chsh-game-data.csv'
+            }
+        )
+        
+        return response
+        
+    except Exception as e:
+        print(f"Error in download_csv: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return Response(
+            f"Error generating CSV: {str(e)}",
+            status=500,
+            mimetype='text/plain'
+        )
