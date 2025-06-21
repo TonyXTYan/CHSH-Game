@@ -18,15 +18,15 @@
 ## Overview
 
 **CHSH Game** is a multiplayer, web-based implementation of the famous quantum CHSH Bell's inequality. 
-It allows teams to compete in a game to explore quantum-classical boundaries. This project also features a real-time dashboard of the CHSH parameters and various statistics.
+It allows teams to compete in a game to explore quantum-classical boundaries. This project also features a real-time dashboard of the CHSH parameters and various statistics. Currently it support upto 30 teams (60 players).
 
 - Live demo: 
-    - ⚠️ As of May 2025, this game is hosted on the cheapest tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire interenet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
+    - ⚠️ As of May 2025, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire interenet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
     - ⚠️ If you splot a live game is going on, please don't interrupt it, this repo can be easily deployed with [Flask](https://flask.palletsprojects.com/) and [Gunicorn](https://gunicorn.org/) for free on e.g. [render.com](https://render.com), which I have an instance hosted there too that you can freely play with.
     - Host: [chsh-game.***fly.dev***/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.on***render.com***/dashboard](https://chsh-game.onrender.com/dashboard))
     - Player: [chsh-game.***fly.dev***](https://chsh-game.fly.dev) ([chsh-game.on***render.com***](https://chsh-game.onrender.com))
 
-![Player QR Code](booa)
+![Player QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=0&frame_text=SCAN%20ME&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=https%3A%2F%2Fchsh-game.fly.dev&width=300&height=300&bordersize=2)
 
 
 

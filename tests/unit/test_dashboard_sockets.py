@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 from src.sockets.dashboard import (
     on_pause_game, compute_correlation_matrix, on_dashboard_join,
     on_start_game, on_restart_game, get_all_teams, emit_dashboard_full_update,
-    on_keep_alive, on_disconnect, emit_dashboard_team_update
+    on_keep_alive, on_disconnect, emit_dashboard_team_update, clear_team_caches
 )
 from src.config import app
 from src.state import state
@@ -72,6 +72,24 @@ def mock_emit():
 def mock_db_session():
     with patch('src.config.db.session') as mock_session:
         yield mock_session
+
+@pytest.fixture(autouse=True)
+def clear_caches():
+    """Clear all caches before each test"""
+    # Clear LRU caches
+    clear_team_caches()
+    
+    # Reset throttling variables
+    import src.sockets.dashboard as dashboard_module
+    dashboard_module._last_refresh_time = 0
+    dashboard_module._cached_teams_result = None
+    
+    yield
+    
+    # Clear caches after test as well
+    clear_team_caches()
+    dashboard_module._last_refresh_time = 0
+    dashboard_module._cached_teams_result = None
 
 @pytest.fixture
 def mock_team():
@@ -147,6 +165,9 @@ def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
 
 def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
     """Test correlation matrix computation with multiple rounds"""
+    # Clear cache first
+    compute_correlation_matrix.cache_clear()
+    
     # Create mock rounds
     rounds = [
         create_mock_round(1, 'A', 'X'),
@@ -186,6 +207,9 @@ def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
 
 def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
     """Test cross-term combination statistic calculation"""
+    # Clear cache first
+    compute_correlation_matrix.cache_clear()
+    
     rounds = [
         create_mock_round(1, 'A', 'X'),  # Perfect correlation
         create_mock_round(2, 'A', 'Y'),  # Perfect anti-correlation
@@ -223,6 +247,9 @@ def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
 
 def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_session):
     """Test same-item balance calculation with mixed responses"""
+    # Clear cache first
+    compute_correlation_matrix.cache_clear()
+    
     rounds = [
         create_mock_round(1, 'A', 'A'),
         create_mock_round(2, 'A', 'A')
@@ -466,32 +493,51 @@ def test_get_all_teams(mock_state, mock_db_session):
     mock_team.is_active = True
     mock_team.created_at = datetime.now(UTC)
     
-    with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_teams.query.all.return_value = [mock_team]
+    # Reset state to ensure clean test
+    mock_state.active_teams = {}
+    
+    # Mock time to ensure fresh data computation
+    with patch('src.sockets.dashboard.time') as mock_time:
+        mock_time.return_value = 0  # Force fresh computation
         
-        # Set up compute_correlation_matrix mock return values
-        corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
-        item_values = ['A', 'B', 'X', 'Y']
-        
-        with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
-            mock_compute.return_value = (
-                corr_matrix, item_values, 0.0, {}, {}, {}, {}
-            )
+        with patch('src.sockets.dashboard.Teams') as mock_teams:
+            mock_teams.query.all.return_value = [mock_team]
             
-            with patch('src.sockets.dashboard.compute_team_hashes') as mock_hashes:
-                mock_hashes.return_value = ('hash1', 'hash2')
+            # Set up compute_correlation_matrix mock return values
+            corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
+            item_values = ['A', 'B', 'X', 'Y']
+            
+            with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
+                mock_compute.return_value = (
+                    corr_matrix, item_values, 0.0, {}, {}, {}, {}
+                )
                 
-                result = get_all_teams()
-                
-                assert len(result) == 1
-                team_data = result[0]
-                assert team_data['team_name'] == "Test Team"
-                assert team_data['team_id'] == 1
-                assert team_data['is_active'] == True
-                assert team_data['history_hash1'] == 'hash1'
-                assert team_data['history_hash2'] == 'hash2'
-                assert 'correlation_matrix' in team_data
-                assert 'correlation_stats' in team_data
+                with patch('src.sockets.dashboard.compute_team_hashes') as mock_hashes:
+                    mock_hashes.return_value = ('hash1', 'hash2')
+                    
+                    with patch('src.sockets.dashboard._calculate_team_statistics') as mock_stats:
+                        mock_stats.return_value = {
+                            'trace_average_statistic': 0.0,
+                            'trace_average_statistic_uncertainty': None,
+                            'chsh_value_statistic': 0.0,
+                            'chsh_value_statistic_uncertainty': None,
+                            'cross_term_combination_statistic': 0.0,
+                            'cross_term_combination_statistic_uncertainty': None,
+                            'same_item_balance': 0.0,
+                            'same_item_balance_uncertainty': None
+                        }
+                        
+                        result = get_all_teams()
+                        
+                        assert len(result) == 1
+                        team_data = result[0]
+                        assert team_data['team_name'] == "Test Team"
+                        assert team_data['team_id'] == 1
+                        assert team_data['is_active'] == True
+                        assert team_data['history_hash1'] == 'hash1'
+                        assert team_data['history_hash2'] == 'hash2'
+                        assert 'correlation_matrix' in team_data
+                        assert 'correlation_stats' in team_data
 
 def test_emit_dashboard_full_update(mock_state, mock_socketio):
     """Test full dashboard update emission"""
