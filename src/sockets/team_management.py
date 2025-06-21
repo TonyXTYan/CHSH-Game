@@ -5,7 +5,7 @@ from sqlalchemy import func
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
-from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update
+from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
 import traceback
 
@@ -120,9 +120,11 @@ def handle_disconnect():
                                 del state.team_id_to_name[team_info['team_id']]
                         
                         db.session.commit()
+                        # Clear caches after team state change
+                        clear_team_caches()
                         
                         # Update all clients
-                        emit_dashboard_team_update() 
+                        emit_dashboard_team_update()
                         socketio.emit('teams_updated', {
                             'teams': get_available_teams_list(),
                             'game_started': state.game_started
@@ -150,6 +152,8 @@ def on_create_team(data):
         new_team_db = Teams(team_name=team_name, player1_session_id=sid)
         db.session.add(new_team_db)
         db.session.commit()
+        # Clear caches after team state change
+        clear_team_caches()
         state.active_teams[team_name] = {
             'players': [sid],
             'team_id': new_team_db.team_id,
@@ -212,8 +216,10 @@ def on_join_team(data):
                 db_team.player1_session_id = sid
             elif not db_team.player2_session_id:
                 db_team.player2_session_id = sid
-            db_team.is_active = True 
+            db_team.is_active = True
             db.session.commit()
+            # Clear caches after team state change
+            clear_team_caches()
 
         team_is_now_full = len(team_info['players']) == 2
         current_team_status_for_clients = 'full' if team_is_now_full else 'waiting_pair'
@@ -285,6 +291,8 @@ def on_reactivate_team(data):
             team.is_active = True
             team.player1_session_id = sid
             db.session.commit()
+            # Clear caches after team state change
+            clear_team_caches()
 
             # Query for the highest round number previously played by this team
             max_round_obj = db.session.query(func.max(PairQuestionRounds.round_number_for_team)) \
@@ -377,6 +385,8 @@ def on_leave_team(data):
             
             if db_team: # Commit changes if db_team was involved
                 db.session.commit()
+                # Clear caches after team state change
+                clear_team_caches()
 
             emit('left_team_success', {'message': 'You have left the team.'}, room=sid)
             try:

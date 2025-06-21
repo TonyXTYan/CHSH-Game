@@ -4,7 +4,7 @@ from flask_socketio import emit, join_room, leave_room
 from src.config import socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
-from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update
+from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
 
 @socketio.on('submit_answer')
@@ -60,6 +60,8 @@ def on_submit_answer(data):
             round_db_entry.p2_answered_at = datetime.utcnow()
 
         db.session.commit()
+        # Clear caches after database commit
+        clear_team_caches()
         emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, room=sid)
 
         # Emit to dashboard

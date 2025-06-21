@@ -3,6 +3,7 @@ import math
 from uncertainties import ufloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
 import warnings
+from functools import lru_cache
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -17,6 +18,8 @@ import io
 # Store last activity time for each dashboard client
 dashboard_last_activity = {}
 
+CACHE_SIZE = 1024  # Adjust cache size as needed
+
 @socketio.on('keep_alive')
 def on_keep_alive():
     try:
@@ -30,6 +33,7 @@ def on_keep_alive():
         import traceback
         traceback.print_exc()
 
+@lru_cache(maxsize=CACHE_SIZE)
 def compute_team_hashes(team_id):
     return "disabled", "disabled"
     # # This function is disabled for now due to performance concerns
@@ -60,6 +64,7 @@ def compute_team_hashes(team_id):
     #     print(f"Error computing team hashes: {str(e)}")
     #     return "ERROR", "ERROR"
 
+@lru_cache(maxsize=CACHE_SIZE)
 def compute_correlation_matrix(team_id):
     try:
         # Get all rounds and their corresponding answers for this team
@@ -243,6 +248,212 @@ def compute_correlation_stats(team_id): # NOT USED
         return 0.0, 0.0, 0.0
 
 
+@lru_cache(maxsize=CACHE_SIZE)
+def _calculate_team_statistics(correlation_matrix_tuple_str):
+    """Calculate ufloat statistics from correlation matrix string representation."""
+    try:
+        # Parse the correlation matrix from string back to tuple format
+        import ast
+        corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts = ast.literal_eval(correlation_matrix_tuple_str)
+        
+        # --- Calculate statistics with uncertainties using ufloat ---
+
+        # Stat1: Trace Average Statistic
+        sum_of_cii_ufloats = 0
+        if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples):
+            for i in range(4):
+                num, den = corr_matrix_tuples[i][i]
+                if den > 0:
+                    c_ii_val = num / den
+                    c_ii_val = max(-1.0, min(1.0, c_ii_val))  # Clamp to valid range
+                    stdev_ii = 1 / math.sqrt(den)            # σ = 1/√N
+                    c_ii_ufloat = ufloat(c_ii_val, stdev_ii)
+                else:
+                    # No statistics → infinite uncertainty
+                    c_ii_ufloat = ufloat(0, float("inf"))
+                sum_of_cii_ufloats += c_ii_ufloat
+        # Average of the four diagonal correlations
+        raw_trace_avg_ufloat = (1 / 4) * sum_of_cii_ufloats
+        # Force the magnitude to be positive
+        # Suppress UserWarning about std_dev==0 and avoid using deprecated functions
+        with warnings.catch_warnings():
+            warnings.filterwarnings('ignore', message='Using UFloat objects with std_dev==0 may give unexpected results.')
+            # Handle absolute value without using abs() or um.fabs() which are deprecated
+            if raw_trace_avg_ufloat.nominal_value >= 0:
+                trace_average_statistic_ufloat = raw_trace_avg_ufloat
+            else:
+                # Create a new ufloat with positive nominal value but same std_dev
+                trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
+
+        # Stat2: CHSH Value Statistic
+        chsh_sum_ufloat = 0
+        if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples) and all(item in item_values for item in ['A', 'B', 'X', 'Y']):
+            try:
+                A_idx = item_values.index('A')
+                B_idx = item_values.index('B')
+                X_idx = item_values.index('X')
+                Y_idx = item_values.index('Y')
+
+                terms_indices_coeffs = [
+                    (A_idx, X_idx, 1), (A_idx, Y_idx, 1),
+                    (B_idx, X_idx, 1), (B_idx, Y_idx, -1),
+                    (X_idx, A_idx, 1), (X_idx, B_idx, 1),
+                    (Y_idx, A_idx, 1), (Y_idx, B_idx, -1)
+                ]
+
+                for r_idx, c_idx, coeff in terms_indices_coeffs:
+                    num, den = corr_matrix_tuples[r_idx][c_idx]
+                    if den > 0:
+                        c_ij_val = num / den
+                        c_ij_val = max(-1.0, min(1.0, c_ij_val))
+                        stdev_ij = 1 / math.sqrt(den)      # σ = 1/√N
+                        c_ij_ufloat = ufloat(c_ij_val, stdev_ij)
+                    else:
+                        c_ij_ufloat = ufloat(0, float("inf"))
+                    chsh_sum_ufloat += coeff * c_ij_ufloat
+            except ValueError:
+                pass  # Already handled by the outer condition check
+        chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
+
+        # Stat3: Cross-Term Combination Statistic
+        cross_term_sum_ufloat = 0
+        # Ensure item_values contains A,B,X,Y before proceeding
+        if all(item in item_values for item in ['A', 'B', 'X', 'Y']):
+            term_item_pairs_coeffs = [
+                ('A', 'X', 1), ('A', 'Y', 1),
+                ('B', 'X', 1), ('B', 'Y', -1)
+            ]
+            for item1, item2, coeff in term_item_pairs_coeffs:
+                M_ij = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                if M_ij > 0:
+                    N_ij_sum_prod = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
+                    t_ij_val = N_ij_sum_prod / M_ij
+                    t_ij_val = max(-1.0, min(1.0, t_ij_val))
+                    stdev_t_ij = 1 / math.sqrt(M_ij)       # σ = 1/√N
+                    t_ij_ufloat = ufloat(t_ij_val, stdev_t_ij)
+                else:
+                    t_ij_ufloat = ufloat(0, float("inf"))
+                cross_term_sum_ufloat += coeff * t_ij_ufloat
+        cross_term_combination_statistic_ufloat = cross_term_sum_ufloat
+
+        # --- Same‑item balance with uncertainty (ufloat) ---
+        same_item_balance_ufloats = []
+        for item, counts in (same_item_responses or {}).items():
+            T_count = counts.get('true', 0)
+            F_count = counts.get('false', 0)
+            total_tf = T_count + F_count
+            if total_tf > 0:
+                p_val = T_count / total_tf
+                var_p = 1 / total_tf  # simplified variance 1/N
+                if var_p == 0:
+                    p_true = ufloat(p_val, float("inf"))
+                else:
+                    p_true = ufloat(p_val, math.sqrt(var_p))
+                p_val2 = 2 * p_true - 1
+                if p_val2.nominal_value >= 0:
+                    abs_p_val2 = p_val2
+                else:
+                    abs_p_val2 = ufloat(-p_val2.nominal_value, p_val2.std_dev)
+                balance_ufloat = 1 - abs_p_val2
+                same_item_balance_ufloats.append(balance_ufloat)
+            else:
+                # Not enough statistics – propagate infinite uncertainty
+                balance_ufloat = ufloat(0, float("inf"))
+                same_item_balance_ufloats.append(balance_ufloat)
+
+        if same_item_balance_ufloats:
+            avg_same_item_balance_ufloat = sum(same_item_balance_ufloats) / len(same_item_balance_ufloats)
+        else:
+            avg_same_item_balance_ufloat = ufloat(0, float("inf"))
+        
+        return {
+            'trace_average_statistic': trace_average_statistic_ufloat.n,
+            'trace_average_statistic_uncertainty': trace_average_statistic_ufloat.s if not math.isinf(trace_average_statistic_ufloat.s) else None,
+            'chsh_value_statistic': chsh_value_statistic_ufloat.n,
+            'chsh_value_statistic_uncertainty': chsh_value_statistic_ufloat.s if not math.isinf(chsh_value_statistic_ufloat.s) else None,
+            'cross_term_combination_statistic': cross_term_combination_statistic_ufloat.n,
+            'cross_term_combination_statistic_uncertainty': cross_term_combination_statistic_ufloat.s if not math.isinf(cross_term_combination_statistic_ufloat.s) else None,
+            'same_item_balance': avg_same_item_balance_ufloat.n,
+            'same_item_balance_uncertainty': (avg_same_item_balance_ufloat.s
+                                              if not math.isinf(avg_same_item_balance_ufloat.s) else None)
+        }
+    except Exception as e:
+        print(f"Error calculating team statistics: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return {
+            'trace_average_statistic': 0.0,
+            'trace_average_statistic_uncertainty': None,
+            'chsh_value_statistic': 0.0,
+            'chsh_value_statistic_uncertainty': None,
+            'cross_term_combination_statistic': 0.0,
+            'cross_term_combination_statistic_uncertainty': None,
+            'same_item_balance': 0.0,
+            'same_item_balance_uncertainty': None
+        }
+
+@lru_cache(maxsize=CACHE_SIZE)
+def _process_single_team(team_id, team_name, is_active, created_at, current_round, player1_sid, player2_sid):
+    """Process all heavy computation for a single team."""
+    try:
+        # For active teams, check game progress
+        team_info = state.active_teams.get(team_name)
+        all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
+        combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
+        min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
+                        for combo in all_combos) if team_info else False
+        
+        # Get players list
+        players = team_info['players'] if team_info else []
+
+        # Compute hashes for the team
+        hash1, hash2 = compute_team_hashes(team_id)
+        
+        # Compute correlation matrix and statistics
+        (corr_matrix_tuples, item_values,
+         same_item_balance_avg, same_item_balance, same_item_responses,
+         correlation_sums, pair_counts) = compute_correlation_matrix(team_id)
+        
+        # Convert correlation matrix data to string for caching
+        correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
+        correlation_matrix_str = str(correlation_data)
+        
+        # Calculate statistics using cached function
+        correlation_stats = _calculate_team_statistics(correlation_matrix_str)
+        
+        team_data = {
+            'team_name': team_name,
+            'team_id': team_id,
+            'is_active': is_active,
+            'player1_sid': player1_sid,
+            'player2_sid': player2_sid,
+            'current_round_number': current_round,
+            'history_hash1': hash1,
+            'history_hash2': hash2,
+            'min_stats_sig': min_stats_sig,
+            'correlation_matrix': corr_matrix_tuples, # Send the (numerator, denominator) tuples
+            'correlation_labels': item_values,
+            'correlation_stats': correlation_stats,
+            'created_at': created_at
+        }
+        
+        # Add status field for active teams
+        if team_info and 'status' in team_info:
+            team_data['status'] = team_info['status']
+        elif is_active and len(players) < 2:
+            team_data['status'] = 'waiting_pair'
+        elif is_active:
+            team_data['status'] = 'active'
+        else:
+            team_data['status'] = 'inactive'
+            
+        return team_data
+    except Exception as e:
+        print(f"Error processing team {team_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
+
 def get_all_teams():
     try:
         # Query all teams from database
@@ -253,176 +464,42 @@ def get_all_teams():
             # Get active team info from state if available
             team_info = state.active_teams.get(team.team_name)
             
-            # For active teams, check game progress
-            all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
-            combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
-            min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
-                            for combo in all_combos) if team_info else False
-            
             # Get players from either active state or database
             players = team_info['players'] if team_info else []
-
-            # Compute hashes for the team
-            hash1, hash2 = compute_team_hashes(team.team_id)
+            current_round = team_info.get('current_round_number', 0) if team_info else 0
             
-            # Compute correlation matrix and statistics
-            (corr_matrix_tuples, item_values,
-             same_item_balance_avg, same_item_balance, same_item_responses,
-             correlation_sums, pair_counts) = compute_correlation_matrix(team.team_id)
+            # Use cached helper function for heavy computation
+            team_data = _process_single_team(
+                team.team_id,
+                team.team_name,
+                team.is_active,
+                team.created_at.isoformat() if team.created_at else None,
+                current_round,
+                players[0] if len(players) > 0 else None,
+                players[1] if len(players) > 1 else None
+            )
             
-            # --- Calculate statistics with uncertainties using ufloat ---
-
-            # Stat1: Trace Average Statistic
-            sum_of_cii_ufloats = 0
-            if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples):
-                for i in range(4):
-                    num, den = corr_matrix_tuples[i][i]
-                    if den > 0:
-                        c_ii_val = num / den
-                        c_ii_val = max(-1.0, min(1.0, c_ii_val))  # Clamp to valid range
-                        stdev_ii = 1 / math.sqrt(den)            # σ = 1/√N
-                        c_ii_ufloat = ufloat(c_ii_val, stdev_ii)
-                    else:
-                        # No statistics → infinite uncertainty
-                        c_ii_ufloat = ufloat(0, float("inf"))
-                    sum_of_cii_ufloats += c_ii_ufloat
-            # Average of the four diagonal correlations
-            raw_trace_avg_ufloat = (1 / 4) * sum_of_cii_ufloats
-            # Force the magnitude to be positive
-            # Suppress UserWarning about std_dev==0 and avoid using deprecated functions
-            with warnings.catch_warnings():
-                warnings.filterwarnings('ignore', message='Using UFloat objects with std_dev==0 may give unexpected results.')
-                # Handle absolute value without using abs() or um.fabs() which are deprecated
-                if raw_trace_avg_ufloat.nominal_value >= 0:
-                    trace_average_statistic_ufloat = raw_trace_avg_ufloat
-                else:
-                    # Create a new ufloat with positive nominal value but same std_dev
-                    trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
-
-            # Stat2: CHSH Value Statistic
-            chsh_sum_ufloat = 0
-            if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples) and all(item in item_values for item in ['A', 'B', 'X', 'Y']):
-                try:
-                    A_idx = item_values.index('A')
-                    B_idx = item_values.index('B')
-                    X_idx = item_values.index('X')
-                    Y_idx = item_values.index('Y')
-
-                    terms_indices_coeffs = [
-                        (A_idx, X_idx, 1), (A_idx, Y_idx, 1),
-                        (B_idx, X_idx, 1), (B_idx, Y_idx, -1),
-                        (X_idx, A_idx, 1), (X_idx, B_idx, 1),
-                        (Y_idx, A_idx, 1), (Y_idx, B_idx, -1)
-                    ]
-
-                    for r_idx, c_idx, coeff in terms_indices_coeffs:
-                        num, den = corr_matrix_tuples[r_idx][c_idx]
-                        if den > 0:
-                            c_ij_val = num / den
-                            c_ij_val = max(-1.0, min(1.0, c_ij_val))
-                            stdev_ij = 1 / math.sqrt(den)      # σ = 1/√N
-                            c_ij_ufloat = ufloat(c_ij_val, stdev_ij)
-                        else:
-                            c_ij_ufloat = ufloat(0, float("inf"))
-                        chsh_sum_ufloat += coeff * c_ij_ufloat
-                except ValueError:
-                    print(f"Warning: Could not find all A,B,X,Y indices for team {team.team_id} for CHSH calculation.")
-            chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
-
-            # Stat3: Cross-Term Combination Statistic
-            cross_term_sum_ufloat = 0
-            # Ensure item_values contains A,B,X,Y before proceeding
-            if all(item in item_values for item in ['A', 'B', 'X', 'Y']):
-                term_item_pairs_coeffs = [
-                    ('A', 'X', 1), ('A', 'Y', 1),
-                    ('B', 'X', 1), ('B', 'Y', -1)
-                ]
-                for item1, item2, coeff in term_item_pairs_coeffs:
-                    M_ij = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
-                    if M_ij > 0:
-                        N_ij_sum_prod = correlation_sums.get((item1, item2), 0) + correlation_sums.get((item2, item1), 0)
-                        t_ij_val = N_ij_sum_prod / M_ij
-                        t_ij_val = max(-1.0, min(1.0, t_ij_val))
-                        stdev_t_ij = 1 / math.sqrt(M_ij)       # σ = 1/√N
-                        t_ij_ufloat = ufloat(t_ij_val, stdev_t_ij)
-                    else:
-                        t_ij_ufloat = ufloat(0, float("inf"))
-                    cross_term_sum_ufloat += coeff * t_ij_ufloat
-            cross_term_combination_statistic_ufloat = cross_term_sum_ufloat
-
-            # --- Same‑item balance with uncertainty (ufloat) ---
-            same_item_balance_ufloats = []
-            for item, counts in (same_item_responses or {}).items():
-                T_count = counts.get('true', 0)
-                F_count = counts.get('false', 0)
-                total_tf = T_count + F_count
-                if total_tf > 0:
-                    p_val = T_count / total_tf
-                    var_p = 1 / total_tf  # simplified variance 1/N
-                    if var_p == 0:
-                        p_true = ufloat(p_val, float("inf"))
-                    else:
-                        p_true = ufloat(p_val, math.sqrt(var_p))
-                    p_val2 = 2 * p_true - 1
-                    if p_val2.nominal_value >= 0:
-                        abs_p_val2 = p_val2
-                    else:
-                        abs_p_val2 = ufloat(-p_val2.nominal_value, p_val2.std_dev)
-                    balance_ufloat = 1 - abs_p_val2
-                    same_item_balance_ufloats.append(balance_ufloat)
-                else:
-                    # Not enough statistics – propagate infinite uncertainty
-                    balance_ufloat = ufloat(0, float("inf"))
-                    same_item_balance_ufloats.append(balance_ufloat)
-
-            if same_item_balance_ufloats:
-                avg_same_item_balance_ufloat = sum(same_item_balance_ufloats) / len(same_item_balance_ufloats)
-            else:
-                avg_same_item_balance_ufloat = ufloat(0, float("inf"))
-            
-            team_data = {
-                'team_name': team.team_name,
-                'team_id': team.team_id,
-                'is_active': team.is_active,
-                'player1_sid': players[0] if len(players) > 0 else None,
-                'player2_sid': players[1] if len(players) > 1 else None,
-                'current_round_number': team_info.get('current_round_number', 0) if team_info else 0,
-                'history_hash1': hash1,
-                'history_hash2': hash2,
-                'min_stats_sig': min_stats_sig,
-                'correlation_matrix': corr_matrix_tuples, # Send the (numerator, denominator) tuples
-                'correlation_labels': item_values,
-                'correlation_stats': {
-                    'trace_average_statistic': trace_average_statistic_ufloat.n,
-                    'trace_average_statistic_uncertainty': trace_average_statistic_ufloat.s if not math.isinf(trace_average_statistic_ufloat.s) else None,
-                    'chsh_value_statistic': chsh_value_statistic_ufloat.n,
-                    'chsh_value_statistic_uncertainty': chsh_value_statistic_ufloat.s if not math.isinf(chsh_value_statistic_ufloat.s) else None,
-                    'cross_term_combination_statistic': cross_term_combination_statistic_ufloat.n,
-                    'cross_term_combination_statistic_uncertainty': cross_term_combination_statistic_ufloat.s if not math.isinf(cross_term_combination_statistic_ufloat.s) else None,
-                    'same_item_balance': avg_same_item_balance_ufloat.n,
-                    'same_item_balance_uncertainty': (avg_same_item_balance_ufloat.s
-                                                      if not math.isinf(avg_same_item_balance_ufloat.s) else None)
-                },
-                'created_at': team.created_at.isoformat() if team.created_at else None
-            }
-            
-            # Add status field for active teams
-            if team_info and 'status' in team_info:
-                team_data['status'] = team_info['status']
-            elif team.is_active and len(players) < 2:
-                team_data['status'] = 'waiting_pair'
-            elif team.is_active:
-                team_data['status'] = 'active'
-            else:
-                team_data['status'] = 'inactive'
+            if team_data:
+                teams_list.append(team_data)
                 
-            teams_list.append(team_data)
         return teams_list
     except Exception as e:
-        print(f"Error in get_serialized_active_teams: {str(e)}")
+        print(f"Error in get_all_teams: {str(e)}")
         import traceback
         traceback.print_exc()
         return []
+
+def clear_team_caches():
+    """Clear all team-related LRU caches to prevent stale data."""
+    try:
+        compute_team_hashes.cache_clear()
+        compute_correlation_matrix.cache_clear()
+        _calculate_team_statistics.cache_clear()
+        _process_single_team.cache_clear()
+    except Exception as e:
+        print(f"Error clearing team caches: {str(e)}")
+        import traceback
+        traceback.print_exc()
 
 def emit_dashboard_team_update():
     try:
@@ -592,6 +669,8 @@ def on_restart_game():
             PairQuestionRounds.query.delete()
             Answers.query.delete()
             db.session.commit()
+            # Clear caches after successful database commit
+            clear_team_caches()
         except Exception as db_error:
             db.session.rollback()
             print(f"Database error during game reset: {str(db_error)}")

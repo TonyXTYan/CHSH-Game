@@ -48,6 +48,10 @@ def start_new_round_for_pair(team_name):
         new_round_db = PairQuestionRounds(team_id=team_info['team_id'], round_number_for_team=round_number, player1_item=p1_item, player2_item=p2_item)
         db.session.add(new_round_db)
         db.session.commit()
+        
+        # Clear caches after database commit
+        from src.sockets.dashboard import clear_team_caches
+        clear_team_caches()
 
         team_info['current_db_round_id'] = new_round_db.round_id
         team_info['answered_current_round'] = {}
