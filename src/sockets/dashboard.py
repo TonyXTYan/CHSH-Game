@@ -19,6 +19,11 @@ import io
 dashboard_last_activity = {}
 
 CACHE_SIZE = 1024  # Adjust cache size as needed
+REFRESH_DELAY = 1 # seconds
+
+# Throttling variables for get_all_teams
+_last_refresh_time = 0
+_cached_teams_result = None
 
 @socketio.on('keep_alive')
 def on_keep_alive():
@@ -455,7 +460,21 @@ def _process_single_team(team_id, team_name, is_active, created_at, current_roun
         return None
 
 def get_all_teams():
+    global _last_refresh_time, _cached_teams_result
+    
     try:
+        # Check if we should throttle the request
+        current_time = time()
+        time_since_last_refresh = current_time - _last_refresh_time
+        
+        # If within refresh delay and we have cached data, return cached result
+        if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
+            # print("Returning cached team data")
+            return _cached_teams_result
+        # else:
+        #     print("Computing fresh team data")
+        
+        # Compute fresh data
         # Query all teams from database
         all_teams = Teams.query.all()
         teams_list = []
@@ -481,7 +500,11 @@ def get_all_teams():
             
             if team_data:
                 teams_list.append(team_data)
-                
+        
+        # Update cache and timestamp
+        _cached_teams_result = teams_list
+        _last_refresh_time = current_time
+        
         return teams_list
     except Exception as e:
         print(f"Error in get_all_teams: {str(e)}")
@@ -491,11 +514,17 @@ def get_all_teams():
 
 def clear_team_caches():
     """Clear all team-related LRU caches to prevent stale data."""
+    # global _last_refresh_time, _cached_teams_result
+    
     try:
         compute_team_hashes.cache_clear()
         compute_correlation_matrix.cache_clear()
         _calculate_team_statistics.cache_clear()
         _process_single_team.cache_clear()
+        
+        # Clear throttle cache to ensure fresh data is computed immediately
+        # _last_refresh_time = 0
+        # _cached_teams_result = None
     except Exception as e:
         print(f"Error clearing team caches: {str(e)}")
         import traceback

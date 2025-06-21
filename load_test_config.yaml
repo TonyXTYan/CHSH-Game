@@ -6,7 +6,7 @@ deployment_url: "http://localhost:8080"
 # deployment_url: "https://chsh-game.fly.dev"
 
 # Load Parameters
-num_teams: 10                    # Number of teams to create (200 players total)
+num_teams: 10                    # Number of teams to create 
 
 # Connection Strategy
 connection_strategy: "gradual"    # Options: gradual, burst, immediate
@@ -19,8 +19,8 @@ min_response_delay: 0.1           # Minimum response delay in seconds
 max_response_delay: 1.0           # Maximum response delay in seconds
 
 # Test Duration & Limits
-max_test_duration: 180            # Maximum test duration in seconds (5 minutes)
-max_rounds_per_team: 64           # Maximum rounds per team before stopping
+max_test_duration: 120            # Maximum test duration in seconds (5 minutes)
+max_rounds_per_team: 128           # Maximum rounds per team before stopping
 connection_timeout: 15.0          # Socket.io connection timeout
 answer_timeout: 5.0               # Answer submission timeout
 
