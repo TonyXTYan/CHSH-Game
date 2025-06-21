@@ -25,14 +25,14 @@ primary_region = 'syd'  # You can choose a region closer to your users
 
   [http_service.concurrency]
     type = "connections"
-    hard_limit = 1000
-    soft_limit = 300
+    hard_limit = 400
+    soft_limit = 200
 
 [[vm]]
   # memory = '512mb'
-  # size = "shared-cpu-1x"
-  memory = '4gb'
-  size = "performance-2x"
+  # size = "shared-cpu-2x"
+  memory = '2gb'
+  size = "performance-1x"
 
 # Optional: Define a deploy strategy
 # [deploy]

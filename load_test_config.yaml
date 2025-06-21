@@ -2,11 +2,11 @@
 # Sample configuration file for load testing
 
 # Server Configuration
-deployment_url: "http://localhost:8080"
-# deployment_url: "https://chsh-game.fly.dev"
+# deployment_url: "http://localhost:8080"
+deployment_url: "https://chsh-game.fly.dev"
 
 # Load Parameters
-num_teams: 10                    # Number of teams to create 
+num_teams: 50                    # Number of teams to create 
 
 # Connection Strategy
 connection_strategy: "gradual"    # Options: gradual, burst, immediate

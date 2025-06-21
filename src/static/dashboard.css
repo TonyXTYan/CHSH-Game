@@ -509,3 +509,24 @@ footer {
     color: #495057;
     /* font-weight: 500; */
 }
+
+/* Spinning refresh icon styles */
+.refresh-icon {
+    display: inline-block;
+    margin-left: 8px;
+    margin-right: 10px;
+    animation: spin 2s linear infinite;
+    width: 25x;
+    height: 25px;
+    transform-origin: center center;
+    vertical-align: middle;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(-360deg);
+    }
+}
