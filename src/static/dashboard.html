@@ -16,37 +16,47 @@
     <link rel="stylesheet" href="/static/dashboard.css">
 </head>
 <body>
-    <h1>CHSH Game - Host Dashboard</h1>
-    <div id="connection-status-dash">Connecting...</div>
-
-    <div class="dashboard-container">
-        <div class="panel metrics">
-            <div class="metric-card">
-                <h3>Active Teams</h3>
-                <p id="active-teams-count">0</p>
+    <div class="header-parent-container">
+        <div class="metric-card qr-code-container">
+            <h3>Join the game</h3>
+            <p><a href="https://chsh-game.fly.dev" target="_blank">chsh-game.fly.dev</a></p>
+            <div style="display: flex; justify-content: center; align-items: center;">
+                <img src="https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23E7F3FF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=0&frame_text=SCAN%20ME&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=https%3A%2F%2Fchsh-game.fly.dev&width=300&height=300&bordersize=2" alt="QR Code"/>
             </div>
-            <div class="metric-card">
-                <h3>Players</h3>
-                <div class="players-grid">
-                    <div>Connected:</div>
-                    <div id="connected-players-count">0</div>
-                    <div>Paired:</div>
-                    <div id="ready-players-count">0</div>
+        </div>
+        <div class="right-content-container">
+            <h1>CHSH Game - Host Dashboard</h1>
+            <div id="connection-status-dash">Connecting...</div>
+            <div class="panel metrics">
+                <div class="metric-card">
+                    <h3>Active Teams</h3>
+                    <p id="active-teams-count">0</p>
                 </div>
-            </div>
-            <div class="metric-card">
-                <h3>Total Responses</h3>
-                <p id="total-responses-count">0</p>
-            </div>
-            <div class="metric-card">
-                <h3 id="game-control-text">Game Control</h3>
-                <div class="game-controls">
-                    <button id="start-game-btn" onclick="startGame()" style="border: 2px solid #4CAF50;">Start Game</button>
-                    <button id="pause-game-btn" onclick="togglePause()" style="border: 2px solid #FFC107;">Pause</button>
+                <div class="metric-card">
+                    <h3>Players</h3>
+                    <div class="players-grid">
+                        <div>Connected:</div>
+                        <div id="connected-players-count">0</div>
+                        <div>Paired:</div>
+                        <div id="ready-players-count">0</div>
+                    </div>
+                </div>
+                <div class="metric-card">
+                    <h3>Total Responses</h3>
+                    <p id="total-responses-count">0</p>
+                </div>
+                <div class="metric-card">
+                    <h3 id="game-control-text">Game Control</h3>
+                    <div class="game-controls">
+                        <button id="start-game-btn" onclick="startGame()" style="border: 2px solid #4CAF50;">Start Game</button>
+                        <button id="pause-game-btn" onclick="togglePause()" style="border: 2px solid #FFC107;">Pause</button>
+                    </div>
                 </div>
             </div>
         </div>
+    </div>
 
+    <div class="dashboard-container">
         <div class="panel">
             <div class="panel-header">
                 <h2>Teams</h2>
