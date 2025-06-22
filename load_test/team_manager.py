@@ -83,6 +83,12 @@ class TeamManager:
             players.append(player)
         
         self.players = players
+        
+        # Establish connections for all players
+        logger.info("Establishing connections for all players...")
+        success_rate = await self.establish_connections()
+        logger.info(f"Connection establishment completed with {success_rate:.1%} success rate")
+        
         return players
     
     async def establish_connections(self) -> float:
@@ -292,9 +298,13 @@ class TeamManager:
                 await asyncio.sleep(0.5)
                 
                 # Joiner joins the team
-                success = await team.joiner.join_team(team.name)
-                if not success:
-                    logger.warning(f"Team {team.name} join failed")
+                if team.joiner is not None:
+                    success = await team.joiner.join_team(team.name)
+                    if not success:
+                        logger.warning(f"Team {team.name} join failed")
+                        continue
+                else:
+                    logger.warning(f"Team {team.name} has no joiner")
                     continue
                 
                 team.paired_at = asyncio.get_event_loop().time()

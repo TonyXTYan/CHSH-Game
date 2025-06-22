@@ -26,7 +26,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-from load_test.config import LoadTestConfig, load_config_from_file
+from load_test.config import LoadTestConfig, load_config_from_file, ResponsePatternType, ConnectionStrategy, OutputFormat
 from load_test.orchestrator import CHSHLoadTester
 from load_test.utils import setup_logging
 
@@ -79,11 +79,11 @@ def main(url: str, teams: int, pattern: str, connection_strategy: str,
             test_config = LoadTestConfig(
                 deployment_url=url,
                 num_teams=teams,
-                response_pattern=pattern,
-                connection_strategy=connection_strategy,
+                response_pattern=ResponsePatternType(pattern),
+                connection_strategy=ConnectionStrategy(connection_strategy),
                 connections_per_second=connections_per_second,
                 max_test_duration=max_duration,
-                output_format=output,
+                output_format=OutputFormat(output),
                 save_results=save_results,
                 log_level=log_level
             )
@@ -112,7 +112,7 @@ def main(url: str, teams: int, pattern: str, connection_strategy: str,
         signal.signal(signal.SIGTERM, signal_handler)
         
         # Run the test
-        asyncio.run(tester.run_load_test())
+        asyncio.run(tester.run())
         
     except KeyboardInterrupt:
         console.print("\n[red]⚠️  Test interrupted by user[/red]")
