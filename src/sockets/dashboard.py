@@ -16,7 +16,6 @@ import hashlib
 import csv
 import io
 import logging
-import numpy as np
 from datetime import datetime
 
 # Configure logging
