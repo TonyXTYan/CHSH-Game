@@ -411,7 +411,7 @@ def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
     with patch('src.sockets.dashboard.start_new_round_for_pair') as mock_start_round:
         mock_start_round.side_effect = Exception("Game error")
         on_start_game()
-        mock_emit.assert_called_with('error', {'message': 'Error starting game: Game error'})
+        mock_emit.assert_called_with('error', {'message': 'An error occurred while starting the game'})
 
 def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio):
     """Test dashboard join with callback function"""

@@ -15,6 +15,10 @@ from time import time
 import hashlib
 import csv
 import io
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 # Store last activity time for each dashboard client
 dashboard_last_activity = {}
@@ -35,9 +39,7 @@ def on_keep_alive():
             dashboard_last_activity[sid] = time()
             emit('keep_alive_ack', room=sid)
     except Exception as e:
-        print(f"Error in on_keep_alive: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in on_keep_alive: {str(e)}", exc_info=True)
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_team_hashes(team_id):
@@ -633,10 +635,8 @@ def on_start_game(data=None):
                 if len(team_info['players']) == 2: # If team is paired
                     start_new_round_for_pair(team_name)
     except Exception as e:
-        print(f"Error in on_start_game: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        emit('error', {'message': f'Error starting game: {str(e)}'})
+        logger.error(f"Error in on_start_game: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while starting the game'})
 
 @socketio.on('pause_game')
 def on_pause_game():
@@ -648,7 +648,7 @@ def on_pause_game():
 
         state.game_paused = not state.game_paused  # Toggle pause state
         pause_status = "paused" if state.game_paused else "resumed"
-        print(f"Game {pause_status} by {request.sid}")
+        logger.info(f"Game {pause_status} by {request.sid}")
 
         # Notify all clients about pause state change
         for team_name in state.active_teams.keys():
@@ -660,9 +660,7 @@ def on_pause_game():
         emit_dashboard_full_update()
 
     except Exception as e:
-        print(f"Error in on_pause_game: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in on_pause_game: {str(e)}", exc_info=True)
         emit('error', {'message': f'Error toggling game pause: {str(e)}'})
 
 @socketio.on('disconnect')
@@ -675,15 +673,13 @@ def on_disconnect():
             if sid in dashboard_last_activity:
                 del dashboard_last_activity[sid]
     except Exception as e:
-        print(f"Error in on_disconnect: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in on_disconnect: {str(e)}", exc_info=True)
 
 @socketio.on('restart_game')
 def on_restart_game():
     try:
         from flask import request
-        print(f"Received restart_game from {request.sid}")
+        logger.info(f"Received restart_game from {request.sid}")
         if request.sid not in state.dashboard_clients:
             emit('error', {'message': 'Unauthorized: Not a dashboard client'})
             emit('game_reset_complete', room=request.sid)
@@ -704,9 +700,7 @@ def on_restart_game():
             clear_team_caches()
         except Exception as db_error:
             db.session.rollback()
-            print(f"Database error during game reset: {str(db_error)}")
-            import traceback
-            traceback.print_exc()
+            logger.error(f"Database error during game reset: {str(db_error)}", exc_info=True)
             emit('error', {'message': 'Database error during reset'})
             emit('game_reset_complete', room=request.sid)
             return
@@ -737,14 +731,12 @@ def on_restart_game():
         emit_dashboard_full_update()
 
         # Notify dashboard clients that reset is complete
-        print("Emitting game_reset_complete to all dashboard clients")
+        logger.info("Emitting game_reset_complete to all dashboard clients")
         for dash_sid in state.dashboard_clients:
             socketio.emit('game_reset_complete', room=dash_sid)
             
     except Exception as e:
-        print(f"Error in on_restart_game: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in on_restart_game: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while restarting the game'})
 
 @app.route('/api/dashboard/data', methods=['GET'])
@@ -773,9 +765,7 @@ def get_dashboard_data():
         
         return jsonify({'answers': answers_data}), 200
     except Exception as e:
-        print(f"Error in get_dashboard_data: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in get_dashboard_data: {str(e)}", exc_info=True)
         return jsonify({'error': str(e)}), 500
 
 @app.route('/download', methods=['GET'])
@@ -824,9 +814,7 @@ def download_csv():
         return response
         
     except Exception as e:
-        print(f"Error in download_csv: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in download_csv: {str(e)}", exc_info=True)
         return Response(
             "An error occurred while generating the CSV file",
             status=500,
