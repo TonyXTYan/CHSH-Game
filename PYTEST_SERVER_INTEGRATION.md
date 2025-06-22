@@ -37,18 +37,31 @@ The server is now managed entirely within pytest.
 
 ### 3. Updated `requirements.txt`
 
-Added `requests==2.32.3` dependency for server health checks in the pytest fixture.
+Added dependencies for server integration and testing:
+- `requests==2.32.3` for server health checks in pytest fixture
+- `pytest-mock==3.14.0` for enhanced testing capabilities  
+- `beautifulsoup4==4.12.3` for HTML parsing in server functionality tests
 
 ### 4. Fixed Test Classification
 
 - Marked `tests/unit/test_download_endpoint.py` with `@pytest.mark.integration` since it makes real HTTP requests
 - This ensures proper server startup for tests that need it
 
+### 5. Added Comprehensive Server Functionality Tests
+
+Created `tests/integration/test_server_functionality.py` with **17 comprehensive tests** covering:
+- **Page Loading**: Main page, dashboard, about page
+- **UI Elements**: Buttons, forms, tables, navigation elements  
+- **Static Files**: CSS and JavaScript file serving
+- **API Endpoints**: Server ID, dashboard data, CSV download
+- **Security**: Path traversal protection, error handling
+- **Performance**: Response times, concurrent requests
+
 ## How It Works
 
 ### Server Detection Logic
 The fixture intelligently detects when to start the server by checking:
-1. **Integration test files**: `test_download_endpoint.py`, `test_player_interaction.py`
+1. **Integration test files**: `test_download_endpoint.py`, `test_player_interaction.py`, `test_server_functionality.py`
 2. **Integration directory**: `tests/integration/`
 3. **Full test suite**: When running `pytest tests/` or `pytest` without specific files
 
@@ -88,6 +101,15 @@ pytest tests/unit/test_download_endpoint.py
 ```
 ✅ **Server starts** automatically and shuts down when complete
 
+### Running Server Functionality Tests
+```bash
+# All server functionality tests
+pytest tests/integration/test_server_functionality.py -v
+
+# Specific functionality test
+pytest tests/integration/test_server_functionality.py::TestServerFunctionality::test_main_page_loads -v
+```
+
 ### Running Specific Integration Test
 ```bash
 pytest tests/integration/test_player_interaction.py::TestPlayerInteraction::test_player_connection -v
@@ -95,9 +117,9 @@ pytest tests/integration/test_player_interaction.py::TestPlayerInteraction::test
 
 ## Test Results
 
-**✅ All 97 tests pass** with the new integration:
+**✅ All tests pass** with the new integration:
 
-- **Integration tests**: Properly start server, run tests, shut down cleanly
+- **Integration tests**: 26 tests (9 player interaction + 17 server functionality)
 - **Unit tests**: Skip server startup and run faster 
 - **Mixed test runs**: Server starts when needed, skips when not
 
@@ -106,6 +128,31 @@ Example output:
 Unit test: "No integration tests detected, skipping Flask server startup" 
 Integration test: "Starting Flask server for integration tests... Flask server is ready!"
 ```
+
+## Server Functionality Test Coverage
+
+The new server functionality tests provide comprehensive validation:
+
+### Web Interface Testing
+- ✅ **Page Loading**: All HTML pages load correctly
+- ✅ **UI Elements**: Critical buttons, forms, and navigation elements present
+- ✅ **Static Assets**: CSS and JavaScript files served properly
+
+### API Endpoint Testing  
+- ✅ **Server ID API**: `/api/server/id` returns proper JSON
+- ✅ **Dashboard Data API**: `/api/dashboard/data` provides answers data
+- ✅ **CSV Download**: `/download` endpoint serves CSV files correctly
+
+### Security & Performance
+- ✅ **Path Traversal Protection**: Prevents directory traversal attacks
+- ✅ **Error Handling**: 404s and missing files handled gracefully  
+- ✅ **Performance**: Response times under 5 seconds
+- ✅ **Concurrent Load**: Handles multiple simultaneous requests
+
+### HTML Structure Validation
+- ✅ **Element Presence**: Verifies all critical UI components exist
+- ✅ **Content Validation**: Checks page titles, headers, button text
+- ✅ **Form Elements**: Validates input fields and interactive components
 
 ## Benefits
 
@@ -116,6 +163,7 @@ Integration test: "Starting Flask server for integration tests... Flask server i
 5. **✅ Automatic Cleanup**: No risk of orphaned server processes
 6. **✅ Reliability**: Proper health checks ensure server is ready before tests run
 7. **✅ Error Handling**: Robust shutdown procedures prevent resource leaks
+8. **✅ Comprehensive Coverage**: Full web application validation from server to UI
 
 ## Integration Test Requirements
 
@@ -151,6 +199,9 @@ The implementation has been tested and validated:
 
 - ✅ **Unit tests**: Skip server startup (fast execution)
 - ✅ **Integration tests**: Start server, run tests, clean shutdown  
-- ✅ **All tests**: 97/97 tests pass with proper server management
+- ✅ **All tests**: 97+ tests pass with proper server management
+- ✅ **Server functionality**: 17 comprehensive web application tests
 - ✅ **CI compatibility**: No changes needed to existing test structure
 - ✅ **Performance**: Significant speed improvement for unit tests
+
+The Flask server integration with comprehensive functionality testing provides complete validation that the CHSH Game web application works correctly at every level - from basic connectivity to complex user interface interactions.
