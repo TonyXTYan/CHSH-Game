@@ -626,7 +626,7 @@ def test_download_csv_endpoint_error(test_client, mock_db_session):
         
         response = test_client.get('/download')
         assert response.status_code == 500
-        assert 'Error generating CSV' in response.get_data(as_text=True)
+        assert 'An error occurred while generating the CSV file' in response.get_data(as_text=True)
 
 def test_download_csv_endpoint_empty_data(test_client, mock_db_session):
     """Test the /download CSV endpoint with no data"""

@@ -745,7 +745,7 @@ def on_restart_game():
         print(f"Error in on_restart_game: {str(e)}")
         import traceback
         traceback.print_exc()
-        emit('error', {'message': f'Error restarting game: {str(e)}'})
+        emit('error', {'message': 'An error occurred while restarting the game'})
 
 @app.route('/api/dashboard/data', methods=['GET'])
 def get_dashboard_data():
@@ -828,7 +828,7 @@ def download_csv():
         import traceback
         traceback.print_exc()
         return Response(
-            f"Error generating CSV: {str(e)}",
+            "An error occurred while generating the CSV file",
             status=500,
             mimetype='text/plain'
         )
