@@ -76,22 +76,21 @@ class CHSHLoadTester:
             logger.info("Load test completed successfully")
             return True
         except KeyboardInterrupt:
-            self.console.print("\n[bold red]✗ Load test completed with errors[/bold red]")
-            logger.error("Load test completed with errors")
-            return False
-        except Exception as e:
             self.console.print("\n[yellow]⚠️  Test interrupted by user[/yellow]")
             logger.warning("Test interrupted by user")
             return False
-        finally:
-            logger.error(f"Load test failed: {str(e)}")
+        except Exception as e:
             self.console.print(f"\n[red]❌ Load test failed: {str(e)}[/red]")
+            logger.error(f"Load test failed: {str(e)}")
             return False
     
     async def _run_load_test(self):
         """Execute the load test phases."""
         self.console.print("\n[bold blue]🚀 Starting CHSH Game Load Test[/bold blue]")
         logger.info("Starting CHSH Game Load Test")
+        
+        # Record start time
+        self.start_time = time.time()
 
         # Show configuration
         config_panel = Panel(
@@ -254,13 +253,26 @@ class CHSHLoadTester:
         
         logger.info("Shutdown complete")
     
+    async def _collect_results(self) -> bool:
+        """Collect final test results and generate report."""
+        try:
+            self.console.print("Collecting final results...")
+            logger.info("Collecting final results...")
+            
+            # Generate the final report
+            return await self._generate_report()
+        except Exception as e:
+            self.console.print(f"[red]❌ Results collection failed: {str(e)}[/red]")
+            logger.error(f"Results collection failed: {str(e)}")
+            return False
+    
     async def _generate_report(self) -> bool:
         """Generate final test report."""
         try:
             self.console.print("\n[bold blue]📊 Generating Test Report...[/bold blue]")
             logger.info("Generating test report...")
             
-            await self.reporter.generate_report(self.metrics.get_summary(), self.start_time.isoformat())
+            await self.reporter.generate_report()
             self.console.print("[green]✓ Report generated successfully[/green]")
             logger.info("Report generated successfully")
             return True

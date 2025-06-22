@@ -64,6 +64,12 @@ class Player:
         # Shutdown flag
         self.should_shutdown = False
     
+    @property
+    def connected(self) -> bool:
+        """Check if player is currently connected."""
+        return self.state in [PlayerState.CONNECTED, PlayerState.CREATING_TEAM, 
+                             PlayerState.JOINING_TEAM, PlayerState.IN_TEAM, PlayerState.PLAYING]
+    
     async def connect(self) -> bool:
         """
         Establish Socket.io connection to the server.
