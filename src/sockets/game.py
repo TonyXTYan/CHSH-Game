@@ -6,6 +6,10 @@ from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 @socketio.on('submit_answer')
 def on_submit_answer(data):
@@ -88,7 +92,5 @@ def on_submit_answer(data):
             }, room=team_name)
             start_new_round_for_pair(team_name)
     except Exception as e:
-        print(f"Error in on_submit_answer: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        emit('error', {'message': f'Error submitting answer: {str(e)}'})
+        logger.error(f"Error in on_submit_answer: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while submitting your answer'})

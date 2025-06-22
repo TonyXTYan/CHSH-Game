@@ -3,6 +3,8 @@ name: Python Tests
 on:
   push:
     branches: [ main, master ]
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.2.3
   pull_request:
     branches: [ main, master ]
 
@@ -43,12 +45,11 @@ jobs:
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v5
       with:
-        fail_ci_if_error: false
         token: ${{ secrets.CODECOV_TOKEN }}
         
   release:
     needs: test
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: startsWith(github.ref, 'refs/tags/v')
     permissions:
       contents: write  # Required for creating releases
     runs-on: ubuntu-latest
@@ -57,73 +58,25 @@ jobs:
         with:
           fetch-depth: 0
           
-      - name: Get latest release version and increment
+      - name: Get version from tag
         id: get_version
         run: |
-          # Get latest release or set default
-          LATEST_RELEASE=$(curl -s -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" \
-            "https://api.github.com/repos/${{ github.repository }}/releases")
-          
-          # Check if there are any releases
-          if [ "$(echo "$LATEST_RELEASE" | jq length)" = "0" ]; then
-            LATEST_VERSION="v0.0.0"
-          else
-            LATEST_VERSION=$(echo "$LATEST_RELEASE" | jq -r '.[0].tag_name')
-            if [ "$LATEST_VERSION" = "null" ] || [ -z "$LATEST_VERSION" ]; then
-              LATEST_VERSION="v0.0.0"
-            fi
-          fi
-          echo "Current version: $LATEST_VERSION"
-          
-          # Parse version and increment patch number
-          if [[ $LATEST_VERSION =~ v([0-9]+)\.([0-9]+)\.([0-9]+) ]]; then
-            MAJOR="${BASH_REMATCH[1]}"
-            MINOR="${BASH_REMATCH[2]}"
-            PATCH="${BASH_REMATCH[3]}"
-            NEW_PATCH=$((PATCH + 1))
-            NEW_VERSION="v$MAJOR.$MINOR.$NEW_PATCH"
-          else
-            NEW_VERSION="v0.0.1"
-          fi
-          echo "New version: $NEW_VERSION"
-          echo "new_version=$NEW_VERSION" >> $GITHUB_OUTPUT
-          
-      - name: Delete previous pre-release and tag if it exists
-        if: steps.get_version.outputs.new_version != 'v0.0.1' # Only run if not the first release
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
-          REPO: ${{ github.repository }}
-        run: |
-          PREV_VERSION="${{ steps.get_version.outputs.new_version }}"
-          # Get the previous release info
-          PREV_RELEASE=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/$REPO/releases/tags/$PREV_VERSION")
-          # Check if it's a pre-release
-          IS_PRERELEASE=$(echo "$PREV_RELEASE" | jq -r '.prerelease')
-          RELEASE_ID=$(echo "$PREV_RELEASE" | jq -r '.id')
-          if [ "$IS_PRERELEASE" = "true" ] && [ "$RELEASE_ID" != "null" ]; then
-            echo "Deleting previous pre-release $PREV_VERSION (ID: $RELEASE_ID)"
-            # Delete the release
-            curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/releases/$RELEASE_ID"
-            # Delete the tag
-            curl -s -X DELETE -H "Authorization: token $GITHUB_TOKEN" \
-              "https://api.github.com/repos/$REPO/git/refs/tags/$PREV_VERSION"
-          else
-            echo "No previous pre-release to delete."
-          fi
+          # Extract version from the git tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Version from tag: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
           
       - name: Create GitHub Pre-release
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: ${{ steps.get_version.outputs.new_version }}
-          name: Release ${{ steps.get_version.outputs.new_version }}
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
           draft: false
           prerelease: true
           body: |
-            Automated pre-release for version ${{ steps.get_version.outputs.new_version }}
+            Automated pre-release for version ${{ steps.get_version.outputs.version }}
             
             Changes in this release:
             ${{ github.event.head_commit.message }}
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

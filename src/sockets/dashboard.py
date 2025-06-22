@@ -607,10 +607,8 @@ def on_dashboard_join(data=None, callback=None):
             # Otherwise emit as usual
             socketio.emit('dashboard_update', update_data, room=sid)
     except Exception as e:
-        print(f"Error in on_dashboard_join: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        emit('error', {'message': f'Error joining dashboard: {str(e)}'})
+        logger.error(f"Error in on_dashboard_join: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while joining the dashboard'})
 
 @socketio.on('start_game')
 def on_start_game(data=None):
@@ -661,7 +659,7 @@ def on_pause_game():
 
     except Exception as e:
         logger.error(f"Error in on_pause_game: {str(e)}", exc_info=True)
-        emit('error', {'message': f'Error toggling game pause: {str(e)}'})
+        emit('error', {'message': 'An error occurred while toggling game pause'})
 
 @socketio.on('disconnect')
 def on_disconnect():
@@ -766,7 +764,7 @@ def get_dashboard_data():
         return jsonify({'answers': answers_data}), 200
     except Exception as e:
         logger.error(f"Error in get_dashboard_data: {str(e)}", exc_info=True)
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'error': 'An error occurred while retrieving dashboard data'}), 500
 
 @app.route('/download', methods=['GET'])
 def download_csv():

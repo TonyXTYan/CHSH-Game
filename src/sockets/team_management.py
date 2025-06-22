@@ -8,6 +8,10 @@ from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
 import traceback
+import logging
+
+# Configure logging
+logger = logging.getLogger(__name__)
 
 def get_available_teams_list():
     try:
@@ -185,9 +189,8 @@ def on_create_team(data):
         
         emit_dashboard_team_update()
     except Exception as e:
-        print(f"Error in on_create_team: {str(e)}")
-        traceback.print_exc()
-        emit('error', {'message': f'Error creating team: {str(e)}'})
+        logger.error(f"Error in on_create_team: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while creating the team'})
 
 @socketio.on('join_team')
 def on_join_team(data):
@@ -264,9 +267,8 @@ def on_join_team(data):
             # should be sufficient for clients to know the game is active.
 
     except Exception as e:
-        print(f"Error in on_join_team: {str(e)}")
-        traceback.print_exc()
-        emit('error', {'message': f'Error joining team: {str(e)}'})
+        logger.error(f"Error in on_join_team: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while joining the team'})
 
 @socketio.on('reactivate_team')
 def on_reactivate_team(data):
@@ -328,9 +330,8 @@ def on_reactivate_team(data):
             emit_dashboard_team_update()
             
     except Exception as e:
-        print(f"Error in on_reactivate_team: {str(e)}")
-        traceback.print_exc()
-        emit('error', {'message': f'Error reactivating team: {str(e)}'})
+        logger.error(f"Error in on_reactivate_team: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while reactivating the team'})
 
 @socketio.on('leave_team')
 def on_leave_team(data):
@@ -403,6 +404,5 @@ def on_leave_team(data):
             })
             emit_dashboard_team_update()
     except Exception as e:
-        print(f"Error in on_leave_team: {str(e)}")
-        traceback.print_exc()
-        emit('error', {'message': f'Error leaving team: {str(e)}'})
+        logger.error(f"Error in on_leave_team: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while leaving the team'})
