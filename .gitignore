@@ -7,3 +7,4 @@ load_test_results/*
 downloaded_test.csv
 src/static/sub/hello.txt
 .idea
+quiz_app.db-journal

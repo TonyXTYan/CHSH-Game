@@ -168,7 +168,8 @@ def test_round_completion_when_both_players_answer(mock_request_context):
                 'team_name': test_team,
                 'round_number': 1
             },
-            room=test_team
+            room=test_team,
+            skip_sid=None
         )
         
         # Verify new round was started
@@ -225,7 +226,8 @@ def test_dashboard_notifications_on_answer(mock_request_context):
                 'assigned_item': 'A',
                 'response_value': True
             },
-            room='dash1'
+            room='dash1',
+            skip_sid=None
         )
         
         mock_socketio_emit.assert_any_call(
@@ -239,7 +241,8 @@ def test_dashboard_notifications_on_answer(mock_request_context):
                 'assigned_item': 'A',
                 'response_value': True
             },
-            room='dash2'
+            room='dash2',
+            skip_sid=None
         )
         
         # Verify dashboard team update was called

@@ -10,6 +10,18 @@ logger = logging.getLogger(__name__)
 QUESTION_ITEMS = [ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y]
 TARGET_COMBO_REPEATS = 2
 
+def safe_socket_emit(event, data, room=None, skip_sid=None):
+    """
+    Safely emit a socket message with error handling to prevent 'Bad file descriptor' errors.
+    """
+    try:
+        if room:
+            socketio.emit(event, data, room=room, skip_sid=skip_sid)
+        else:
+            socketio.emit(event, data, skip_sid=skip_sid)
+    except Exception as e:
+        logger.warning(f"Failed to emit {event} to room {room}: {str(e)}")
+
 def start_new_round_for_pair(team_name):
     try:
         team_info = state.active_teams.get(team_name)
@@ -61,8 +73,8 @@ def start_new_round_for_pair(team_name):
 
         # Send questions to players
         player1, player2 = team_info['players']
-        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1)
-        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2)
+        safe_socket_emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1)
+        safe_socket_emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2)
         # logger.debug(f"Team {team_name} round {round_number}: P1({player1}) gets {p1_item.value}, P2({player2}) gets {p2_item.value}")
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()

@@ -17,6 +17,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from src.config import app, socketio, db
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
 from src.state import state
+from src.sockets.team_management import safe_socket_emit
 
 # Unique ID for server instance
 server_instance_id = str(uuid.uuid4())
@@ -27,7 +28,7 @@ def handle_shutdown(signum, frame):
     try:
         # Notify all connected clients about the shutdown
         try:
-            socketio.emit('server_shutdown')
+            safe_socket_emit('server_shutdown', {})
             socketio.sleep(1)  # Allow time for clients to receive the message (1 second)
         except Exception as e:
             logger.warning(f"Error notifying clients of shutdown: {e}")
@@ -93,7 +94,7 @@ with app.app_context():
         logger.info(f"Deactivated {deactivated_count} active teams (renamed {renamed_count} due to conflicts)")
 
         # Notify any connected dashboard clients
-        socketio.emit('game_reset_complete')
+        safe_socket_emit('game_reset_complete', {})
         
     except Exception as e:
         logger.error(f"Error resetting database: {str(e)}", exc_info=True)

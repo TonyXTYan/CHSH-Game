@@ -31,6 +31,18 @@ REFRESH_DELAY = 1 # seconds
 _last_refresh_time = 0
 _cached_teams_result = None
 
+def safe_socket_emit(event, data, room=None, skip_sid=None):
+    """
+    Safely emit a socket message with error handling to prevent 'Bad file descriptor' errors.
+    """
+    try:
+        if room:
+            socketio.emit(event, data, room=room, skip_sid=skip_sid)
+        else:
+            socketio.emit(event, data, skip_sid=skip_sid)
+    except Exception as e:
+        logger.warning(f"Failed to emit {event} to room {room}: {str(e)}")
+
 @socketio.on('keep_alive')
 def on_keep_alive():
     try:
@@ -38,7 +50,7 @@ def on_keep_alive():
         sid = request.sid
         if sid in state.dashboard_clients:
             dashboard_last_activity[sid] = time()
-            emit('keep_alive_ack', room=sid)
+            safe_socket_emit('keep_alive_ack', {}, room=sid)
     except Exception as e:
         logger.error(f"Error in on_keep_alive: {str(e)}", exc_info=True)
 
@@ -531,7 +543,7 @@ def emit_dashboard_team_update():
         # Create a copy of the set to avoid "Set changed size during iteration" error
         dashboard_clients_copy = set(state.dashboard_clients)
         for sid in dashboard_clients_copy:
-            socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
+            safe_socket_emit('team_status_changed_for_dashboard', update_data, room=sid)
     except Exception as e:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
@@ -551,12 +563,12 @@ def emit_dashboard_full_update(client_sid=None):
             }
         }
         if client_sid:
-            socketio.emit('dashboard_update', update_data, room=client_sid)
+            safe_socket_emit('dashboard_update', update_data, room=client_sid)
         else:
             # Create a copy of the set to avoid "Set changed size during iteration" error
             dashboard_clients_copy = set(state.dashboard_clients)
             for dashboard_sid in dashboard_clients_copy:
-                socketio.emit('dashboard_update', update_data, room=dashboard_sid)
+                safe_socket_emit('dashboard_update', update_data, room=dashboard_sid)
     except Exception as e:
         logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
 
@@ -592,10 +604,10 @@ def on_dashboard_join(data=None, callback=None):
             callback(update_data)
         else:
             # Otherwise emit as usual
-            socketio.emit('dashboard_update', update_data, room=sid)
+            safe_socket_emit('dashboard_update', update_data, room=sid)
     except Exception as e:
         logger.error(f"Error in on_dashboard_join: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while joining the dashboard'})
+        safe_socket_emit('error', {'message': 'An error occurred while joining the dashboard'})
 
 @socketio.on('start_game')
 def on_start_game(data=None):
@@ -606,16 +618,16 @@ def on_start_game(data=None):
             # Notify teams and dashboard that game has started
             for team_name, team_info in state.active_teams.items():
                 if len(team_info['players']) == 2:  # Only notify paired teams
-                    socketio.emit('game_start', {'game_started': True}, room=team_name)
+                    safe_socket_emit('game_start', {'game_started': True}, room=team_name)
             
             # Notify dashboard
             # Create a copy of the set to avoid "Set changed size during iteration" error
             dashboard_clients_copy = set(state.dashboard_clients)
             for dashboard_sid in dashboard_clients_copy:
-                socketio.emit('game_started', room=dashboard_sid)
+                safe_socket_emit('game_started', {}, room=dashboard_sid)
                 
             # Notify all clients about game state change
-            socketio.emit('game_state_changed', {'game_started': True})
+            safe_socket_emit('game_state_changed', {'game_started': True})
                 
             # Start first round for all paired teams
             for team_name, team_info in state.active_teams.items():
@@ -623,14 +635,14 @@ def on_start_game(data=None):
                     start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_start_game: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while starting the game'})
+        safe_socket_emit('error', {'message': 'An error occurred while starting the game'})
 
 @socketio.on('pause_game')
 def on_pause_game():
     try:
         from flask import request
         if request.sid not in state.dashboard_clients:
-            emit('error', {'message': 'Unauthorized: Not a dashboard client'})
+            safe_socket_emit('error', {'message': 'Unauthorized: Not a dashboard client'})
             return
 
         state.game_paused = not state.game_paused  # Toggle pause state
@@ -639,7 +651,7 @@ def on_pause_game():
 
         # Notify all clients about pause state change
         for team_name in state.active_teams.keys():
-            socketio.emit('game_state_update', {
+            safe_socket_emit('game_state_update', {
                 'paused': state.game_paused
             }, room=team_name)
 
@@ -648,7 +660,7 @@ def on_pause_game():
 
     except Exception as e:
         logger.error(f"Error in on_pause_game: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while toggling game pause'})
+        safe_socket_emit('error', {'message': 'An error occurred while toggling game pause'})
 
 @socketio.on('disconnect')
 def on_disconnect():
@@ -668,8 +680,8 @@ def on_restart_game():
         from flask import request
         logger.info(f"Received restart_game from {request.sid}")
         if request.sid not in state.dashboard_clients:
-            emit('error', {'message': 'Unauthorized: Not a dashboard client'})
-            emit('game_reset_complete', room=request.sid)
+            safe_socket_emit('error', {'message': 'Unauthorized: Not a dashboard client'})
+            safe_socket_emit('game_reset_complete', {}, room=request.sid)
             return
 
         # First update game state to prevent new answers during reset
@@ -688,15 +700,15 @@ def on_restart_game():
         except Exception as db_error:
             db.session.rollback()
             logger.error(f"Database error during game reset: {str(db_error)}", exc_info=True)
-            emit('error', {'message': 'Database error during reset'})
-            emit('game_reset_complete', room=request.sid)
+            safe_socket_emit('error', {'message': 'Database error during reset'})
+            safe_socket_emit('game_reset_complete', {}, room=request.sid)
             return
 
         # If no active teams, still complete the reset successfully
         if not state.active_teams:
-            emit('game_state_changed', {'game_started': False})
+            safe_socket_emit('game_state_changed', {'game_started': False})
             emit_dashboard_full_update()
-            emit('game_reset_complete', room=request.sid)
+            safe_socket_emit('game_reset_complete', {}, room=request.sid)
             return
         
         # Reset team state after successful database clear
@@ -709,10 +721,10 @@ def on_restart_game():
         
         # Notify all teams about the reset
         for team_name in state.active_teams.keys():
-            socketio.emit('game_reset', room=team_name)
+            safe_socket_emit('game_reset', {}, room=team_name)
         
         # Ensure all clients are notified of the state change
-        socketio.emit('game_state_changed', {'game_started': False})
+        safe_socket_emit('game_state_changed', {'game_started': False})
         
         # Update dashboard with reset state
         emit_dashboard_full_update()
@@ -722,11 +734,11 @@ def on_restart_game():
         # Create a copy of the set to avoid "Set changed size during iteration" error
         dashboard_clients_copy = set(state.dashboard_clients)
         for dash_sid in dashboard_clients_copy:
-            socketio.emit('game_reset_complete', room=dash_sid)
+            safe_socket_emit('game_reset_complete', {}, room=dash_sid)
             
     except Exception as e:
         logger.error(f"Error in on_restart_game: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while restarting the game'})
+        safe_socket_emit('error', {'message': 'An error occurred while restarting the game'})
 
 @app.route('/api/dashboard/data', methods=['GET'])
 def get_dashboard_data():

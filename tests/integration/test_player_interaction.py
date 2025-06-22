@@ -144,6 +144,9 @@ class TestPlayerInteraction:
         # Get received messages
         messages = client.get_received()
         
+        # Debug: Log all received messages
+        logger.info(f"Received messages: {messages}")
+        
         # Verify connection_established event
         msg = next((msg for msg in messages if msg.get('name') == 'connection_established'), None)
         assert msg is not None, "Did not receive connection_established event"

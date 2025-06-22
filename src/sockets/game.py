@@ -11,6 +11,18 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
+def safe_socket_emit(event, data, room=None, skip_sid=None):
+    """
+    Safely emit a socket message with error handling to prevent 'Bad file descriptor' errors.
+    """
+    try:
+        if room:
+            socketio.emit(event, data, room=room, skip_sid=skip_sid)
+        else:
+            socketio.emit(event, data, skip_sid=skip_sid)
+    except Exception as e:
+        logger.warning(f"Failed to emit {event} to room {room}: {str(e)}")
+
 @socketio.on('submit_answer')
 def on_submit_answer(data):
     try:
@@ -81,14 +93,14 @@ def on_submit_answer(data):
         # Create a copy of the set to avoid "Set changed size during iteration" error
         dashboard_clients_copy = set(state.dashboard_clients)
         for dash_sid in dashboard_clients_copy:
-            socketio.emit('new_answer_for_dashboard', answer_for_dash, room=dash_sid)
+            safe_socket_emit('new_answer_for_dashboard', answer_for_dash, room=dash_sid)
         
         # Only emit team update, not full dashboard refresh
         emit_dashboard_team_update()
 
         if len(team_info['answered_current_round']) == 2:
             # print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")
-            socketio.emit('round_complete', {
+            safe_socket_emit('round_complete', {
                 'team_name': team_name,
                 'round_number': team_info['current_round_number']
             }, room=team_name)

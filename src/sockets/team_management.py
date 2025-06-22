@@ -73,7 +73,7 @@ def handle_connect():
             state.connected_players.add(sid)
             emit_dashboard_full_update()  # Use full update to refresh player count
         
-        emit('connection_established', {
+        safe_socket_emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list()
         })
@@ -197,6 +197,8 @@ def on_create_team(data):
     try:
         team_name = data.get('team_name')
         sid = request.sid
+        logger.info(f"Creating team: {team_name} for sid: {sid}")
+        
         if not team_name:
             emit('error', {'message': 'Team name is required'}); return
         if team_name in state.active_teams or Teams.query.filter_by(team_name=team_name, is_active=True).first():
@@ -205,6 +207,8 @@ def on_create_team(data):
         new_team_db = Teams(team_name=team_name, player1_session_id=sid)
         db.session.add(new_team_db)
         db.session.commit()
+        logger.info(f"Team created in database: {new_team_db.team_id}")
+        
         # Clear caches after team state change
         clear_team_caches()
         state.active_teams[team_name] = {
@@ -217,6 +221,8 @@ def on_create_team(data):
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[new_team_db.team_id] = team_name
+        logger.info(f"Team added to state: {team_name}")
+        
         join_room(team_name)
         
         emit('team_created', {
@@ -231,7 +237,7 @@ def on_create_team(data):
         # For now, keeping it as it was.
         emit('team_status_update', {'status': 'created'}, room=request.sid) 
         
-        socketio.emit('teams_updated', {
+        safe_socket_emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
         })
@@ -299,7 +305,7 @@ def on_join_team(data):
         }, room=team_name)
         
         # Update all clients about the list of available teams
-        socketio.emit('teams_updated', {
+        safe_socket_emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
         })
@@ -371,7 +377,7 @@ def on_reactivate_team(data):
                 'game_started': state.game_started
             })
             
-            socketio.emit('teams_updated', {
+            safe_socket_emit('teams_updated', {
                 'teams': get_available_teams_list(),
                 'game_started': state.game_started
             })
@@ -447,7 +453,7 @@ def on_leave_team(data):
             if sid in state.player_to_team: # Check before deleting
                 del state.player_to_team[sid]
             
-            socketio.emit('teams_updated', {
+            safe_socket_emit('teams_updated', {
                 'teams': get_available_teams_list(),
                 'game_started': state.game_started
             })

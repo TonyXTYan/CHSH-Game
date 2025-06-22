@@ -97,7 +97,7 @@ def cleanup_state():
 def test_reactivate_team_success(mock_request_context, inactive_team):
     """Test successful team reactivation"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.safe_socket_emit') as mock_safe_socket_emit, \
          patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.join_room') as mock_join_room:
         
@@ -131,7 +131,7 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
             }
         )
         
-        mock_socketio_emit.assert_any_call(
+        mock_safe_socket_emit.assert_any_call(
             'teams_updated',
             {
                 'teams': ANY,
@@ -194,7 +194,7 @@ def test_get_team_members(app_context, active_team):
 
 def test_handle_connect(mock_request_context):
     """Test client connection handling"""
-    with patch('src.sockets.team_management.emit') as mock_emit, \
+    with patch('src.sockets.team_management.safe_socket_emit') as mock_safe_socket_emit, \
          patch('src.sockets.team_management.emit_dashboard_full_update') as mock_dashboard_update:
         from src.sockets.team_management import handle_connect
         
@@ -204,7 +204,7 @@ def test_handle_connect(mock_request_context):
         assert 'test_sid' in state.connected_players
         assert 'test_sid' not in state.dashboard_clients
         
-        mock_emit.assert_called_once_with('connection_established', {
+        mock_safe_socket_emit.assert_called_once_with('connection_established', {
             'game_started': state.game_started,
             'available_teams': ANY
         })
@@ -213,12 +213,19 @@ def test_handle_connect(mock_request_context):
 def test_create_team_success(mock_request_context):
     """Test successful team creation"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.safe_socket_emit') as mock_safe_socket_emit, \
          patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.join_room') as mock_join_room:
         
         from src.sockets.team_management import on_create_team
+        
+        # Debug: Check initial state
+        print(f"Initial state.active_teams: {state.active_teams}")
+        
         on_create_team({'team_name': 'new_team'})
+        
+        # Debug: Check state after team creation
+        print(f"After team creation state.active_teams: {state.active_teams}")
         
         # Verify team was created in database
         team = Teams.query.filter_by(team_name='new_team').first()
@@ -243,7 +250,7 @@ def test_create_team_success(mock_request_context):
             }
         )
         
-        mock_socketio_emit.assert_called_once_with(
+        mock_safe_socket_emit.assert_called_once_with(
             'teams_updated',
             {
                 'teams': ANY,
@@ -283,7 +290,7 @@ def test_create_team_duplicate_name(mock_request_context, active_team):
 def test_join_team_success(mock_request_context, active_team):
     """Test successful team join"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.safe_socket_emit') as mock_safe_socket_emit, \
          patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.join_room') as mock_join_room, \
          patch('src.sockets.team_management.start_new_round_for_pair') as mock_start_round:
@@ -314,7 +321,7 @@ def test_join_team_success(mock_request_context, active_team):
             room='test_sid'
         )
         
-        mock_socketio_emit.assert_called_with(
+        mock_safe_socket_emit.assert_called_with(
             'teams_updated',
             {
                 'teams': ANY,

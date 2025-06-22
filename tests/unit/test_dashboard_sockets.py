@@ -112,7 +112,7 @@ def test_pause_game_toggles_state(mock_request, mock_state, mock_socketio, mock_
     # Verify teams were notified
     mock_socketio.emit.assert_any_call('game_state_update', 
                                     {'paused': True}, 
-                                    room='team1')
+                                    room='team1', skip_sid=None)
 
     # Call pause_game again
     on_pause_game()
@@ -123,7 +123,7 @@ def test_pause_game_toggles_state(mock_request, mock_state, mock_socketio, mock_
     # Verify teams were notified of unpause
     mock_socketio.emit.assert_any_call('game_state_update', 
                                     {'paused': False}, 
-                                    room='team1')
+                                    room='team1', skip_sid=None)
 
 def test_pause_game_unauthorized(mock_request, mock_state, mock_socketio, mock_emit):
     """Test that unauthorized clients cannot pause the game"""
@@ -137,11 +137,7 @@ def test_pause_game_unauthorized(mock_request, mock_state, mock_socketio, mock_e
     assert not mock_state.game_paused
 
     # Verify error was emitted
-    mock_emit.assert_called_once_with('error', 
-                                   {'message': 'Unauthorized: Not a dashboard client'})
-
-    # Verify no team notifications were sent
-    mock_socketio.emit.assert_not_called()
+    mock_socketio.emit.assert_called_once_with('error', {'message': 'Unauthorized: Not a dashboard client'}, skip_sid=None)
 
 def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
     """Test correlation matrix computation with no answers"""
@@ -359,7 +355,7 @@ def test_dashboard_api_endpoint_error(test_client, mock_db_session):
 
 def test_on_keep_alive(mock_request, mock_state):
     """Test keep-alive functionality"""
-    with patch('src.sockets.dashboard.emit') as mock_emit:
+    with patch('src.sockets.dashboard.socketio.emit') as mock_emit:
         with patch('src.sockets.dashboard.time') as mock_time:
             mock_time.return_value = 12345
             
@@ -367,7 +363,7 @@ def test_on_keep_alive(mock_request, mock_state):
             on_keep_alive()
             
             # Verify acknowledgment was sent
-            mock_emit.assert_called_once_with('keep_alive_ack', room='test_dashboard_sid')
+            mock_emit.assert_called_once_with('keep_alive_ack', {}, room='test_dashboard_sid', skip_sid=None)
             
             # Verify timestamp was updated
             from src.sockets.dashboard import dashboard_last_activity
@@ -396,22 +392,22 @@ def test_emit_dashboard_team_update(mock_state, mock_socketio):
         mock_socketio.emit.assert_called_with('team_status_changed_for_dashboard', {
             'teams': [{'team_name': 'team1'}],
             'connected_players_count': 2
-        }, room='test_dashboard_sid')
+        }, room='test_dashboard_sid', skip_sid=None)
 
-def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
+def test_error_handling_in_socket_events(mock_request, mock_state, mock_socketio):
     """Test error handling in socket event handlers"""
     # Test error in dashboard_join
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.side_effect = Exception("Database error")
         on_dashboard_join()
-        mock_emit.assert_called_with('error', {'message': 'An error occurred while joining the dashboard'})
+        mock_socketio.emit.assert_called_with('error', {'message': 'An error occurred while joining the dashboard'}, skip_sid=None)
     
     # Test error in start_game
-    mock_emit.reset_mock()
+    mock_socketio.emit.reset_mock()
     with patch('src.sockets.dashboard.start_new_round_for_pair') as mock_start_round:
         mock_start_round.side_effect = Exception("Game error")
         on_start_game()
-        mock_emit.assert_called_with('error', {'message': 'An error occurred while starting the game'})
+        mock_socketio.emit.assert_called_with('error', {'message': 'An error occurred while starting the game'}, skip_sid=None)
 
 def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio):
     """Test dashboard join with callback function"""
@@ -444,13 +440,13 @@ def test_on_start_game(mock_request, mock_state, mock_socketio):
         assert mock_state.game_started == True
         
         # Verify teams were notified
-        mock_socketio.emit.assert_any_call('game_start', {'game_started': True}, room='team1')
+        mock_socketio.emit.assert_any_call('game_start', {'game_started': True}, room='team1', skip_sid=None)
         
         # Verify dashboard was notified
-        mock_socketio.emit.assert_any_call('game_started', room='test_dashboard_sid')
+        mock_socketio.emit.assert_any_call('game_started', {}, room='test_dashboard_sid', skip_sid=None)
         
         # Verify global state change notification
-        mock_socketio.emit.assert_any_call('game_state_changed', {'game_started': True})
+        mock_socketio.emit.assert_any_call('game_state_changed', {'game_started': True}, skip_sid=None)
         
         # Verify new round was started for paired team
         mock_start_round.assert_called_once_with('team1')
@@ -481,9 +477,9 @@ def test_on_restart_game(mock_request, mock_state, mock_socketio, mock_db_sessio
     assert team_info['combo_tracker'] == {}
     
     # Verify notifications were sent
-    mock_socketio.emit.assert_any_call('game_reset', room='team1')
-    mock_socketio.emit.assert_any_call('game_state_changed', {'game_started': False})
-    mock_socketio.emit.assert_any_call('game_reset_complete', room='test_dashboard_sid')
+    mock_socketio.emit.assert_any_call('game_reset', {}, room='team1', skip_sid=None)
+    mock_socketio.emit.assert_any_call('game_state_changed', {'game_started': False}, skip_sid=None)
+    mock_socketio.emit.assert_any_call('game_reset_complete', {}, room='test_dashboard_sid', skip_sid=None)
 
 def test_get_all_teams(mock_state, mock_db_session):
     """Test getting serialized team data"""
@@ -558,7 +554,7 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
                     'paused': False,
                     'streaming_enabled': True
                 }
-            }, room='specific_client')
+            }, room='specific_client', skip_sid=None)
             
             # Test update for all dashboard clients
             mock_socketio.emit.reset_mock()
@@ -572,7 +568,7 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
                     'paused': False,
                     'streaming_enabled': True
                 }
-            }, room='test_dashboard_sid')
+            }, room='test_dashboard_sid', skip_sid=None)
 
 def test_download_csv_endpoint(test_client, mock_db_session):
     """Test the /download CSV endpoint"""
