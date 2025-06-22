@@ -8,6 +8,7 @@ import requests
 import logging
 import sys
 import os
+import pytest
 
 # Configure logging
 logging.basicConfig(
@@ -16,6 +17,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+@pytest.mark.integration
 def test_download_endpoint():
     """Test the CSV download endpoint"""
     url = "http://localhost:8080/download-data"

@@ -36,13 +36,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r requirements.txt
         pip install -r load_test/load_test_requirements.txt
-        pip install pytest pytest-cov pytest-mock
     
-    - name: Start Flask server (background)
-      run: |
-        gunicorn wsgi:app --worker-class eventlet --bind 0.0.0.0:8080 &
-        sleep 5
-
     - name: Test with pytest and generate coverage report
       run: |
         pytest --cov=src --cov-branch --cov-report=xml tests/
