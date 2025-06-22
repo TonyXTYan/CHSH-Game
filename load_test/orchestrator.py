@@ -50,6 +50,7 @@ class CHSHLoadTester:
         self.start_time: Optional[float] = None
         self.end_time: Optional[float] = None
         self.should_shutdown = False
+        self.shutdown_event = asyncio.Event()
         
         # Test results
         self.players: List = []
@@ -59,20 +60,24 @@ class CHSHLoadTester:
         self.live_display: Optional[Live] = None
         self.progress: Optional[Progress] = None
         
-        # Setup signal handlers
-        self._setup_signal_handlers()
+        # Task tracking for proper cleanup
+        self.running_tasks: List[asyncio.Task] = []
     
     def _setup_signal_handlers(self):
         """Setup graceful shutdown signal handlers."""
         def signal_handler(signum, frame):
             logger.info(f"Received signal {signum}, initiating graceful shutdown...")
-            asyncio.create_task(self.shutdown())
+            self.should_shutdown = True
+            self.shutdown_event.set()
         
         signal.signal(signal.SIGINT, signal_handler)
         signal.signal(signal.SIGTERM, signal_handler)
     
     async def run_load_test(self) -> bool:
         """Run the complete load test."""
+        # Setup signal handlers after getting event loop
+        self._setup_signal_handlers()
+        
         try:
             self.start_time = time.time()
             self.metrics.start_monitoring()
@@ -89,8 +94,13 @@ class CHSHLoadTester:
                 return False
             
         except KeyboardInterrupt:
-            self.console.print("\n[yellow]⚠️  Test interrupted by user[/yellow]")
+            self.console.print("\n[yellow]⚠️  Test interrupted by user (Ctrl+C)[/yellow]")
             logger.warning("Test interrupted by user")
+            return False
+            
+        except asyncio.CancelledError:
+            self.console.print("\n[yellow]⚠️  Test cancelled gracefully[/yellow]")
+            logger.warning("Test cancelled gracefully")
             return False
             
         except Exception as e:
@@ -102,7 +112,7 @@ class CHSHLoadTester:
             # Always cleanup
             self.metrics.stop_monitoring()
             await self.shutdown()
-    
+
     async def _run_load_test(self) -> bool:
         """Execute the load test phases."""
         self.console.print("\n[bold blue]🚀 Starting CHSH Game Load Test[/bold blue]")
@@ -117,7 +127,8 @@ class CHSHLoadTester:
 ⏱️  Max Duration: {self.config.max_test_duration}s
 🔗 Connection Strategy: {self.config.connection_strategy.value}
 🎯 Response Pattern: {self.config.response_pattern.value}
-📈 Dashboard Simulation: {'✓' if self.config.enable_dashboard_simulation else '✗'}""",
+📈 Dashboard Simulation: {'✓' if self.config.enable_dashboard_simulation else '✗'}
+[dim]Press Ctrl+C for graceful shutdown[/dim]""",
             title="Load Test Parameters",
             border_style="blue"
         )
@@ -134,6 +145,12 @@ class CHSHLoadTester:
         ]
 
         for phase_name, phase_func in phases:
+            # Check for shutdown signal
+            if self.should_shutdown:
+                self.console.print(f"\n[yellow]⚠️  Shutdown requested, stopping at {phase_name}[/yellow]")
+                logger.info(f"Shutdown requested, stopping at {phase_name}")
+                return False
+                
             try:
                 self.console.print(f"\n[bold yellow]📋 {phase_name}...[/bold yellow]")
                 logger.info(f"Starting phase: {phase_name}")
@@ -144,6 +161,10 @@ class CHSHLoadTester:
                     return False
                 self.console.print(f"[green]✓ {phase_name} completed[/green]")
                 logger.info(f"Phase completed: {phase_name}")
+            except asyncio.CancelledError:
+                self.console.print(f"\n[yellow]⚠️  {phase_name} cancelled[/yellow]")
+                logger.info(f"Phase cancelled: {phase_name}")
+                return False
             except Exception as e:
                 self.console.print(f"[red]❌ {phase_name} failed: {str(e)}[/red]")
                 logger.error(f"Phase failed: {phase_name} - {str(e)}")
@@ -246,18 +267,47 @@ class CHSHLoadTester:
                 asyncio.create_task(self.dashboard.monitor_dashboard(self.config.max_test_duration))
             )
         
+        # Track tasks for cleanup
+        self.running_tasks.extend(monitor_tasks)
+        
         try:
             # Run until completion or shutdown
-            await asyncio.gather(*monitor_tasks, return_exceptions=True)
+            done, pending = await asyncio.wait(
+                monitor_tasks + [asyncio.create_task(self.shutdown_event.wait())],
+                return_when=asyncio.FIRST_COMPLETED
+            )
+            
+            # Cancel pending tasks
+            for task in pending:
+                task.cancel()
+                try:
+                    await task
+                except asyncio.CancelledError:
+                    pass
+            
+            # Check if shutdown was requested
+            if self.should_shutdown:
+                self.console.print("\n[yellow]⚠️  Load test interrupted by user[/yellow]")
+                logger.info("Load test interrupted by user")
+                return True  # Still consider it successful if we can report
+            
+            return True
+            
+        except asyncio.CancelledError:
+            logger.info("Load test execution was cancelled")
             return True
         except Exception as e:
             logger.error(f"Game simulation error: {str(e)}")
             return False
         finally:
-            # Cancel remaining tasks
+            # Cancel and cleanup all monitoring tasks
             for task in monitor_tasks:
                 if not task.done():
                     task.cancel()
+                    try:
+                        await task
+                    except asyncio.CancelledError:
+                        pass
     
     async def _collect_results(self) -> bool:
         """Collect and generate test results."""
@@ -276,10 +326,23 @@ class CHSHLoadTester:
     
     async def _update_live_display(self):
         """Update live display periodically."""
-        while not self.should_shutdown:
-            if self.live_display:
-                self.live_display.update(self._generate_status_display())
-            await asyncio.sleep(1.0)
+        try:
+            while not self.should_shutdown:
+                if self.live_display:
+                    self.live_display.update(self._generate_status_display())
+                
+                # Use asyncio.wait_for with shutdown event for interruptible sleep
+                try:
+                    await asyncio.wait_for(self.shutdown_event.wait(), timeout=1.0)
+                    break  # Shutdown event was set
+                except asyncio.TimeoutError:
+                    continue  # Normal timeout, continue loop
+                    
+        except asyncio.CancelledError:
+            logger.debug("Live display update task was cancelled")
+            raise
+        except Exception as e:
+            logger.error(f"Live display update error: {str(e)}")
     
     async def shutdown(self):
         """Gracefully shutdown the load tester."""
@@ -288,10 +351,23 @@ class CHSHLoadTester:
             
         logger.info("Initiating graceful shutdown...")
         self.should_shutdown = True
+        self.shutdown_event.set()
         
         # Stop live display
         if self.live_display:
-            self.live_display.stop()
+            try:
+                self.live_display.stop()
+            except Exception as e:
+                logger.debug(f"Error stopping live display: {e}")
+        
+        # Cancel all running tasks
+        for task in self.running_tasks:
+            if not task.done():
+                task.cancel()
+        
+        # Wait for tasks to complete cancellation
+        if self.running_tasks:
+            await asyncio.gather(*self.running_tasks, return_exceptions=True)
         
         # Shutdown components
         shutdown_tasks = [
@@ -299,7 +375,13 @@ class CHSHLoadTester:
             asyncio.create_task(self.dashboard.disconnect())
         ]
         
-        await asyncio.gather(*shutdown_tasks, return_exceptions=True)
+        try:
+            await asyncio.wait_for(
+                asyncio.gather(*shutdown_tasks, return_exceptions=True),
+                timeout=5.0  # 5 second timeout for shutdown
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Shutdown timeout reached, forcing exit")
         
         logger.info("Shutdown complete")
     
@@ -324,4 +406,8 @@ class CHSHLoadTester:
         status_table.add_row("Error Count", str(status.get('error_count', 0)))
         status_table.add_row("Game Started", "✓" if status.get('game_started', False) else "✗")
         
-        return Panel(status_table, title="[bold]Real-time Status[/bold]", border_style="green")
+        # Add shutdown status
+        if self.should_shutdown:
+            status_table.add_row("Status", "[yellow]Shutting down...[/yellow]")
+        
+        return Panel(status_table, title="[bold]Real-time Status[/bold] [dim](Ctrl+C to exit)[/dim]", border_style="green")
