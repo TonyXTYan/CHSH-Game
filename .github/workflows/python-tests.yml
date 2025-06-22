@@ -52,10 +52,6 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         
-    - name: Install type checkers
-      run: |
-        pip install mypy pyright
-        
     - name: Run mypy type checking
       continue-on-error: true
       run: |
