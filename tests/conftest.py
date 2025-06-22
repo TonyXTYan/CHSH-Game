@@ -34,14 +34,14 @@ def _cleanup_server():
 atexit.register(_cleanup_server)
 
 @pytest.fixture(scope="session", autouse=True)
-def flask_server(pytestconfig):
+def flask_server(pytestconfig, request):
     """Start Flask server for integration tests and shut it down after tests complete"""
     global _server_process
     
     # Check if integration tests are being run
     integration_tests_present = False
     
-    # Check if we're running tests from integration directory or with integration marker
+    # Method 1: Check command line arguments
     args = pytestconfig.args
     for arg in args:
         arg_str = str(arg)
@@ -51,12 +51,39 @@ def flask_server(pytestconfig):
             integration_tests_present = True
             break
     
-    # Also check if running all tests (no specific test files/directories specified)
+    # Method 2: Check collected items (more reliable)
     if not integration_tests_present:
-        # Only start server if running all tests or tests directory without specifics
+        try:
+            # This runs during test collection, so we can check the collected items
+            session = request.session
+            if hasattr(session, 'items'):
+                for item in session.items:
+                    # Check the file path
+                    file_path = str(item.fspath) if hasattr(item, 'fspath') else str(item.path)
+                    if ('integration' in file_path or 
+                        'test_download_endpoint.py' in file_path or 
+                        'test_player_interaction.py' in file_path):
+                        integration_tests_present = True
+                        break
+                    
+                    # Also check for integration markers
+                    if hasattr(item, 'iter_markers'):
+                        for marker in item.iter_markers('integration'):
+                            integration_tests_present = True
+                            break
+                    if integration_tests_present:
+                        break
+        except Exception as e:
+            # If we can't determine, be safe and start the server
+            integration_tests_present = True
+    
+    # Method 3: If running all tests or tests directory, start server to be safe
+    if not integration_tests_present:
         if (not args or 
             (len(args) == 1 and args[0] in ['tests/', 'tests']) or
-            any(arg == 'tests/' for arg in args)):
+            any(arg == 'tests/' for arg in args) or
+            # When running pytest without specific paths, it often defaults to current directory
+            (len(args) == 0)):
             integration_tests_present = True
     
     # If no integration tests, skip server startup
