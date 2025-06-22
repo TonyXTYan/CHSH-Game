@@ -8,12 +8,26 @@ import time
 import requests
 import atexit
 import signal
+import threading
+import queue
+from typing import Optional, IO, Any
 
 # Add the project root to the path so we can import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
 # Global variable to track server process
 _server_process = None
+
+def _read_pipe(pipe: IO[Any], output_queue: queue.Queue, prefix: str) -> None:
+    """Read from a pipe and put output into a queue for logging"""
+    try:
+        for line in iter(pipe.readline, b''):
+            if line:
+                decoded_line = line.decode('utf-8', errors='replace').strip()
+                output_queue.put(f"[{prefix}] {decoded_line}")
+        pipe.close()
+    except Exception as e:
+        output_queue.put(f"[{prefix}] Error reading pipe: {e}")
 
 def _cleanup_server():
     """Clean up the server process on exit"""
@@ -47,7 +61,8 @@ def flask_server(pytestconfig, request):
         arg_str = str(arg)
         if ('integration' in arg_str or 
             'test_download_endpoint.py' in arg_str or 
-            'test_player_interaction.py' in arg_str):
+            'test_player_interaction.py' in arg_str or
+            'test_server_functionality.py' in arg_str):
             integration_tests_present = True
             break
     
@@ -62,7 +77,8 @@ def flask_server(pytestconfig, request):
                     file_path = str(item.fspath) if hasattr(item, 'fspath') else str(item.path)
                     if ('integration' in file_path or 
                         'test_download_endpoint.py' in file_path or 
-                        'test_player_interaction.py' in file_path):
+                        'test_player_interaction.py' in file_path or
+                        'test_server_functionality.py' in file_path):
                         integration_tests_present = True
                         break
                     
@@ -99,8 +115,13 @@ def flask_server(pytestconfig, request):
         '--worker-class', 'eventlet',
         '--bind', '0.0.0.0:8080',
         '--timeout', '30',
-        '--preload'
+        '--preload',
+        '--log-level', 'info'
     ]
+    
+    output_queue: queue.Queue = queue.Queue()
+    stdout_thread: Optional[threading.Thread] = None
+    stderr_thread: Optional[threading.Thread] = None
     
     try:
         print("Starting Flask server for integration tests...")
@@ -111,18 +132,89 @@ def flask_server(pytestconfig, request):
             preexec_fn=os.setsid  # Create new process group
         )
         
-        # Wait for server to be ready
+        # Start threads to read stdout and stderr
+        stdout_thread = threading.Thread(
+            target=_read_pipe, 
+            args=(_server_process.stdout, output_queue, "STDOUT"),
+            daemon=True
+        )
+        stderr_thread = threading.Thread(
+            target=_read_pipe, 
+            args=(_server_process.stderr, output_queue, "STDERR"), 
+            daemon=True
+        )
+        
+        stdout_thread.start()
+        stderr_thread.start()
+        
+        # Wait for server to be ready with improved error handling
         max_retries = 30
+        server_ready = False
+        
         for i in range(max_retries):
+            # Check if process is still alive
+            if _server_process.poll() is not None:
+                # Process has terminated, collect any remaining output
+                time.sleep(0.5)  # Give threads time to read final output
+                
+                # Collect and log all server output
+                server_output = []
+                while not output_queue.empty():
+                    try:
+                        server_output.append(output_queue.get_nowait())
+                    except queue.Empty:
+                        break
+                
+                error_msg = f"Flask server process terminated early (exit code: {_server_process.returncode})"
+                if server_output:
+                    error_msg += "\n\nServer output:\n" + "\n".join(server_output)
+                else:
+                    error_msg += "\n\nNo server output captured."
+                
+                raise Exception(error_msg)
+            
+            # Try to connect to server
             try:
                 response = requests.get('http://localhost:8080', timeout=2)
                 if response.status_code == 200:
                     print("Flask server is ready!")
+                    server_ready = True
                     break
             except requests.exceptions.RequestException:
-                if i == max_retries - 1:
-                    raise Exception("Flask server failed to start within timeout")
-                time.sleep(1)
+                pass  # Expected during startup
+            
+            # Log any server output during startup (for debugging)
+            while not output_queue.empty():
+                try:
+                    output_line = output_queue.get_nowait()
+                    print(f"Server: {output_line}")
+                except queue.Empty:
+                    break
+            
+            if i == max_retries - 1:
+                # Final attempt failed, collect server output for debugging
+                server_output = []
+                while not output_queue.empty():
+                    try:
+                        server_output.append(output_queue.get_nowait())
+                    except queue.Empty:
+                        break
+                
+                error_msg = "Flask server failed to start within timeout"
+                if _server_process.poll() is not None:
+                    error_msg += f" (process exited with code {_server_process.returncode})"
+                
+                if server_output:
+                    error_msg += "\n\nServer output:\n" + "\n".join(server_output)
+                else:
+                    error_msg += "\n\nNo server output captured."
+                
+                raise Exception(error_msg)
+            
+            time.sleep(1)
+        
+        if not server_ready:
+            raise Exception("Server health check failed after startup")
         
         yield _server_process
         
@@ -144,6 +236,21 @@ def flask_server(pytestconfig, request):
                 except:
                     pass
             _server_process = None
+        
+        # Clean up threads (they're daemon threads so they'll exit automatically)
+        # But we can still collect any final output for debugging if needed
+        if output_queue:
+            final_output = []
+            while not output_queue.empty():
+                try:
+                    final_output.append(output_queue.get_nowait())
+                except queue.Empty:
+                    break
+            
+            if final_output:
+                print("Final server output during shutdown:")
+                for line in final_output:
+                    print(f"  {line}")
 
 # Filter specific warnings
 # @pytest.fixture(autouse=True)
