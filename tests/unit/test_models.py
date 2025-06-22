@@ -89,33 +89,43 @@ def test_pair_question_rounds_model(mock_db):
     # Check relationships
     assert hasattr(round_obj, 'answers')
 
-@pytest.mark.skip(reason="Requires Flask application context")
-@patch('src.models.quiz_models.db')
-def test_model_relationships(mock_db):
+def test_model_relationships():
     """Test relationships between models"""
-    # Create mock objects
-    team = MagicMock(spec=Teams)
-    team.team_id = 1
-    team.rounds = []
+    # Create a minimal Flask app for testing
+    from flask import Flask
     
-    round_obj = MagicMock(spec=PairQuestionRounds)
-    round_obj.round_id = 1
-    round_obj.team_id = 1
-    round_obj.team = team
-    round_obj.answers = []
+    app = Flask(__name__)
+    app.config['TESTING'] = True
+    app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///:memory:'
+    app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
     
-    answer = MagicMock(spec=Answers)
-    answer.answer_id = 1
-    answer.team_id = 1
-    answer.question_round_id = 1
-    answer.round = round_obj
-    
-    # Set up relationships
-    team.rounds.append(round_obj)
-    round_obj.answers.append(answer)
-    
-    # Test relationships
-    assert round_obj in team.rounds
-    assert answer in round_obj.answers
-    assert answer.round == round_obj
-    assert round_obj.team == team
+    # Initialize the database with the app
+    with app.app_context():
+        db.init_app(app)
+        
+        # Create mock objects that can work within the application context
+        team = MagicMock(spec=Teams)
+        team.team_id = 1
+        team.rounds = []
+        
+        round_obj = MagicMock(spec=PairQuestionRounds)
+        round_obj.round_id = 1
+        round_obj.team_id = 1
+        round_obj.team = team
+        round_obj.answers = []
+        
+        answer = MagicMock(spec=Answers)
+        answer.answer_id = 1
+        answer.team_id = 1
+        answer.question_round_id = 1
+        answer.round = round_obj
+        
+        # Set up relationships
+        team.rounds.append(round_obj)
+        round_obj.answers.append(answer)
+        
+        # Test relationships
+        assert round_obj in team.rounds
+        assert answer in round_obj.answers
+        assert answer.round == round_obj
+        assert round_obj.team == team
