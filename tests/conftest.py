@@ -34,26 +34,34 @@ def _cleanup_server():
 atexit.register(_cleanup_server)
 
 @pytest.fixture(scope="session", autouse=True)
-def flask_server(request):
+def flask_server(pytestconfig):
     """Start Flask server for integration tests and shut it down after tests complete"""
     global _server_process
     
     # Check if integration tests are being run
     integration_tests_present = False
     
-    # Check if any integration tests are being collected
-    for item in request.session.items:
-        if hasattr(item, 'pytestmark'):
-            for mark in item.pytestmark:
-                if mark.name == 'integration':
-                    integration_tests_present = True
-                    break
-        if integration_tests_present:
+    # Check if we're running tests from integration directory or with integration marker
+    args = pytestconfig.args
+    for arg in args:
+        arg_str = str(arg)
+        if ('integration' in arg_str or 
+            'test_download_endpoint.py' in arg_str or 
+            'test_player_interaction.py' in arg_str):
+            integration_tests_present = True
             break
+    
+    # Also check if running all tests (no specific test files/directories specified)
+    if not integration_tests_present:
+        # Only start server if running all tests or tests directory without specifics
+        if (not args or 
+            (len(args) == 1 and args[0] in ['tests/', 'tests']) or
+            any(arg == 'tests/' for arg in args)):
+            integration_tests_present = True
     
     # If no integration tests, skip server startup
     if not integration_tests_present:
-        print("No integration tests found, skipping Flask server startup")
+        print("No integration tests detected, skipping Flask server startup")
         yield None
         return
     
