@@ -54,8 +54,7 @@ jobs:
         
     - name: Install type checkers
       run: |
-        pip install mypy
-        npm install -g pyright
+        pip install mypy pyright
         
     - name: Run mypy type checking
       continue-on-error: true
