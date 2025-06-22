@@ -5,8 +5,7 @@ import pytest
 import time
 import logging
 from flask_socketio import SocketIOTestClient
-from wsgi import app
-from src.config import socketio as server_socketio
+from src.config import app, socketio as server_socketio
 from src.state import state
 from src.models.quiz_models import (
     Teams,

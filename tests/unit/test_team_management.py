@@ -1,8 +1,7 @@
 import pytest
 from unittest.mock import patch, ANY, MagicMock
 from flask import request
-from wsgi import app
-from src.config import socketio, db
+from src.config import app, socketio, db
 from src.models.quiz_models import Teams
 from src.state import state
 import warnings

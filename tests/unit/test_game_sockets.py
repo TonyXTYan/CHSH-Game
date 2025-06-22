@@ -5,8 +5,7 @@ eventlet.monkey_patch()
 from unittest.mock import MagicMock, patch, ANY
 from datetime import datetime
 from flask import request
-from wsgi import app
-from src.config import socketio
+from src.config import app, socketio
 from src.sockets.game import on_submit_answer
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
