@@ -2,7 +2,6 @@ from flask import jsonify, Response
 import math
 from uncertainties import ufloat, UFloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
-import warnings
 from functools import lru_cache
 from sqlalchemy.orm import joinedload
 from src.config import app, socketio, db
@@ -28,6 +27,7 @@ dashboard_last_activity: Dict[str, float] = {}
 
 CACHE_SIZE = 1024  # Adjust cache size as needed
 REFRESH_DELAY = 1 # seconds
+MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
 # Throttling variables for get_all_teams
 _last_refresh_time = 0
@@ -266,7 +266,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, O
         # --- Calculate statistics with uncertainties using ufloat ---
 
         # Stat1: Trace Average Statistic
-        sum_of_cii_ufloats: UFloat = ufloat(0, 0)
+        sum_of_cii_ufloats: UFloat = ufloat(0, MIN_STD_DEV)  # Use small non-zero std_dev to avoid warning
         if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples):
             for i in range(4):
                 num, den = corr_matrix_tuples[i][i]
@@ -282,18 +282,15 @@ def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, O
         # Average of the four diagonal correlations
         raw_trace_avg_ufloat = (1 / 4) * sum_of_cii_ufloats
         # Force the magnitude to be positive
-        # Suppress UserWarning about std_dev==0 and avoid using deprecated functions
-        with warnings.catch_warnings():
-            warnings.filterwarnings('ignore', message='Using UFloat objects with std_dev==0 may give unexpected results.')
-            # Handle absolute value without using abs() or um.fabs() which are deprecated
-            if raw_trace_avg_ufloat.nominal_value >= 0:
-                trace_average_statistic_ufloat = raw_trace_avg_ufloat
-            else:
-                # Create a new ufloat with positive nominal value but same std_dev
-                trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
+        # Handle absolute value without using abs() or um.fabs() which are deprecated
+        if raw_trace_avg_ufloat.nominal_value >= 0:
+            trace_average_statistic_ufloat = raw_trace_avg_ufloat
+        else:
+            # Create a new ufloat with positive nominal value but same std_dev
+            trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
 
         # Stat2: CHSH Value Statistic
-        chsh_sum_ufloat: UFloat = ufloat(0, 0)
+        chsh_sum_ufloat: UFloat = ufloat(0, MIN_STD_DEV)  # Use small non-zero std_dev to avoid warning
         if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples) and all(item in item_values for item in ['A', 'B', 'X', 'Y']):
             try:
                 A_idx = item_values.index('A')
@@ -323,7 +320,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, O
         chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
 
         # Stat3: Cross-Term Combination Statistic
-        cross_term_sum_ufloat: UFloat = ufloat(0, 0)
+        cross_term_sum_ufloat: UFloat = ufloat(0, MIN_STD_DEV)  # Use small non-zero std_dev to avoid warning
         # Ensure item_values contains A,B,X,Y before proceeding
         if all(item in item_values for item in ['A', 'B', 'X', 'Y']):
             term_item_pairs_coeffs = [
@@ -352,10 +349,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, O
             if total_tf > 0:
                 p_val = T_count / total_tf
                 var_p = 1 / total_tf  # simplified variance 1/N
-                if var_p == 0:
-                    p_true = ufloat(p_val, float("inf"))
-                else:
-                    p_true = ufloat(p_val, math.sqrt(var_p))
+                p_true = ufloat(p_val, math.sqrt(var_p))
                 p_val2 = 2 * p_true - 1
                 if p_val2.nominal_value >= 0:
                     abs_p_val2 = p_val2
