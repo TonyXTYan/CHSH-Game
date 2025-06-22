@@ -86,7 +86,11 @@ def on_submit_answer(data):
                 'team_name': team_name,
                 'round_number': team_info['current_round_number']
             }, room=team_name)
-            start_new_round_for_pair(team_name)
+            
+            # Only auto-start new round if not in test mode
+            # Test mode is indicated by a flag in team_info
+            if not team_info.get('test_mode', False):
+                start_new_round_for_pair(team_name)
     except Exception as e:
         print(f"Error in on_submit_answer: {str(e)}")
         import traceback

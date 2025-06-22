@@ -14,6 +14,8 @@ from src.models.quiz_models import (
     Answers,
     db
 )
+# Import socketio for room management
+socketio = server_socketio
 
 def _clear_state():
     """Helper to clear application state between tests"""
@@ -151,6 +153,7 @@ class TestPlayerInteraction:
 
     def setup_and_verify_round(self, team_name, team_id, round_num, socket_client, second_client):
         """Helper method to set up and verify a game round"""
+        # Create round manually to avoid automatic round creation conflicts
         test_round = PairQuestionRounds(
             team_id=team_id,
             round_number_for_team=round_num,
@@ -160,30 +163,39 @@ class TestPlayerInteraction:
         db.session.add(test_round)
         db.session.commit()
 
-        # Update team state
+        # Update team state to match the created round
         team_info = state.active_teams.get(team_name)
         if team_info:
             team_info['current_db_round_id'] = test_round.round_id
             team_info['current_round_number'] = round_num
+            team_info['answered_current_round'] = {}  # Reset for this round
+
+        # Clear any received messages
+        socket_client.get_received()
+        second_client.get_received()
 
         # Submit answers
-            socket_client.emit('submit_answer', {
-                'round_id': test_round.round_id,
-                'item': 'X' if round_num % 2 == 0 else 'Y',
-                'answer': True
-            })
-            second_client.emit('submit_answer', {
-                'round_id': test_round.round_id,
-                'item': 'Y' if round_num % 2 == 0 else 'X',
-                'answer': False
-            })
-            eventlet.sleep(0.2)
+        socket_client.emit('submit_answer', {
+            'round_id': test_round.round_id,
+            'item': 'X' if round_num % 2 == 0 else 'Y',
+            'answer': True
+        })
+        second_client.emit('submit_answer', {
+            'round_id': test_round.round_id,
+            'item': 'Y' if round_num % 2 == 0 else 'X',
+            'answer': False
+        })
+        eventlet.sleep(0.2)
 
-            # Verify answer confirmations
-            return (
-                self.wait_for_event(socket_client, 'answer_confirmed'),
-                self.wait_for_event(second_client, 'answer_confirmed')
-            )
+        # Get answer confirmations
+        p1_confirm = self.wait_for_event(socket_client, 'answer_confirmed')
+        p2_confirm = self.wait_for_event(second_client, 'answer_confirmed')
+        
+        # Clear any additional messages
+        socket_client.get_received()
+        second_client.get_received()
+        
+        return (p1_confirm, p2_confirm)
 
     @pytest.mark.integration
     def test_player_connection(self, app_context, socket_client):
@@ -329,7 +341,7 @@ class TestPlayerInteraction:
         teams_updated = next((msg for msg in messages if msg.get('name') == 'teams_updated'), None)
         assert teams_updated is not None, "Did not receive teams_updated event"
 
-    @pytest.mark.skip(reason="Temporarily disabled due to IntegrityError")
+    # @pytest.mark.skip(reason="Temporarily disabled due to IntegrityError")
     @pytest.mark.integration
     def test_multiple_rounds(self, app_context, socket_client, second_client):
         """Test multiple rounds of question answering"""
@@ -352,12 +364,13 @@ class TestPlayerInteraction:
         PairQuestionRounds.query.filter_by(team_id=team_id).delete()
         db.session.commit()
 
-        # Also update the team's state for clean test start
+        # Initialize the team's state for clean test start
         team_info = state.active_teams.get('MultiRoundTeam')
         if team_info:
             team_info['current_round_number'] = 0
             team_info['combo_tracker'] = {}
             team_info['answered_current_round'] = {}
+            team_info['test_mode'] = True  # Prevent automatic round creation
 
         # Simulate 3 rounds
         for round_num in range(1, 4):
@@ -372,6 +385,10 @@ class TestPlayerInteraction:
             p2_data = p2_confirm.get('args', [{}])[0]
             assert 'message' in p1_data, f"Round {round_num}: Player 1 answer confirmation missing message"
             assert 'message' in p2_data, f"Round {round_num}: Player 2 answer confirmation missing message"
+            
+            # Clear messages for next round
+            socket_client.get_received()
+            second_client.get_received()
 
     @pytest.mark.integration
     def test_game_pause_resume(self, app_context, socket_client):
@@ -438,7 +455,7 @@ class TestPlayerInteraction:
         error_event = self.wait_for_event(second_client, 'error')
         assert error_event is not None, "Did not receive error for answer without team"
 
-    @pytest.mark.skip(reason="Temporarily disabled due to IntegrityError")
+    # @pytest.mark.skip(reason="Temporarily disabled due to IntegrityError")
     @pytest.mark.integration
     def test_full_game_flow(self, app_context, socket_client, second_client):
         """Test a complete game flow including team creation, joining, and multiple rounds with scoring"""
@@ -468,6 +485,7 @@ class TestPlayerInteraction:
         team_info['current_round_number'] = 0
         team_info['combo_tracker'] = {}
         team_info['answered_current_round'] = {}
+        team_info['test_mode'] = True  # Prevent automatic round creation
 
         # Play multiple rounds with different answer combinations
         test_scenarios = [
@@ -479,7 +497,7 @@ class TestPlayerInteraction:
         ]
 
         for round_num, (p1_answer, p2_answer, scenario) in enumerate(test_scenarios, 1):
-            # Set up round
+            # Create round manually to avoid room management issues in test environment
             test_round = PairQuestionRounds(
                 team_id=team_id,
                 round_number_for_team=round_num,
@@ -489,10 +507,16 @@ class TestPlayerInteraction:
             db.session.add(test_round)
             db.session.commit()
 
+            # Update team state to match the created round
             team_info['current_db_round_id'] = test_round.round_id
             team_info['current_round_number'] = round_num
+            team_info['answered_current_round'] = {}  # Reset for this round
 
-            # Submit answers
+            # Clear any received messages
+            socket_client.get_received()
+            second_client.get_received()
+
+            # Submit answers with the predefined items
             socket_client.emit('submit_answer', {
                 'round_id': test_round.round_id,
                 'item': 'X',
