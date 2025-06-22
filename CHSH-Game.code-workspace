@@ -3,5 +3,40 @@
         {
             "path": "."
         }
-    ]
+    ],
+    "settings": {
+        "python.analysis.exclude": [
+            "**/venv/**",
+            "**/__pycache__/**",
+            "**/*.pyc",
+            "**/.ai-generated-md/**",
+            "**/.pytest_cache/**",
+            "**/.coverage",
+            "**/htmlcov/**",
+            "**/.tox/**",
+            "**/.mypy_cache/**",
+            "**/node_modules/**",
+            "**/.git/**",
+            "**/load_test_results/**"
+        ],
+        "python.autoComplete.extraPaths": [],
+        "python.defaultInterpreterPath": "./venv/bin/python",
+        "files.exclude": {
+            "**/venv": true,
+            "**/__pycache__": true,
+            "**/*.pyc": true,
+            "**/.ai-generated-md": true,
+            "**/.pytest_cache": true,
+            "**/.coverage": true,
+            "**/htmlcov": true,
+            "**/.tox": true,
+            "**/.mypy_cache": true,
+            "**/node_modules": true,
+            "**/.git": true,
+            "**/load_test_results": true,
+            "**/*.log": true,
+            "**/.DS_Store": true,
+            "**/Thumbs.db": true
+        }
+    }
 }

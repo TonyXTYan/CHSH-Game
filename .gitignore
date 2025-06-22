@@ -2,8 +2,8 @@
 *.DS_Store
 *.db
 venv
-.ai-generated-md
 .coverage
 load_test_results/*
 downloaded_test.csv
 src/static/sub/hello.txt
+.idea
