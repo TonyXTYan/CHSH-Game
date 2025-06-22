@@ -22,7 +22,7 @@ from rich.console import Console
 
 console = Console()
 
-async def test_configuration():
+def test_configuration():
     """Test configuration loading and validation."""
     console.print("[bold blue]Testing Configuration...[/bold blue]")
     
@@ -79,7 +79,7 @@ def test_metrics():
     assert status['successful_connections'] == 1
     console.print("✓ Load test metrics working")
 
-async def test_player_creation():
+def test_player_creation():
     """Test player creation and basic functionality."""
     console.print("\n[bold blue]Testing Player Creation...[/bold blue]")
     
@@ -96,7 +96,7 @@ async def test_player_creation():
     assert config.min_response_delay <= delay <= config.max_response_delay * 1.5
     console.print("✓ Response delay calculation working")
 
-async def test_team_manager():
+def test_team_manager():
     """Test team manager functionality."""
     console.print("\n[bold blue]Testing Team Manager...[/bold blue]")
     
@@ -104,10 +104,15 @@ async def test_team_manager():
     metrics = LoadTestMetrics(config.num_teams)
     team_manager = TeamManager(config, metrics)
     
-    # Test player creation
-    players = await team_manager.create_players()
-    assert len(players) == config.total_players
-    console.print(f"✓ Created {len(players)} players")
+    # Test player creation (run synchronously for testing)
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+    try:
+        players = loop.run_until_complete(team_manager.create_players())
+        assert len(players) == config.total_players
+        console.print(f"✓ Created {len(players)} players")
+    finally:
+        loop.close()
     
     # Test status
     status = team_manager.get_status()
@@ -148,10 +153,10 @@ async def run_validation_tests():
         
         # Run tests
         test_dependencies()
-        await test_configuration()
+        test_configuration()  # Now synchronous
         test_metrics()
-        await test_player_creation()
-        await test_team_manager()
+        test_player_creation()  # Now synchronous
+        test_team_manager()  # Now synchronous
         test_utilities()
         
         console.print("\n[bold green]✅ All validation tests passed![/bold green]")
