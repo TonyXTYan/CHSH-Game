@@ -5,20 +5,34 @@ import uuid
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
-# Unique ID for server instance
-server_instance_id = str(uuid.uuid4())
-
-def handle_shutdown(signum, frame):
-    print("\nServer shutting down gracefully...")
-    # Notify all clients
-    socketio.emit('server_shutdown')
-    # Clean up resources
-    state.reset()
-    sys.exit(0)
-
 from src.config import app, socketio, db
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
 from src.state import state
+
+# Unique ID for server instance
+server_instance_id = str(uuid.uuid4())
+
+# Signal handler for graceful shutdown
+def handle_shutdown(signum, frame):
+    print("\nServer shutting down gracefully...")
+    try:
+        # Notify all connected clients about the shutdown
+        socketio.emit('server_shutdown')
+        socketio.sleep(0.5)  # Allow time for clients to receive the message
+        # Close the socket connections
+        socketio.stop()
+        print("Socket connections closed.")
+    except Exception as e:
+        print(f"Error during socket shutdown: {e}")
+    try:
+        # Reset the in-memory state
+        print("Resetting in-memory state...")
+        if hasattr(state, 'reset'): # Ensure reset method exists    
+        state.reset()
+    except Exception as e:
+        print(f"Error during shutdown: {e}")
+    finally:
+        sys.exit(0)
 
 # Initialize the database tables
 with app.app_context():
