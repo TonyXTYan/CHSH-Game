@@ -5,3 +5,4 @@ venv
 .ai-generated-md
 .coverage
 load_test_results/*
+downloaded_test.csv
