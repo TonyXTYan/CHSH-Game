@@ -33,6 +33,15 @@ def setup_logging(log_level: str = "INFO"):
         ]
     )
     
+    # Configure loguru to match the log level
+    import loguru
+    loguru.logger.remove()  # Remove default handler
+    loguru.logger.add(
+        sys.stderr,
+        level=log_level.upper(),
+        format='{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}'
+    )
+    
     # Add file logger for detailed debugging (if DEBUG level)
     if log_level == "DEBUG":
         file_handler = logging.FileHandler("load_test_debug.log")

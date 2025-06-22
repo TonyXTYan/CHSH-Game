@@ -76,33 +76,32 @@ class CHSHLoadTester:
             logger.info("Load test completed successfully")
             return True
         except KeyboardInterrupt:
-            self.console.print("\n[bold red]✗ Load test completed with errors[/bold red]")
-            logger.error("Load test completed with errors")
-            return False
-        except Exception as e:
             self.console.print("\n[yellow]⚠️  Test interrupted by user[/yellow]")
             logger.warning("Test interrupted by user")
             return False
-        finally:
-            logger.error(f"Load test failed: {str(e)}")
+        except Exception as e:
             self.console.print(f"\n[red]❌ Load test failed: {str(e)}[/red]")
+            logger.error(f"Load test failed: {str(e)}")
             return False
     
     async def _run_load_test(self):
         """Execute the load test phases."""
         self.console.print("\n[bold blue]🚀 Starting CHSH Game Load Test[/bold blue]")
         logger.info("Starting CHSH Game Load Test")
+        
+        # Initialize start time
+        self.start_time = time.time()
 
         # Show configuration
         config_panel = Panel(
             f"""[bold]Configuration:[/bold]
-🎯 Target URL: {self.config.server_url}
-👥 Total Players: {self.config.num_players}
+🎯 Target URL: {self.config.deployment_url}
+👥 Total Players: {self.config.total_players}
 🏆 Teams: {self.config.num_teams}
-⏱️  Test Duration: {self.config.test_duration_seconds}s
-📊 Concurrent Connections: {self.config.concurrent_connections}
-🎮 Game Simulation: {'✓' if self.config.simulate_game_play else '✗'}
-📈 Dashboard Monitoring: {'✓' if self.config.enable_dashboard_monitoring else '✗'}""",
+⏱️  Test Duration: {self.config.max_test_duration}s
+📊 Connection Strategy: {self.config.connection_strategy.value}
+🎮 Response Pattern: {self.config.response_pattern.value}
+📈 Dashboard Monitoring: {'✓' if self.config.enable_dashboard_simulation else '✗'}""",
             title="Load Test Parameters",
             border_style="blue"
         )
@@ -136,9 +135,11 @@ class CHSHLoadTester:
 
     async def _create_players(self) -> bool:
         """Create player instances for the load test."""
-        logger.info(f"Creating {self.config.num_players} player instances...")
+        logger.info(f"Creating {self.config.total_players} player instances...")
         players = await self.team_manager.create_players()
-        success_rate = len([p for p in players if p.connected]) / len(players)
+        
+        # Establish connections
+        success_rate = await self.team_manager.establish_connections()
         
         if success_rate < 0.8:  # Require 80% connection success
             self.console.print(f"[red]Connection success rate too low: {success_rate:.1%}[/red]")
@@ -166,7 +167,7 @@ class CHSHLoadTester:
 
     async def _setup_dashboard(self) -> bool:
         """Setup dashboard monitoring if enabled."""
-        if not self.config.enable_dashboard_monitoring:
+        if not self.config.enable_dashboard_simulation:
             self.console.print("Dashboard simulation disabled - skipping")
             logger.info("Dashboard simulation disabled - skipping")
             return True
@@ -181,7 +182,7 @@ class CHSHLoadTester:
 
     async def _start_game(self) -> bool:
         """Start the game if teams are ready."""
-        ready_teams = [team for team in self.teams if len(team.members) == 2]
+        ready_teams = [team for team in self.teams if team.is_complete]
         
         if len(ready_teams) < len(self.teams) * 0.8:
             self.console.print("[red]Teams not ready for game start[/red]")
@@ -198,9 +199,9 @@ class CHSHLoadTester:
         
         # Wait for players to be ready
         await asyncio.sleep(2)
-        players_ready = len([p for p in self.players if p.connected])
-        self.console.print(f"{players_ready} players ready for game")
-        logger.info(f"{players_ready} players ready for game")
+        connected_players = len([p for p in self.players if p.state.value == 'connected'])
+        self.console.print(f"{connected_players} players ready for game")
+        logger.info(f"{connected_players} players ready for game")
         return True
 
     async def _execute_load_test(self) -> bool:
@@ -254,13 +255,13 @@ class CHSHLoadTester:
         
         logger.info("Shutdown complete")
     
-    async def _generate_report(self) -> bool:
-        """Generate final test report."""
+    async def _collect_results(self) -> bool:
+        """Collect and report final results."""
         try:
             self.console.print("\n[bold blue]📊 Generating Test Report...[/bold blue]")
             logger.info("Generating test report...")
             
-            await self.reporter.generate_report(self.metrics.get_summary(), self.start_time.isoformat())
+            await self.reporter.generate_report()
             self.console.print("[green]✓ Report generated successfully[/green]")
             logger.info("Report generated successfully")
             return True
