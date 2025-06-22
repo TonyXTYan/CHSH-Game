@@ -1,5 +1,6 @@
 import pytest
 import math
+import random
 from unittest.mock import patch, MagicMock
 import warnings
 from datetime import datetime
@@ -547,3 +548,270 @@ class TestPhysicsCalculations:
                 if actual_uncertainty is not None:
                     assert actual_uncertainty < 0.1, \
                         f"Uncertainty {actual_uncertainty} should be small with large sample size"
+
+    def _generate_correlated_data(self, start_id, item1, item2, correlation, n):
+        """Helper to generate rounds/answers with a given correlation."""
+        rounds = []
+        answers = []
+        # Probability that the two answers are the same
+        p_same = (1 + correlation) / 2
+        same_count = int(round(n * p_same))
+        diff_count = n - same_count
+
+        cur_id = start_id
+        for _ in range(same_count):
+            rounds.append(create_mock_round(cur_id, item1, item2))
+            answers.extend([
+                create_mock_answer(cur_id, item1, True),
+                create_mock_answer(cur_id, item2, True)
+            ])
+            cur_id += 1
+
+        for _ in range(diff_count):
+            rounds.append(create_mock_round(cur_id, item1, item2))
+            answers.extend([
+                create_mock_answer(cur_id, item1, True),
+                create_mock_answer(cur_id, item2, False)
+            ])
+            cur_id += 1
+
+        return rounds, answers, cur_id
+
+    def test_chsh_quantum_prediction(self):
+        """Verify CHSH ≈ 2√2 for ideal quantum correlations."""
+        n = 100
+        round_id = 1
+        pairs = [
+            ('A', 'X', 1 / math.sqrt(2)),
+            ('A', 'Y', 1 / math.sqrt(2)),
+            ('B', 'X', 1 / math.sqrt(2)),
+            ('B', 'Y', -1 / math.sqrt(2)),
+        ]
+
+        rounds = []
+        answers = []
+        for item1, item2, corr in pairs:
+            r, a, round_id = self._generate_correlated_data(round_id, item1, item2, corr, n)
+            rounds.extend(r)
+            answers.extend(a)
+            # Add symmetric data for swapped item order
+            r2, a2, round_id = self._generate_correlated_data(round_id, item2, item1, corr, n)
+            rounds.extend(r2)
+            answers.extend(a2)
+
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+
+                result = compute_correlation_matrix(1)
+                _, _, _, _, _, corr_sums, pair_counts = result
+
+                chsh_terms = [
+                    ('A', 'X', 1), ('A', 'Y', 1),
+                    ('B', 'X', 1), ('B', 'Y', -1)
+                ]
+
+                total_chsh = 0
+                for item1, item2, coeff in chsh_terms:
+                    M = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    N = corr_sums.get((item1, item2), 0) + corr_sums.get((item2, item1), 0)
+                    if M > 0:
+                        total_chsh += coeff * (N / M)
+
+                expected = 2 * math.sqrt(2)
+                assert abs(total_chsh - expected) < 0.1
+
+                corr_data = (result[0], result[1], result[4], result[5], result[6])
+                stats = _calculate_team_statistics(str(corr_data))
+                assert abs(stats['chsh_value_statistic'] - expected) < 0.1
+
+    def test_chsh_random_correlations(self):
+        """Random correlation inputs should give consistent CHSH values."""
+        random.seed(12345)
+        n = 80
+        round_id = 1
+        pairs = [('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')]
+        corr_map = {}
+        rounds = []
+        answers = []
+        for item1, item2 in pairs:
+            corr = random.uniform(-1, 1)
+            corr_map[(item1, item2)] = corr
+            r, a, round_id = self._generate_correlated_data(round_id, item1, item2, corr, n)
+            rounds.extend(r)
+            answers.extend(a)
+            r2, a2, round_id = self._generate_correlated_data(round_id, item2, item1, corr, n)
+            rounds.extend(r2)
+            answers.extend(a2)
+
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+
+                result = compute_correlation_matrix(1)
+                _, _, _, _, _, corr_sums, pair_counts = result
+
+                chsh_terms = [
+                    ('A', 'X', 1), ('A', 'Y', 1),
+                    ('B', 'X', 1), ('B', 'Y', -1)
+                ]
+
+                total_chsh = 0
+                for item1, item2, coeff in chsh_terms:
+                    M = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    N = corr_sums.get((item1, item2), 0) + corr_sums.get((item2, item1), 0)
+                    if M > 0:
+                        total_chsh += coeff * (N / M)
+
+                expected = (
+                    corr_map[('A', 'X')] +
+                    corr_map[('A', 'Y')] +
+                    corr_map[('B', 'X')] -
+                    corr_map[('B', 'Y')]
+                )
+
+                assert abs(total_chsh - expected) < 0.15
+                assert -4.0 <= total_chsh <= 4.0
+
+                corr_data = (result[0], result[1], result[4], result[5], result[6])
+                stats = _calculate_team_statistics(str(corr_data))
+                assert abs(stats['chsh_value_statistic'] - expected) < 0.15
+
+    def test_chsh_classical_limit_exact(self):
+        """Classical deterministic strategy should give CHSH = 2."""
+        n = 50
+        round_id = 1
+        rounds = []
+        answers = []
+        for item1, item2 in [('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')]:
+            for _ in range(n):
+                rounds.append(create_mock_round(round_id, item1, item2))
+                answers.extend([
+                    create_mock_answer(round_id, item1, True),
+                    create_mock_answer(round_id, item2, True)
+                ])
+                round_id += 1
+            # Symmetric orientation
+            for _ in range(n):
+                rounds.append(create_mock_round(round_id, item2, item1))
+                answers.extend([
+                    create_mock_answer(round_id, item2, True),
+                    create_mock_answer(round_id, item1, True)
+                ])
+                round_id += 1
+
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+
+                result = compute_correlation_matrix(1)
+                _, _, _, _, _, corr_sums, pair_counts = result
+
+                chsh_terms = [
+                    ('A', 'X', 1), ('A', 'Y', 1),
+                    ('B', 'X', 1), ('B', 'Y', -1)
+                ]
+
+                total_chsh = 0
+                for item1, item2, coeff in chsh_terms:
+                    M = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    N = corr_sums.get((item1, item2), 0) + corr_sums.get((item2, item1), 0)
+                    if M > 0:
+                        total_chsh += coeff * (N / M)
+
+                expected = 2.0
+                assert abs(total_chsh - expected) < 0.01
+
+                corr_data = (result[0], result[1], result[4], result[5], result[6])
+                stats = _calculate_team_statistics(str(corr_data))
+                assert abs(stats['chsh_value_statistic'] - expected) < 0.01
+
+    def test_chsh_negative_limit(self):
+        """Perfect anti-correlations should yield CHSH = -2."""
+        n = 50
+        round_id = 1
+        rounds = []
+        answers = []
+        for item1, item2 in [('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')]:
+            r, a, round_id = self._generate_correlated_data(round_id, item1, item2, -1.0, n)
+            rounds.extend(r)
+            answers.extend(a)
+            r2, a2, round_id = self._generate_correlated_data(round_id, item2, item1, -1.0, n)
+            rounds.extend(r2)
+            answers.extend(a2)
+
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+
+                result = compute_correlation_matrix(1)
+                _, _, _, _, _, corr_sums, pair_counts = result
+
+                chsh_terms = [
+                    ('A', 'X', 1), ('A', 'Y', 1),
+                    ('B', 'X', 1), ('B', 'Y', -1)
+                ]
+
+                total_chsh = 0
+                for item1, item2, coeff in chsh_terms:
+                    M = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    N = corr_sums.get((item1, item2), 0) + corr_sums.get((item2, item1), 0)
+                    if M > 0:
+                        total_chsh += coeff * (N / M)
+
+                expected = -2.0
+                assert abs(total_chsh - expected) < 0.01
+
+                corr_data = (result[0], result[1], result[4], result[5], result[6])
+                stats = _calculate_team_statistics(str(corr_data))
+                assert abs(stats['chsh_value_statistic'] - expected) < 0.01
+
+    def test_chsh_zero_correlation(self):
+        """Uncorrelated answers should give CHSH around zero."""
+        n = 100
+        round_id = 1
+        rounds = []
+        answers = []
+        for item1, item2 in [('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')]:
+            r, a, round_id = self._generate_correlated_data(round_id, item1, item2, 0.0, n)
+            rounds.extend(r)
+            answers.extend(a)
+            r2, a2, round_id = self._generate_correlated_data(round_id, item2, item1, 0.0, n)
+            rounds.extend(r2)
+            answers.extend(a2)
+
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+
+                result = compute_correlation_matrix(1)
+                _, _, _, _, _, corr_sums, pair_counts = result
+
+                chsh_terms = [
+                    ('A', 'X', 1), ('A', 'Y', 1),
+                    ('B', 'X', 1), ('B', 'Y', -1)
+                ]
+
+                total_chsh = 0
+                for item1, item2, coeff in chsh_terms:
+                    M = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+                    N = corr_sums.get((item1, item2), 0) + corr_sums.get((item2, item1), 0)
+                    if M > 0:
+                        total_chsh += coeff * (N / M)
+
+                expected = 0.0
+                assert abs(total_chsh - expected) < 0.1
+
+                corr_data = (result[0], result[1], result[4], result[5], result[6])
+                stats = _calculate_team_statistics(str(corr_data))
+                assert abs(stats['chsh_value_statistic'] - expected) < 0.1
