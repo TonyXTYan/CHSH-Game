@@ -6,7 +6,7 @@ deployment_url: "http://localhost:8080"
 # deployment_url: "https://chsh-game.fly.dev"
 
 # Load Parameters
-num_teams: 100                    # Number of teams to create 
+num_teams: 5                    # Number of teams to create 
 
 # Connection Strategy
 connection_strategy: "gradual"    # Options: gradual, burst, immediate
