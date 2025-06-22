@@ -14,11 +14,13 @@ from rich.console import Console
 from rich.table import Table
 from rich.panel import Panel
 from loguru import logger
+import logging
 
 from .config import LoadTestConfig, OutputFormat
 from .metrics import LoadTestMetrics
 from .utils import format_duration, format_bytes
 
+logger = logging.getLogger(__name__)
 
 class LoadTestReporter:
     """
@@ -313,8 +315,8 @@ class LoadTestReporter:
                 json.dump(report_data, f, indent=2, default=str)
             logger.info(f"JSON report saved to: {json_file}")
         
-        # Also print to console
-        print(json.dumps(report_data, indent=2, default=str))
+        # JSON output for programmatic consumption
+        logger.info(json.dumps(report_data, indent=2, default=str))
     
     async def _generate_csv_report(self, summary: Dict[str, Any], timestamp: str):
         """Generate CSV format report."""

@@ -16,6 +16,8 @@ import hashlib
 import csv
 import io
 import logging
+import numpy as np
+from datetime import datetime
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -43,34 +45,32 @@ def on_keep_alive():
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_team_hashes(team_id):
-    return "disabled", "disabled"
-    # # This function is disabled for now due to performance concerns
-    # try:
-    #     # Get all rounds and answers for this team in chronological order
-    #     rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
-    #     answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
+    try:
+        # Get all rounds and answers for this team in chronological order
+        rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
+        answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
 
-    #     # Create history string containing both questions and answers
-    #     history = []
-    #     for round in rounds:
-    #         history.append(f"P1:{round.player1_item.value if round.player1_item else 'None'}")
-    #         history.append(f"P2:{round.player2_item.value if round.player2_item else 'None'}")
-    #     for answer in answers:
-    #         history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
+        # Create history string containing both questions and answers
+        history = []
+        for round in rounds:
+            history.append(f"P1:{round.player1_item.value if round.player1_item else 'None'}")
+            history.append(f"P2:{round.player2_item.value if round.player2_item else 'None'}")
+        for answer in answers:
+            history.append(f"A:{answer.assigned_item.value}:{answer.response_value}")
         
-    #     history_str = "|".join(history)
+        history_str = "|".join(history)
 
-    #     # print(f"History for team {team_id}: {history_str}")
-    #     # print(rounds)
+        # logger.debug(f"History for team {team_id}: {history_str}")
+        # logger.debug(rounds)
         
-    #     # Generate two different hashes
-    #     hash1 = hashlib.sha256(history_str.encode()).hexdigest()[:8]
-    #     hash2 = hashlib.md5(history_str.encode()).hexdigest()[:8]
+        # Generate two different hashes
+        hash1 = hashlib.sha256(history_str.encode()).hexdigest()[:8]
+        hash2 = hashlib.md5(history_str.encode()).hexdigest()[:8]
         
-    #     return hash1, hash2
-    # except Exception as e:
-    #     print(f"Error computing team hashes: {str(e)}")
-    #     return "ERROR", "ERROR"
+        return hash1, hash2
+    except Exception as e:
+        logger.error(f"Error computing team hashes: {str(e)}")
+        return "ERROR", "ERROR"
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_correlation_matrix(team_id):
@@ -200,9 +200,7 @@ def compute_correlation_matrix(team_id):
                 avg_same_item_balance, same_item_balance, same_item_responses,
                 correlation_sums, pair_counts)
     except Exception as e:
-        print(f"Error computing correlation matrix: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error computing correlation matrix: {str(e)}", exc_info=True)
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
@@ -213,13 +211,13 @@ def compute_correlation_stats(team_id): # NOT USED
         
         # Validate matrix dimensions and contents
         if not all(isinstance(row, list) and len(row) == 4 for row in corr_matrix) or len(corr_matrix) != 4:
-            print(f"Invalid correlation matrix dimensions for team_id {team_id}")
+            logger.error(f"Invalid correlation matrix dimensions for team_id {team_id}")
             return 0.0, 0.0, 0.0
             
         # Validate expected item values
         expected_items = ['A', 'B', 'X', 'Y']
         if not all(item in item_values for item in expected_items):
-            print(f"Missing expected items in correlation matrix for team_id {team_id}")
+            logger.error(f"Missing expected items in correlation matrix for team_id {team_id}")
             return 0.0, 0.0, 0.0
             
         # Calculate first statistic: Trace(corr_matrix) / 4
@@ -227,7 +225,7 @@ def compute_correlation_stats(team_id): # NOT USED
             trace_sum = sum(corr_matrix[i][i] for i in range(4))
             trace_average_statistic = trace_sum / 4
         except (TypeError, IndexError) as e:
-            print(f"Error calculating trace statistic: {e}")
+            logger.error(f"Error calculating trace statistic: {e}")
             trace_average_statistic = 0.0
         
         # Calculate second statistic using CHSH game formula
@@ -246,14 +244,12 @@ def compute_correlation_stats(team_id): # NOT USED
                 corr_matrix[Y_idx][A_idx] - corr_matrix[Y_idx][B_idx]
             )/2
         except (ValueError, IndexError, TypeError) as e:
-            print(f"Error calculating CHSH statistic: {e}")
+            logger.error(f"Error calculating CHSH statistic: {e}")
             chsh_value_statistic = 0.0
         
         return trace_average_statistic, chsh_value_statistic, same_item_balance_avg
     except Exception as e:
-        print(f"Error computing correlation statistics: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error computing correlation statistics: {str(e)}", exc_info=True)
         return 0.0, 0.0, 0.0
 
 
@@ -387,9 +383,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
                                               if not math.isinf(avg_same_item_balance_ufloat.s) else None)
         }
     except Exception as e:
-        print(f"Error calculating team statistics: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error calculating team statistics: {str(e)}", exc_info=True)
         return {
             'trace_average_statistic': 0.0,
             'trace_average_statistic_uncertainty': None,
@@ -458,9 +452,7 @@ def _process_single_team(team_id, team_name, is_active, created_at, current_roun
             
         return team_data
     except Exception as e:
-        print(f"Error processing team {team_id}: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error processing team {team_id}: {str(e)}", exc_info=True)
         return None
 
 def get_all_teams():
@@ -473,10 +465,10 @@ def get_all_teams():
         
         # If within refresh delay and we have cached data, return cached result
         if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
-            # print("Returning cached team data")
+            # logger.debug("Returning cached team data")
             return _cached_teams_result
         # else:
-        #     print("Computing fresh team data")
+        #     logger.debug("Computing fresh team data")
         
         # Compute fresh data
         # Query all teams from database - eager loading will be done per team as needed
@@ -511,9 +503,7 @@ def get_all_teams():
         
         return teams_list
     except Exception as e:
-        print(f"Error in get_all_teams: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in get_all_teams: {str(e)}", exc_info=True)
         return []
 
 def clear_team_caches():
@@ -530,9 +520,7 @@ def clear_team_caches():
         # _last_refresh_time = 0
         # _cached_teams_result = None
     except Exception as e:
-        print(f"Error clearing team caches: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update():
     try:
@@ -544,9 +532,7 @@ def emit_dashboard_team_update():
         for sid in state.dashboard_clients:
             socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
     except Exception as e:
-        print(f"Error in emit_dashboard_team_update: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
 def emit_dashboard_full_update(client_sid=None):
     try:
@@ -569,9 +555,7 @@ def emit_dashboard_full_update(client_sid=None):
             for dash_sid in state.dashboard_clients:
                 socketio.emit('dashboard_update', update_data, room=dash_sid)
     except Exception as e:
-        print(f"Error in emit_dashboard_full_update: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
 
 @socketio.on('dashboard_join')
 def on_dashboard_join(data=None, callback=None):
@@ -582,7 +566,7 @@ def on_dashboard_join(data=None, callback=None):
         # Add to dashboard clients
         state.dashboard_clients.add(sid)
         dashboard_last_activity[sid] = time()
-        print(f"Dashboard client connected: {sid}")
+        logger.info(f"Dashboard client connected: {sid}")
         
         # Whenever a dashboard client joins, emit updated status to all dashboards
         emit_dashboard_full_update()
@@ -685,7 +669,7 @@ def on_restart_game():
 
         # First update game state to prevent new answers during reset
         state.game_started = False
-        # print("Set game_started=False")
+        # logger.debug("Set game_started=False")
         
         # Even if there are no active teams, clear the database
         try:

@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import request
+from flask import request, has_app_context
 from flask_socketio import emit, join_room, leave_room
 from sqlalchemy import func
 from src.config import app, socketio, db
@@ -7,7 +7,6 @@ from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
-import traceback
 import logging
 
 # Configure logging
@@ -19,17 +18,27 @@ def get_available_teams_list():
         active_teams = [{'team_name': name, 'team_id': info['team_id'], 'is_active': True}
                        for name, info in state.active_teams.items() if len(info['players']) < 2]
         
-        # Get inactive teams from database
-        with app.app_context():
-            inactive_teams = Teams.query.filter_by(is_active=False).all()
-            inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
-                                 for team in inactive_teams]
+        # Get inactive teams from database (only if we have an app context)
+        inactive_teams_list = []
+        try:
+            # Check if we're already in an app context, if not, create one
+            if has_app_context():
+                inactive_teams = Teams.query.filter_by(is_active=False).all()
+                inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
+                                     for team in inactive_teams]
+            else:
+                with app.app_context():
+                    inactive_teams = Teams.query.filter_by(is_active=False).all()
+                    inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
+                                         for team in inactive_teams]
+        except Exception as db_error:
+            logger.warning(f"Could not fetch inactive teams: {str(db_error)}")
+            inactive_teams_list = []
         
         # Combine and return all teams
         return active_teams + inactive_teams_list
     except Exception as e:
-        print(f"Error in get_available_teams_list: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in get_available_teams_list: {str(e)}", exc_info=True)
         return []
 
 def get_team_members(team_name):
@@ -38,15 +47,14 @@ def get_team_members(team_name):
         if not team_info: return []
         return team_info['players']
     except Exception as e:
-        print(f"Error in get_team_members: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in get_team_members: {str(e)}", exc_info=True)
         return []
 
 @socketio.on('connect')
 def handle_connect():
     try:
         sid = request.sid
-        print(f'Client connected: {sid}')
+        logger.info(f'Client connected: {sid}')
         
         # By default, treat all non-dashboard connections as players
         if sid not in state.dashboard_clients:
@@ -58,17 +66,16 @@ def handle_connect():
             'available_teams': get_available_teams_list()
         })
     except Exception as e:
-        print(f"Error in handle_connect: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
 
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    print(f'Client disconnected: {sid}')
+    logger.info(f'Client disconnected: {sid}')
     try:
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
-            print(f"Dashboard client disconnected: {sid}")
+            logger.info(f"Dashboard client disconnected: {sid}")
 
         # Remove from connected players list regardless of team status
         if sid in state.connected_players:
@@ -137,11 +144,10 @@ def handle_disconnect():
                         try:
                             leave_room(team_name, sid=sid)
                         except Exception as e:
-                            print(f"Error leaving room: {str(e)}")
+                            logger.error(f"Error leaving room: {str(e)}")
                         del state.player_to_team[sid]
     except Exception as e:
-        print(f"Disconnect handler error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
 @socketio.on('create_team')
 def on_create_team(data):
@@ -393,7 +399,7 @@ def on_leave_team(data):
             try:
                 leave_room(team_name, sid=sid)
             except Exception as e: # Catch potential error if room/sid is already gone
-                print(f"Error leaving room on leave_team: {str(e)}")
+                logger.error(f"Error leaving room on leave_team: {str(e)}")
 
             if sid in state.player_to_team: # Check before deleting
                 del state.player_to_team[sid]

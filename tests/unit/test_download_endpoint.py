@@ -5,70 +5,82 @@ This can be run independently to test the CSV download functionality.
 """
 
 import requests
+import logging
 import sys
 import os
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 def test_download_endpoint():
-    """Test the /download endpoint"""
+    """Test the CSV download endpoint"""
+    url = "http://localhost:8080/download-data"
+    
     try:
-        # Assume the server is running on localhost:8080
-        url = "http://localhost:8080/download"
+        logger.info(f"Testing download endpoint: {url}")
+        response = requests.get(url, timeout=10)
         
-        print(f"Testing download endpoint: {url}")
-        response = requests.get(url)
-        
-        print(f"Status Code: {response.status_code}")
-        print(f"Content-Type: {response.headers.get('Content-Type', 'Not set')}")
-        print(f"Content-Disposition: {response.headers.get('Content-Disposition', 'Not set')}")
+        logger.info(f"Status Code: {response.status_code}")
+        logger.info(f"Content-Type: {response.headers.get('Content-Type', 'Not set')}")
+        logger.info(f"Content-Disposition: {response.headers.get('Content-Disposition', 'Not set')}")
         
         if response.status_code == 200:
-            print("✅ Download endpoint is working!")
+            logger.info("✅ Download endpoint is working!")
             
-            # Check if we got CSV content
-            if 'text/csv' in response.headers.get('Content-Type', ''):
-                print("✅ Content-Type is correct (text/csv)")
+            # Check content type
+            content_type = response.headers.get('Content-Type', '')
+            if 'text/csv' in content_type:
+                logger.info("✅ Content-Type is correct (text/csv)")
             else:
-                print("⚠️  Content-Type might not be set correctly")
+                logger.warning("⚠️  Content-Type might not be set correctly")
             
-            # Check if download headers are set
-            if 'attachment' in response.headers.get('Content-Disposition', ''):
-                print("✅ Download headers are set correctly")
+            # Check download headers
+            content_disposition = response.headers.get('Content-Disposition', '')
+            if 'attachment' in content_disposition:
+                logger.info("✅ Download headers are set correctly")
             else:
-                print("⚠️  Download headers might not be set correctly")
+                logger.warning("⚠️  Download headers might not be set correctly")
             
-            # Show first few lines of content
-            content_lines = response.text.split('\n')[:5]
-            print(f"\nFirst few lines of CSV content:")
-            for i, line in enumerate(content_lines):
-                print(f"  {i+1}: {line}")
+            # Check if content looks like CSV
+            content = response.text
+            logger.info(f"\nFirst few lines of CSV content:")
+            for i, line in enumerate(content.split('\n')[:5]):
+                logger.info(f"  {i+1}: {line}")
             
-            # Save to file for inspection
+            # Save content to file for manual inspection
             with open('downloaded_test.csv', 'w') as f:
-                f.write(response.text)
-            print(f"\n📁 Content saved to 'downloaded_test.csv' for inspection")
+                f.write(content)
+            logger.info(f"\n📁 Content saved to 'downloaded_test.csv' for inspection")
             
         else:
-            print(f"❌ Download endpoint returned error: {response.status_code}")
-            print(f"Response: {response.text}")
+            logger.error(f"❌ Download endpoint returned error: {response.status_code}")
+            logger.error(f"Response: {response.text}")
+            assert False, f"Download endpoint returned error: {response.status_code}"
             
     except requests.exceptions.ConnectionError:
-        print("❌ Could not connect to server. Make sure the server is running on localhost:8080")
-        return False
+        logger.error("❌ Could not connect to server. Make sure the server is running on localhost:8080")
+        assert False, "Could not connect to server"
     except Exception as e:
-        print(f"❌ Error testing download endpoint: {str(e)}")
-        return False
-    
-    return response.status_code == 200
+        logger.error(f"❌ Error testing download endpoint: {str(e)}")
+        assert False, f"Error testing download endpoint: {str(e)}"
 
-if __name__ == "__main__":
-    print("CHSH Game Download Endpoint Test")
-    print("=" * 40)
+def main():
+    """Main test runner"""
+    logger.info("CHSH Game Download Endpoint Test")
+    logger.info("=" * 40)
     
     success = test_download_endpoint()
     
     if success:
-        print("\n🎉 All tests passed!")
-        sys.exit(0)
+        logger.info("\n🎉 All tests passed!")
+        return 0
     else:
-        print("\n💥 Some tests failed!")
-        sys.exit(1)
+        logger.error("\n💥 Some tests failed!")
+        return 1
+
+if __name__ == "__main__":
+    sys.exit(main())

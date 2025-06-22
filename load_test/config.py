@@ -7,7 +7,7 @@ Provides validation, default values, and loading from files.
 import yaml
 from enum import Enum
 from typing import Dict, Any, Optional
-from pydantic import BaseModel, Field, validator, computed_field
+from pydantic import BaseModel, Field, field_validator, computed_field
 from pathlib import Path
 
 
@@ -168,14 +168,16 @@ class LoadTestConfig(BaseModel):
         """Calculate total number of players (2 per team)."""
         return self.num_teams * 2
     
-    @validator('max_response_delay')
-    def validate_response_delays(cls, v, values):
+    @field_validator('max_response_delay')
+    @classmethod
+    def validate_response_delays(cls, v, info):
         """Ensure max_response_delay > min_response_delay."""
-        if 'min_response_delay' in values and v <= values['min_response_delay']:
+        if info.data and 'min_response_delay' in info.data and v <= info.data['min_response_delay']:
             raise ValueError('max_response_delay must be greater than min_response_delay')
         return v
     
-    @validator('deployment_url')
+    @field_validator('deployment_url')
+    @classmethod
     def validate_url(cls, v):
         """Validate URL format."""
         if not (v.startswith('http://') or v.startswith('https://')):

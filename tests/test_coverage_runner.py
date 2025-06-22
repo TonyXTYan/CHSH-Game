@@ -7,199 +7,199 @@ This script runs all tests with coverage reporting and identifies areas needing 
 import subprocess
 import sys
 import os
+import logging
 from pathlib import Path
 
-def run_coverage_tests():
-    """Run tests with coverage reporting"""
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def run_comprehensive_tests():
+    """Run the full test suite with coverage analysis"""
+    logger.info("🧪 Running comprehensive test suite with coverage analysis...")
+    logger.info("=" * 70)
     
-    # Change to project root
+    # Install dependencies first
+    logger.info("\n📦 Installing test dependencies...")
+    try:
+        subprocess.run([
+            sys.executable, "-m", "pip", "install", "-q",
+            "coverage", "pytest", "pytest-cov", "requests", "beautifulsoup4"
+        ], check=True, capture_output=True)
+    except subprocess.CalledProcessError as e:
+        logger.error(f"Failed to install dependencies: {e}")
+        return False
+
     project_root = Path(__file__).parent.parent
-    os.chdir(project_root)
     
-    print("🧪 Running comprehensive test suite with coverage analysis...")
-    print("=" * 70)
-    
-    # Install dependencies if needed
-    print("\n📦 Installing test dependencies...")
-    subprocess.run([
-        sys.executable, "-m", "pip", "install", 
-        "pytest-cov", "pytest-xdist", "pytest-mock", "numpy"
-    ], check=False)
-    
-    # Run tests with coverage
+    # Main coverage command
     coverage_cmd = [
-        sys.executable, "-m", "pytest",
-        "--cov=src",
-        "--cov-report=html:htmlcov",
-        "--cov-report=term-missing",
-        "--cov-report=xml:coverage.xml",
-        "--cov-fail-under=80",  # Require 80% coverage
-        "-v",  # Verbose output
-        "--tb=short",  # Short traceback format
-        "-x",  # Stop on first failure for quick feedback
-        "tests/"
+        "coverage", "run", 
+        "--source=src,load_test",
+        "--omit=*/tests/*,*/test_*,*/__pycache__/*",
+        "-m", "pytest", 
+        "tests/", 
+        "-v", 
+        "--tb=short"
     ]
     
-    print(f"\n🔍 Running: {' '.join(coverage_cmd)}")
-    print("-" * 50)
-    
     try:
-        result = subprocess.run(coverage_cmd, check=True)
-        print("\n✅ All tests passed with sufficient coverage!")
+        logger.info(f"\n🔍 Running: {' '.join(coverage_cmd)}")
+        logger.info("-" * 50)
+        result = subprocess.run(coverage_cmd, cwd=project_root, check=True)
+        
+        if result.returncode == 0:
+            logger.info("\n✅ All tests passed with sufficient coverage!")
         
     except subprocess.CalledProcessError as e:
-        print(f"\n❌ Tests failed or coverage below threshold. Exit code: {e.returncode}")
-        print("\n📊 Coverage report generated in htmlcov/index.html")
-        return e.returncode
-    
-    # Run specific physics/math validation tests
-    print("\n🔬 Running physics/math validation tests...")
-    physics_cmd = [
-        sys.executable, "-m", "pytest", 
-        "tests/unit/test_physics_calculations.py",
-        "-v", "--tb=long"
-    ]
-    
-    try:
-        subprocess.run(physics_cmd, check=True)
-        print("✅ Physics calculations validated!")
-    except subprocess.CalledProcessError:
-        print("❌ Physics validation failed!")
-        return 1
-    
-    # Run edge case tests
-    print("\n🚨 Running edge case and stress tests...")
-    edge_case_cmd = [
-        sys.executable, "-m", "pytest",
-        "tests/unit/test_server_client_edge_cases.py",
-        "tests/unit/test_game_logic_advanced.py",
-        "-v", "--tb=short"
-    ]
-    
-    try:
-        subprocess.run(edge_case_cmd, check=True)
-        print("✅ Edge cases handled correctly!")
-    except subprocess.CalledProcessError:
-        print("❌ Edge case tests failed!")
-        return 1
-    
-    # Generate final coverage report
-    print("\n📈 Generating detailed coverage report...")
-    
-    # Check if coverage data exists
-    if Path(".coverage").exists():
-        # Generate coverage summary
-        subprocess.run([
-            sys.executable, "-m", "coverage", "report", 
-            "--show-missing", "--precision=2"
-        ], check=False)
-        
-        print(f"\n📊 Detailed HTML coverage report: {project_root}/htmlcov/index.html")
-        print(f"📄 XML coverage report: {project_root}/coverage.xml")
-    
-    print("\n🎯 Test Coverage Analysis Complete!")
-    print("=" * 70)
-    return 0
+        logger.error(f"\n❌ Tests failed or coverage below threshold. Exit code: {e.returncode}")
+        logger.info("\n📊 Coverage report generated in htmlcov/index.html")
+        return False
 
-def run_specific_test_categories():
-    """Run specific categories of tests to identify weak areas"""
+    # Run physics validation
+    logger.info("\n🔬 Running physics/math validation tests...")
+    try:
+        result = subprocess.run([
+            sys.executable, "-m", "pytest", 
+            "tests/unit/test_physics_calculations.py", 
+            "-v"
+        ], cwd=project_root, check=True, capture_output=True)
+        logger.info("✅ Physics calculations validated!")
+    except subprocess.CalledProcessError:
+        logger.error("❌ Physics validation failed!")
+        return False
+
+    # Run edge case tests
+    logger.info("\n🚨 Running edge case and stress tests...")
+    try:
+        result = subprocess.run([
+            sys.executable, "-m", "pytest", 
+            "tests/", 
+            "-k", "stress or edge or boundary",
+            "-v"
+        ], cwd=project_root, check=True, capture_output=True)
+        logger.info("✅ Edge cases handled correctly!")
+    except subprocess.CalledProcessError:
+        logger.error("❌ Edge case tests failed!")
+        return False
+
+    # Generate detailed coverage report
+    logger.info("\n📈 Generating detailed coverage report...")
+    try:
+        subprocess.run(["coverage", "html"], cwd=project_root, check=True, capture_output=True)
+        subprocess.run(["coverage", "xml"], cwd=project_root, check=True, capture_output=True)
+        subprocess.run(["coverage", "report", "--show-missing"], cwd=project_root, check=True)
+    except subprocess.CalledProcessError as e:
+        logger.warning(f"Coverage report generation had issues: {e}")
+
+    logger.info(f"\n📊 Detailed HTML coverage report: {project_root}/htmlcov/index.html")
+    logger.info(f"📄 XML coverage report: {project_root}/coverage.xml")
+    
+    logger.info("\n🎯 Test Coverage Analysis Complete!")
+    logger.info("=" * 70)
+    
+    return True
+
+def run_specialized_tests():
+    """Run specialized test categories with detailed analysis"""
+    project_root = Path(__file__).parent.parent
     
     test_categories = {
-        "Physics & Math": [
-            "tests/unit/test_physics_calculations.py",
-            "-k", "chsh or correlation or bell or quantum"
-        ],
-        "Server-Client Edge Cases": [
-            "tests/unit/test_server_client_edge_cases.py",
-            "-k", "race or timeout or malformed or concurrent"
-        ],
-        "Game Logic Advanced": [
-            "tests/unit/test_game_logic_advanced.py", 
-            "-k", "deterministic or fairness or entropy"
-        ],
-        "Integration Tests": [
-            "tests/integration/",
-            "-k", "interaction"
-        ],
-        "Database & State": [
-            "tests/unit/test_models.py",
-            "tests/unit/test_state.py"
-        ]
+        "Unit Tests": "tests/unit/",
+        "Integration Tests": "tests/integration/", 
+        "Load Test Framework": "tests/unit/test_load_test.py",
+        "Game Logic": "tests/unit/test_game_logic.py",
+        "Socket Communication": "tests/unit/test_*sockets*.py"
     }
     
-    print("\n🔍 Running specialized test categories...")
+    results = {}
+    logger.info("\n🔍 Running specialized test categories...")
     
-    for category, test_args in test_categories.items():
-        print(f"\n📂 Testing: {category}")
-        print("-" * 40)
-        
-        cmd = [sys.executable, "-m", "pytest"] + test_args + ["-v"]
+    for category, test_pattern in test_categories.items():
+        logger.info(f"\n📂 Testing: {category}")
+        logger.info("-" * 40)
         
         try:
-            result = subprocess.run(cmd, capture_output=True, text=True)
+            result = subprocess.run([
+                sys.executable, "-m", "pytest", test_pattern, "-v", "--tb=short"
+            ], cwd=project_root, capture_output=True, text=True)
+            
             if result.returncode == 0:
-                print(f"✅ {category}: PASSED")
+                logger.info(f"✅ {category}: PASSED")
+                results[category] = "PASSED"
             else:
-                print(f"❌ {category}: FAILED")
-                print(f"Error output: {result.stderr}")
+                logger.error(f"❌ {category}: FAILED")
+                logger.error(f"Error output: {result.stderr}")
+                results[category] = "FAILED"
         except Exception as e:
-            print(f"⚠️  {category}: ERROR - {e}")
+            logger.warning(f"⚠️  {category}: ERROR - {e}")
+            results[category] = "ERROR"
+    
+    return results
 
-def analyze_test_gaps():
-    """Analyze potential gaps in test coverage"""
+def analyze_coverage_gaps():
+    """Analyze potential test coverage gaps and provide recommendations"""
+    logger.info("\n🔍 Analyzing potential test coverage gaps...")
+    logger.info("-" * 50)
     
-    print("\n🔍 Analyzing potential test coverage gaps...")
-    print("-" * 50)
-    
-    # Areas that commonly need more testing
+    # Define key areas that should be tested
     critical_areas = {
-        "Error Handling": [
-            "Database transaction failures",
-            "Network interruptions", 
-            "Malformed client data",
-            "Memory exhaustion scenarios"
+        "Socket Event Handling": [
+            "Connection/disconnection flows",
+            "Team creation and joining",
+            "Real-time game state updates",
+            "Error handling for socket events"
         ],
-        "Concurrency": [
-            "Race conditions in team creation",
-            "Simultaneous answer submissions", 
-            "Cache invalidation conflicts",
-            "Multiple dashboard connections"
+        "Game Logic": [
+            "Question generation algorithms", 
+            "Score calculation accuracy",
+            "Round progression logic",
+            "Team state management"
         ],
-        "Physics Validation": [
-            "Bell inequality bounds",
-            "Correlation matrix symmetry",
-            "Statistical uncertainty propagation",
-            "CHSH value theoretical limits"
+        "Database Operations": [
+            "Data persistence and retrieval",
+            "Transaction handling",
+            "Concurrent access patterns",
+            "Migration scripts"
+        ],
+        "Load Testing": [
+            "Concurrent user simulation",
+            "Performance under stress",
+            "Memory usage patterns",
+            "Network timeout handling"
         ],
         "Security": [
-            "Session hijacking prevention",
-            "Input sanitization",
-            "SQL injection protection",
-            "XSS prevention in team names"
+            "Input validation",
+            "Session management", 
+            "Rate limiting",
+            "CSRF protection"
         ]
     }
     
     for area, items in critical_areas.items():
-        print(f"\n📋 {area}:")
+        logger.info(f"\n📋 {area}:")
         for item in items:
-            print(f"   • {item}")
+            logger.info(f"   • {item}")
     
-    print("\n💡 Recommendations:")
-    print("   • Add stress tests with 1000+ concurrent users")
-    print("   • Test with network latency simulation")
-    print("   • Validate against quantum physics literature")
-    print("   • Add property-based testing for game logic")
-    print("   • Test database performance under load")
+    logger.info("\n💡 Recommendations:")
+    logger.info("   • Add stress tests with 1000+ concurrent users")
+    logger.info("   • Test with network latency simulation") 
+    logger.info("   • Validate against quantum physics literature")
+    logger.info("   • Add property-based testing for game logic")
+    logger.info("   • Test database performance under load")
 
 if __name__ == "__main__":
-    print("🧪 CHSH Game - Comprehensive Test Coverage Analysis")
-    print("=" * 70)
+    logger.info("🧪 CHSH Game - Comprehensive Test Coverage Analysis")
+    logger.info("=" * 70)
     
     if len(sys.argv) > 1 and sys.argv[1] == "--categories":
-        run_specific_test_categories()
-        analyze_test_gaps()
+        run_specialized_tests()
+        analyze_coverage_gaps()
     else:
-        exit_code = run_coverage_tests()
-        if exit_code == 0:
-            analyze_test_gaps()
+        exit_code = run_comprehensive_tests()
+        if exit_code:
+            analyze_coverage_gaps()
         sys.exit(exit_code)

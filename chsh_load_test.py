@@ -13,11 +13,18 @@ Usage:
 import asyncio
 import sys
 import signal
+import logging
 from typing import Optional
 import click
 from rich.console import Console
 from rich.progress import Progress, SpinnerColumn, TextColumn
-from loguru import logger
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger(__name__)
 
 from load_test.config import LoadTestConfig, load_config_from_file
 from load_test.orchestrator import CHSHLoadTester

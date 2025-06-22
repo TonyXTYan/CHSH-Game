@@ -20,6 +20,13 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=5, ping_interval=5)
 
+# Import routes to register them
+from src.routes import static
+
+# Import socket handlers to register them
+from src.sockets.team_management import handle_connect, handle_disconnect
+from src.sockets import game
+
 # Create database tables
 with app.app_context():
     db.create_all()

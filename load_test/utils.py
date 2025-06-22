@@ -5,8 +5,16 @@ Common helper functions, formatting, and logging setup.
 """
 
 import sys
+import asyncio
+import time
+import random
+import string
+import logging
 from typing import Any
-from loguru import logger
+from datetime import datetime
+
+# Use standard logging instead of loguru
+logger = logging.getLogger(__name__)
 
 
 def setup_logging(log_level: str = "INFO"):
@@ -16,26 +24,22 @@ def setup_logging(log_level: str = "INFO"):
     Args:
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
     """
-    # Remove default logger
-    logger.remove()
-    
-    # Add console logger with formatting
-    logger.add(
-        sys.stderr,
-        level=log_level,
-        format="<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | <cyan>{name}</cyan>:<cyan>{function}</cyan>:<cyan>{line}</cyan> - <level>{message}</level>",
-        colorize=True
+    # Configure standard logging
+    logging.basicConfig(
+        level=getattr(logging, log_level.upper()),
+        format='%(asctime)s [%(levelname)s] %(name)s: %(message)s',
+        handlers=[
+            logging.StreamHandler(sys.stderr)
+        ]
     )
     
     # Add file logger for detailed debugging (if DEBUG level)
     if log_level == "DEBUG":
-        logger.add(
-            "load_test_debug.log",
-            level="DEBUG",
-            format="{time:YYYY-MM-DD HH:mm:ss} | {level: <8} | {name}:{function}:{line} - {message}",
-            rotation="10 MB",
-            retention="3 days"
-        )
+        file_handler = logging.FileHandler("load_test_debug.log")
+        file_handler.setLevel(logging.DEBUG)
+        formatter = logging.Formatter('%(asctime)s [%(levelname)s] %(name)s:%(funcName)s:%(lineno)d - %(message)s')
+        file_handler.setFormatter(formatter)
+        logger.addHandler(file_handler)
 
 
 def format_duration(seconds: float) -> str:
@@ -342,24 +346,32 @@ class ProgressTracker:
         self.update(0)
     
     def update(self, current: int):
-        """Update progress."""
-        self.current = current
-        if self.total > 0:
-            percentage = (current / self.total) * 100
-            print(f"\r{self.description}: {current}/{self.total} ({percentage:.1f}%)", end="", flush=True)
+        """Update progress and display"""
+        if current > self.total:
+            current = self.total
+        
+        percentage = (current / self.total) * 100
+        if self.start_time is not None:
+            duration = time.time() - self.start_time
+        else:
+            duration = 0
+        
+        logger.info(f"{self.description}: {current}/{self.total} ({percentage:.1f}%)")
     
     def increment(self):
         """Increment progress by 1."""
         self.update(self.current + 1)
     
     def finish(self):
-        """Finish progress tracking."""
-        if self.start_time:
-            import time
+        """Mark progress as complete"""
+        if self.start_time is not None:
             duration = time.time() - self.start_time
-            print(f"\r{self.description}: {self.total}/{self.total} (100.0%) - Completed in {format_duration(duration)}")
+            if duration > 0:
+                logger.info(f"{self.description}: {self.total}/{self.total} (100.0%) - Completed in {format_duration(duration)}")
+            else:
+                logger.info(f"{self.description}: {self.total}/{self.total} (100.0%) - Completed")
         else:
-            print(f"\r{self.description}: {self.total}/{self.total} (100.0%) - Completed")
+            logger.info(f"{self.description}: {self.total}/{self.total} (100.0%) - Completed")
 
 
 def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0):
@@ -381,7 +393,6 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0):
                     if attempt < max_retries:
                         delay = exponential_backoff(attempt, base_delay)
                         logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {delay:.2f}s...")
-                        import asyncio
                         await asyncio.sleep(delay)
                     else:
                         logger.error(f"All {max_retries + 1} attempts failed")
@@ -397,14 +408,12 @@ def retry_with_backoff(max_retries: int = 3, base_delay: float = 1.0):
                     if attempt < max_retries:
                         delay = exponential_backoff(attempt, base_delay)
                         logger.warning(f"Attempt {attempt + 1} failed: {str(e)}. Retrying in {delay:.2f}s...")
-                        import time
                         time.sleep(delay)
                     else:
                         logger.error(f"All {max_retries + 1} attempts failed")
                         raise last_exception
         
         # Return appropriate wrapper based on function type
-        import asyncio
         if asyncio.iscoroutinefunction(func):
             return async_wrapper
         else:

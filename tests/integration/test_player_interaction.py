@@ -3,9 +3,9 @@ eventlet.monkey_patch()  # This must be at the very top
 
 import pytest
 import time
+import logging
 from flask_socketio import SocketIOTestClient
-from wsgi import app
-from src.config import socketio as server_socketio
+from src.config import app, socketio as server_socketio
 from src.state import state
 from src.models.quiz_models import (
     Teams,
@@ -15,68 +15,77 @@ from src.models.quiz_models import (
     db
 )
 
-def _clear_state():
-    """Helper to clear application state between tests"""
-    print("[STATE RESET] Clearing application state")
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s'
+)
+logger = logging.getLogger(__name__)
+
+def reset_application_state():
+    """Reset the entire application state for clean tests"""
     try:
-        state.active_teams.clear()
-        state.player_to_team.clear()
-        state.team_id_to_name.clear()
-        state.dashboard_clients.clear()
-        state.connected_players.clear()
-        state.game_started = False
-        state.game_paused = False
-        print("[STATE RESET] Application state cleared successfully")
+        with app.app_context():
+            logger.info("[STATE RESET] Clearing application state")
+            
+            # Clear database
+            Answers.query.delete()
+            PairQuestionRounds.query.delete()
+            Teams.query.delete()
+            db.session.commit()
+            
+            # Reset in-memory state
+            state.reset()
+            
+            logger.info("[STATE RESET] Application state cleared successfully")
     except Exception as e:
-        print(f"[STATE RESET] Error clearing state: {str(e)}")
+        logger.error(f"[STATE RESET] Error clearing state: {str(e)}")
         raise
 
 @pytest.fixture(autouse=True)
-def clean_state(app_context):
-    """Reset application state before each test"""
-    print("\n[TEST SETUP] Resetting application state...")
-    _clear_state()
-    
+def setup_and_cleanup():
+    """Setup and cleanup for each test"""
+    logger.info("\n[TEST SETUP] Resetting application state...")
+    reset_application_state()
     yield
-    
-    print("\n[TEST CLEANUP] Final state cleanup...")
-    _clear_state()
+    logger.info("\n[TEST CLEANUP] Final state cleanup...")
+    reset_application_state()
 
 @pytest.fixture
 def socket_client(app_context):
     """Create a test client for SocketIO with proper cleanup"""
     client = None
     try:
-        print("\n[CLIENT] Creating test client...")
+        logger.info("\n[CLIENT] Creating test client...")
         client = SocketIOTestClient(app, server_socketio)
-        print("[CLIENT] Test client created")
+        logger.info("[CLIENT] Test client created")
         yield client
     finally:
         if client and client.connected:
-            print("[CLIENT] Disconnecting test client...")
+            logger.info("[CLIENT] Disconnecting test client...")
             try:
                 client.disconnect()
-                print("[CLIENT] Test client disconnected")
+                logger.info("[CLIENT] Test client disconnected")
             except Exception as e:
-                print(f"[CLIENT] Error disconnecting client: {str(e)}")
+                logger.error(f"[CLIENT] Error disconnecting client: {str(e)}")
 
 @pytest.fixture
 def second_client(app_context):
     """Create a second test client for team interactions with proper cleanup"""
     client = None
     try:
-        print("\n[CLIENT] Creating second test client...")
+        logger.info("\n[CLIENT] Creating second test client...")
         client = SocketIOTestClient(app, server_socketio)
-        print("[CLIENT] Second test client created")
+        logger.info("[CLIENT] Second test client created")
         yield client
     finally:
         if client and client.connected:
-            print("[CLIENT] Disconnecting second test client...")
+            logger.info("[CLIENT] Disconnecting second test client...")
             try:
                 client.disconnect()
-                print("[CLIENT] Second test client disconnected")
+                logger.info("[CLIENT] Second test client disconnected")
             except Exception as e:
-                print(f"[CLIENT] Error disconnecting second client: {str(e)}")
+                logger.error(f"[CLIENT] Error disconnecting second client: {str(e)}")
 
 @pytest.fixture(scope="session")
 def base_app_context():
@@ -85,18 +94,18 @@ def base_app_context():
         app.extensions['socketio'] = server_socketio
         
         # Initialize database
-        print("\n[DB INIT] Initializing database...")
+        logger.info("\n[DB INIT] Initializing database...")
         db.drop_all()
         db.create_all()
-        print("[DB INIT] Database initialized")
+        logger.info("[DB INIT] Database initialized")
         
         yield app
         
         # Cleanup at end of session
-        print("\n[DB CLEANUP] Cleaning up database...")
+        logger.info("\n[DB CLEANUP] Cleaning up database...")
         db.session.remove()
         db.drop_all()
-        print("[DB CLEANUP] Database cleaned up")
+        logger.info("[DB CLEANUP] Database cleaned up")
 
 @pytest.fixture
 def app_context(base_app_context):
@@ -108,12 +117,12 @@ def app_context(base_app_context):
     # Configure the session with the connection
     db.session.configure(bind=connection)
     
-    print("\n[TEST TRANS] Starting test transaction")
+    logger.info("\n[TEST TRANS] Starting test transaction")
     
     yield app
     
     # Rollback the transaction
-    print("[TEST TRANS] Rolling back test transaction")
+    logger.info("[TEST TRANS] Rolling back test transaction")
     db.session.remove()
     transaction.rollback()
     connection.close()
@@ -121,9 +130,10 @@ def app_context(base_app_context):
 class TestPlayerInteraction:
     """Test class for player interaction scenarios"""
 
-    def get_received_event(self, client, event_name):
+    def get_received_event(self, client, event_name, messages=None):
         """Helper method to get a specific event from received messages"""
-        messages = client.get_received()
+        if messages is None:
+            messages = client.get_received()
         return next((msg for msg in messages if msg.get('name') == event_name), None)
 
     def verify_connection(self, client):
@@ -131,8 +141,11 @@ class TestPlayerInteraction:
         assert client.connected, "Client failed to connect to server"
         time.sleep(0.1)
         
+        # Get received messages
+        messages = client.get_received()
+        
         # Verify connection_established event
-        msg = self.get_received_event(client, 'connection_established')
+        msg = next((msg for msg in messages if msg.get('name') == 'connection_established'), None)
         assert msg is not None, "Did not receive connection_established event"
         data = msg.get('args', [{}])[0]
         assert 'game_started' in data, "connection_established missing game_started status"
@@ -374,7 +387,7 @@ class TestPlayerInteraction:
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            print(f"Warning: Cleanup failed: {e}")
+            logger.warning(f"Warning: Cleanup failed: {e}")
 
         # Also update the team's state for clean test start
         team_info = state.active_teams.get('MultiRoundTeam')
@@ -518,7 +531,7 @@ class TestPlayerInteraction:
             db.session.commit()
         except Exception as e:
             db.session.rollback()
-            print(f"Warning: Cleanup failed: {e}")
+            logger.warning(f"Warning: Cleanup failed: {e}")
 
         # Initialize team state
         team_info = state.active_teams.get('GameFlowTeam')
