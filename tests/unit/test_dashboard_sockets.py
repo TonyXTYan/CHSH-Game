@@ -404,7 +404,7 @@ def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.side_effect = Exception("Database error")
         on_dashboard_join()
-        mock_emit.assert_called_with('error', {'message': 'Error joining dashboard: Database error'})
+        mock_emit.assert_called_with('error', {'message': 'An error occurred while joining the dashboard'})
     
     # Test error in start_game
     mock_emit.reset_mock()
