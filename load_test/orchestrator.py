@@ -17,7 +17,6 @@ from rich.live import Live
 from rich.table import Table
 from rich.panel import Panel
 from rich.text import Text
-from loguru import logger
 
 from .config import LoadTestConfig
 from .team_manager import TeamManager
@@ -78,10 +77,16 @@ class CHSHLoadTester:
             self.start_time = time.time()
             self.metrics.start_monitoring()
             
-            await self._run_load_test()
-            self.console.print("\n[bold green]✓ Load test completed successfully![/bold green]")
-            logger.info("Load test completed successfully")
-            return True
+            success = await self._run_load_test()
+            
+            if success:
+                self.console.print("\n[bold green]✓ Load test completed successfully![/bold green]")
+                logger.info("Load test completed successfully")
+                return True
+            else:
+                self.console.print("\n[bold red]✗ Load test failed[/bold red]")
+                logger.error("Load test failed")
+                return False
             
         except KeyboardInterrupt:
             self.console.print("\n[yellow]⚠️  Test interrupted by user[/yellow]")
@@ -98,7 +103,7 @@ class CHSHLoadTester:
             self.metrics.stop_monitoring()
             await self.shutdown()
     
-    async def _run_load_test(self):
+    async def _run_load_test(self) -> bool:
         """Execute the load test phases."""
         self.console.print("\n[bold blue]🚀 Starting CHSH Game Load Test[/bold blue]")
         logger.info("Starting CHSH Game Load Test")
@@ -110,8 +115,8 @@ class CHSHLoadTester:
 👥 Total Players: {self.config.total_players}
 🏆 Teams: {self.config.num_teams}
 ⏱️  Max Duration: {self.config.max_test_duration}s
-� Connection Strategy: {self.config.connection_strategy.value}
-� Response Pattern: {self.config.response_pattern.value}
+🔗 Connection Strategy: {self.config.connection_strategy.value}
+🎯 Response Pattern: {self.config.response_pattern.value}
 📈 Dashboard Simulation: {'✓' if self.config.enable_dashboard_simulation else '✗'}""",
             title="Load Test Parameters",
             border_style="blue"
@@ -143,6 +148,8 @@ class CHSHLoadTester:
                 self.console.print(f"[red]❌ {phase_name} failed: {str(e)}[/red]")
                 logger.error(f"Phase failed: {phase_name} - {str(e)}")
                 return False
+        
+        return True
 
     async def _create_and_connect_players(self) -> bool:
         """Create player instances and establish connections."""
