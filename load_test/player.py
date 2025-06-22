@@ -10,10 +10,12 @@ import time
 from typing import Optional, Dict, Any, Callable
 from enum import Enum
 import socketio
-from loguru import logger
+import logging
 
 from .config import LoadTestConfig, ResponsePatternType
 from .metrics import PlayerMetrics
+
+logger = logging.getLogger(__name__)
 
 
 class PlayerState(Enum):
