@@ -1,0 +1,159 @@
+[tool.pyright]
+pythonVersion = "3.8"
+typeCheckingMode = "basic"
+reportMissingImports = true
+reportMissingTypeStubs = false
+reportUnnecessaryTypeIgnoreComment = false
+reportUnusedImport = false
+reportUnusedVariable = false
+reportDuplicateImport = false
+reportWildcardImportFromLibrary = false
+reportOptionalSubscript = false
+reportOptionalMemberAccess = false
+reportOptionalCall = false
+reportOptionalIterable = false
+reportOptionalContextManager = false
+reportOptionalOperand = false
+reportTypedDictNotRequiredAccess = false
+reportPrivateUsage = false
+reportTypeCommentUsage = false
+reportIncompatibleMethodOverride = false
+reportIncompatibleVariableOverride = false
+reportInconsistentConstructor = false
+reportOverlappingOverloads = false
+reportMissingSuperCall = false
+reportUninitializedInstanceVariable = false
+reportInvalidStringEscapeSequence = false
+reportUnknownParameterType = false
+reportUnknownArgumentType = false
+reportUnknownLambdaType = false
+reportUnknownVariableType = false
+reportUnknownMemberType = false
+reportMissingParameterType = false
+reportMissingTypeArgument = false
+reportInvalidTypeVarUse = false
+reportCallInDefaultInitializer = false
+reportCallIssue = false
+reportArgumentType = false
+reportAttributeAccessIssue = false
+reportAssignmentType = false
+reportOperatorIssue = false
+reportReturnType = false
+reportGeneralTypeIssues = false
+reportUnnecessaryIsInstance = false
+reportUnnecessaryCast = false
+reportUnnecessaryComparison = false
+reportUnnecessaryContains = false
+reportAssertAlwaysTrue = false
+reportSelfClsParameterName = false
+reportImplicitStringConcatenation = false
+reportUndefinedVariable = true
+reportUnboundVariable = true
+reportInvalidStubStatement = false
+reportUnusedClass = false
+reportUnusedFunction = false
+reportUntypedFunctionDecorator = false
+reportUntypedClassDecorator = false
+reportUntypedBaseClass = false
+reportUntypedNamedTuple = false
+reportPrivateImportUsage = false
+reportConstantRedefinition = false
+reportImportCycles = false
+reportPropertyTypeMismatch = false
+reportFunctionMemberAccess = false
+reportIncompatibleDefaultValue = false
+reportUnknownPropertyType = false
+reportUnsupportedDunderAll = false
+reportUnusedCoroutine = false
+
+include = [
+    "src",
+    "tests",
+    "load_test"
+]
+
+exclude = [
+    "**/__pycache__",
+    "**/.venv",
+    "**/venv",
+    "**/env",
+    "**/node_modules",
+    "**/.git",
+    "**/migrations",
+    "**/instance"
+]
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "chsh-game"
+version = "1.0.0"
+description = "CHSH Game for quantum physics education"
+authors = [
+    {name = "Tony Yan", email = "tony@example.com"}
+]
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "flask>=2.0.0",
+    "flask-socketio>=5.0.0",
+    "flask-sqlalchemy>=3.0.0",
+    "eventlet>=0.33.0",
+    "uncertainties>=3.1.0",
+    "python-socketio>=5.0.0",
+    "gunicorn>=20.0.0",
+    "psycopg2-binary>=2.9.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "pyright>=1.1.0",
+    "black>=22.0.0",
+    "flake8>=5.0.0",
+    "mypy>=1.0.0"
+]
+load-test = [
+    "aiohttp>=3.8.0",
+    "asyncio-throttle>=1.0.0",
+    "rich>=13.0.0",
+    "pyyaml>=6.0",
+    "requests>=2.28.0"
+]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = false
+warn_redundant_casts = false
+warn_unused_ignores = false
+warn_no_return = true
+warn_unreachable = true
+strict_equality = false
+ignore_missing_imports = true
+disable_error_code = ["index", "union-attr", "misc", "operator", "assignment", "arg-type", "type-var"]
+exclude = [
+    "migrations/",
+    "instance/",
+    "venv/",
+    ".venv/",
+    "build/",
+    "dist/"
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "eventlet.*",
+    "flask_socketio.*", 
+    "uncertainties.*",
+    "psycopg2.*"
+]
+ignore_missing_imports = true

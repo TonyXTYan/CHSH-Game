@@ -156,7 +156,7 @@ class TestPlayerInteraction:
         """Helper method to wait for and get a specific event"""
         start_time = time.time()
         while (time.time() - start_time) < timeout:
-            eventlet.sleep(0.1)  # Use eventlet sleep instead of time.sleep
+            eventlet.sleep(0.1)  # type: ignore
             event = self.get_received_event(client, event_name)
             if event is not None:
                 return event

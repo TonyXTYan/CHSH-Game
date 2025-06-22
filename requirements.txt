@@ -26,3 +26,5 @@ eventlet==0.35.2
 uncertainties==3.2.3
 pytest==8.3.3
 pytest-cov==6.1.1
+mypy==1.16.1
+pyright==1.1.402

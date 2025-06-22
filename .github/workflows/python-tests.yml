@@ -52,6 +52,18 @@ jobs:
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
         
+    - name: Run mypy type checking
+      continue-on-error: true
+      run: |
+        echo "Running mypy type checking..."
+        mypy src || echo "mypy found type issues (non-blocking)"
+        
+    - name: Run pyright type checking
+      continue-on-error: true
+      run: |
+        echo "Running pyright type checking..."
+        pyright || echo "pyright found type issues (non-blocking)"
+        
   release:
     needs: test
     if: startsWith(github.ref, 'refs/tags/v')
