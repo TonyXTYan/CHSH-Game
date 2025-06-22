@@ -27,7 +27,7 @@ def handle_shutdown(signum, frame):
     try:
         # Notify all connected clients about the shutdown
         socketio.emit('server_shutdown')
-        socketio.sleep(0.5)  # Allow time for clients to receive the message
+        socketio.sleep(1)  # Allow time for clients to receive the message
         # Close the socket connections
         socketio.stop()
         logger.info("Socket connections closed.")

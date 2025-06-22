@@ -1,6 +1,6 @@
 from flask import jsonify, Response
 import math
-from uncertainties import ufloat
+from uncertainties import ufloat, UFloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
 import warnings
 from functools import lru_cache
@@ -17,33 +17,34 @@ import csv
 import io
 import logging
 from datetime import datetime
+from typing import Dict, List, Tuple, Any, Optional, Union
+from flask import request
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 # Store last activity time for each dashboard client
-dashboard_last_activity = {}
+dashboard_last_activity: Dict[str, float] = {}
 
 CACHE_SIZE = 1024  # Adjust cache size as needed
 REFRESH_DELAY = 1 # seconds
 
 # Throttling variables for get_all_teams
 _last_refresh_time = 0
-_cached_teams_result = None
+_cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
 @socketio.on('keep_alive')
-def on_keep_alive():
+def on_keep_alive() -> None:
     try:
-        from flask import request
-        sid = request.sid
+        sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
             dashboard_last_activity[sid] = time()
-            emit('keep_alive_ack', room=sid)
+            emit('keep_alive_ack', to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_keep_alive: {str(e)}", exc_info=True)
 
 @lru_cache(maxsize=CACHE_SIZE)
-def compute_team_hashes(team_id):
+def compute_team_hashes(team_id: int) -> Tuple[str, str]:
     try:
         # Get all rounds and answers for this team in chronological order
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
@@ -72,7 +73,7 @@ def compute_team_hashes(team_id):
         return "ERROR", "ERROR"
 
 @lru_cache(maxsize=CACHE_SIZE)
-def compute_correlation_matrix(team_id):
+def compute_correlation_matrix(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
     try:
         # Get all rounds and their corresponding answers for this team
         # Use separate optimized queries with proper indexing
@@ -85,7 +86,7 @@ def compute_correlation_matrix(team_id):
         answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
         
         # Group answers by round_id
-        answers_by_round = {}
+        answers_by_round: Dict[int, List[Any]] = {}
         for answer in answers:
             if answer.question_round_id not in answers_by_round:
                 answers_by_round[answer.question_round_id] = []
@@ -97,11 +98,11 @@ def compute_correlation_matrix(team_id):
         corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
         
         # Count pairs for each item combination
-        pair_counts = {(i, j): 0 for i in item_values for j in item_values}
-        correlation_sums = {(i, j): 0 for i in item_values for j in item_values}
+        pair_counts: Dict[Tuple[str, str], int] = {(i, j): 0 for i in item_values for j in item_values}
+        correlation_sums: Dict[Tuple[str, str], int] = {(i, j): 0 for i in item_values for j in item_values}
         
         # Track same-item responses for the new metric
-        same_item_responses = {}  # Will track {item: {'true': count, 'false': count}}
+        same_item_responses: Dict[str, Dict[str, int]] = {}  # Will track {item: {'true': count, 'false': count}}
         
         # Analyze each round that has both player answers
         for round_id, round_answers in answers_by_round.items():
@@ -180,7 +181,7 @@ def compute_correlation_matrix(team_id):
                 corr_matrix[i][j] = (numerator, denominator)
         
         # Calculate the same-item balance metric
-        same_item_balance = {}
+        same_item_balance: Dict[str, float] = {}
         for item, counts in same_item_responses.items():
             total = counts['true'] + counts['false']
             if total == 0:
@@ -203,7 +204,7 @@ def compute_correlation_matrix(team_id):
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
-def compute_correlation_stats(team_id): # NOT USED
+def compute_correlation_stats(team_id: int) -> Tuple[float, float, float]: # NOT USED
     try:
         # Get the correlation matrix and new metrics
         corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(team_id)
@@ -253,7 +254,7 @@ def compute_correlation_stats(team_id): # NOT USED
 
 
 @lru_cache(maxsize=CACHE_SIZE)
-def _calculate_team_statistics(correlation_matrix_tuple_str):
+def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, Optional[float]]:
     """Calculate ufloat statistics from correlation matrix string representation."""
     try:
         # Parse the correlation matrix from string back to tuple format
@@ -263,7 +264,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
         # --- Calculate statistics with uncertainties using ufloat ---
 
         # Stat1: Trace Average Statistic
-        sum_of_cii_ufloats = 0
+        sum_of_cii_ufloats: UFloat = ufloat(0, 0)
         if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples):
             for i in range(4):
                 num, den = corr_matrix_tuples[i][i]
@@ -290,7 +291,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
                 trace_average_statistic_ufloat = ufloat(-raw_trace_avg_ufloat.nominal_value, raw_trace_avg_ufloat.std_dev)
 
         # Stat2: CHSH Value Statistic
-        chsh_sum_ufloat = 0
+        chsh_sum_ufloat: UFloat = ufloat(0, 0)
         if len(corr_matrix_tuples) == 4 and all(len(row) == 4 for row in corr_matrix_tuples) and all(item in item_values for item in ['A', 'B', 'X', 'Y']):
             try:
                 A_idx = item_values.index('A')
@@ -320,7 +321,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
         chsh_value_statistic_ufloat = (1/2) * chsh_sum_ufloat
 
         # Stat3: Cross-Term Combination Statistic
-        cross_term_sum_ufloat = 0
+        cross_term_sum_ufloat: UFloat = ufloat(0, 0)
         # Ensure item_values contains A,B,X,Y before proceeding
         if all(item in item_values for item in ['A', 'B', 'X', 'Y']):
             term_item_pairs_coeffs = [
@@ -341,7 +342,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
         cross_term_combination_statistic_ufloat = cross_term_sum_ufloat
 
         # --- Same‑item balance with uncertainty (ufloat) ---
-        same_item_balance_ufloats = []
+        same_item_balance_ufloats: List[UFloat] = []
         for item, counts in (same_item_responses or {}).items():
             T_count = counts.get('true', 0)
             F_count = counts.get('false', 0)
@@ -371,15 +372,15 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
             avg_same_item_balance_ufloat = ufloat(0, float("inf"))
         
         return {
-            'trace_average_statistic': trace_average_statistic_ufloat.n,
-            'trace_average_statistic_uncertainty': trace_average_statistic_ufloat.s if not math.isinf(trace_average_statistic_ufloat.s) else None,
-            'chsh_value_statistic': chsh_value_statistic_ufloat.n,
-            'chsh_value_statistic_uncertainty': chsh_value_statistic_ufloat.s if not math.isinf(chsh_value_statistic_ufloat.s) else None,
-            'cross_term_combination_statistic': cross_term_combination_statistic_ufloat.n,
-            'cross_term_combination_statistic_uncertainty': cross_term_combination_statistic_ufloat.s if not math.isinf(cross_term_combination_statistic_ufloat.s) else None,
-            'same_item_balance': avg_same_item_balance_ufloat.n,
-            'same_item_balance_uncertainty': (avg_same_item_balance_ufloat.s
-                                              if not math.isinf(avg_same_item_balance_ufloat.s) else None)
+            'trace_average_statistic': trace_average_statistic_ufloat.nominal_value,
+            'trace_average_statistic_uncertainty': trace_average_statistic_ufloat.std_dev if not math.isinf(trace_average_statistic_ufloat.std_dev) else None,
+            'chsh_value_statistic': chsh_value_statistic_ufloat.nominal_value,
+            'chsh_value_statistic_uncertainty': chsh_value_statistic_ufloat.std_dev if not math.isinf(chsh_value_statistic_ufloat.std_dev) else None,
+            'cross_term_combination_statistic': cross_term_combination_statistic_ufloat.nominal_value,
+            'cross_term_combination_statistic_uncertainty': cross_term_combination_statistic_ufloat.std_dev if not math.isinf(cross_term_combination_statistic_ufloat.std_dev) else None,
+            'same_item_balance': avg_same_item_balance_ufloat.nominal_value,
+            'same_item_balance_uncertainty': (avg_same_item_balance_ufloat.std_dev
+                                              if not math.isinf(avg_same_item_balance_ufloat.std_dev) else None)
         }
     except Exception as e:
         logger.error(f"Error calculating team statistics: {str(e)}", exc_info=True)
@@ -395,7 +396,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
         }
 
 @lru_cache(maxsize=CACHE_SIZE)
-def _process_single_team(team_id, team_name, is_active, created_at, current_round, player1_sid, player2_sid):
+def _process_single_team(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str]) -> Optional[Dict[str, Any]]:
     """Process all heavy computation for a single team."""
     try:
         # For active teams, check game progress
@@ -454,7 +455,7 @@ def _process_single_team(team_id, team_name, is_active, created_at, current_roun
         logger.error(f"Error processing team {team_id}: {str(e)}", exc_info=True)
         return None
 
-def get_all_teams():
+def get_all_teams() -> List[Dict[str, Any]]:
     global _last_refresh_time, _cached_teams_result
     
     try:
@@ -505,7 +506,7 @@ def get_all_teams():
         logger.error(f"Error in get_all_teams: {str(e)}", exc_info=True)
         return []
 
-def clear_team_caches():
+def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
     # global _last_refresh_time, _cached_teams_result
     
@@ -521,7 +522,7 @@ def clear_team_caches():
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
-def emit_dashboard_team_update():
+def emit_dashboard_team_update() -> None:
     try:
         serialized_teams = get_all_teams()
         update_data = {
@@ -529,11 +530,11 @@ def emit_dashboard_team_update():
             'connected_players_count': len(state.connected_players)
         }
         for sid in state.dashboard_clients:
-            socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
+            socketio.emit('team_status_changed_for_dashboard', update_data, to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
-def emit_dashboard_full_update(client_sid=None):
+def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
     try:
         with app.app_context():
             total_answers = Answers.query.count()
@@ -549,18 +550,17 @@ def emit_dashboard_full_update(client_sid=None):
             }
         }
         if client_sid:
-            socketio.emit('dashboard_update', update_data, room=client_sid)
+            socketio.emit('dashboard_update', update_data, to=client_sid)  # type: ignore
         else:
             for dash_sid in state.dashboard_clients:
-                socketio.emit('dashboard_update', update_data, room=dash_sid)
+                socketio.emit('dashboard_update', update_data, to=dash_sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
 
 @socketio.on('dashboard_join')
-def on_dashboard_join(data=None, callback=None):
+def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[Any] = None) -> None:
     try:
-        from flask import request
-        sid = request.sid
+        sid = request.sid  # type: ignore
         
         # Add to dashboard clients
         state.dashboard_clients.add(sid)
@@ -588,28 +588,27 @@ def on_dashboard_join(data=None, callback=None):
             callback(update_data)
         else:
             # Otherwise emit as usual
-            socketio.emit('dashboard_update', update_data, room=sid)
+            socketio.emit('dashboard_update', update_data, to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_dashboard_join: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while joining the dashboard'})
+        emit('error', {'message': 'An error occurred while joining the dashboard'})  # type: ignore
 
 @socketio.on('start_game')
-def on_start_game(data=None):
+def on_start_game(data: Optional[Dict[str, Any]] = None) -> None:
     try:
-        from flask import request
-        if request.sid in state.dashboard_clients:
+        if request.sid in state.dashboard_clients:  # type: ignore
             state.game_started = True
             # Notify teams and dashboard that game has started
             for team_name, team_info in state.active_teams.items():
                 if len(team_info['players']) == 2:  # Only notify paired teams
-                    socketio.emit('game_start', {'game_started': True}, room=team_name)
+                    socketio.emit('game_start', {'game_started': True}, to=team_name)  # type: ignore
             
             # Notify dashboard
             for dashboard_sid in state.dashboard_clients:
-                socketio.emit('game_started', room=dashboard_sid)
+                socketio.emit('game_started', to=dashboard_sid)  # type: ignore
                 
             # Notify all clients about game state change
-            socketio.emit('game_state_changed', {'game_started': True})
+            socketio.emit('game_state_changed', {'game_started': True})  # type: ignore
                 
             # Start first round for all paired teams
             for team_name, team_info in state.active_teams.items():
@@ -617,38 +616,36 @@ def on_start_game(data=None):
                     start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_start_game: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while starting the game'})
+        emit('error', {'message': 'An error occurred while starting the game'})  # type: ignore
 
 @socketio.on('pause_game')
-def on_pause_game():
+def on_pause_game() -> None:
     try:
-        from flask import request
-        if request.sid not in state.dashboard_clients:
-            emit('error', {'message': 'Unauthorized: Not a dashboard client'})
+        if request.sid not in state.dashboard_clients:  # type: ignore
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
             return
 
         state.game_paused = not state.game_paused  # Toggle pause state
         pause_status = "paused" if state.game_paused else "resumed"
-        logger.info(f"Game {pause_status} by {request.sid}")
+        logger.info(f"Game {pause_status} by {request.sid}")  # type: ignore
 
         # Notify all clients about pause state change
         for team_name in state.active_teams.keys():
             socketio.emit('game_state_update', {
                 'paused': state.game_paused
-            }, room=team_name)
+            }, to=team_name)  # type: ignore
 
         # Update dashboard state
         emit_dashboard_full_update()
 
     except Exception as e:
         logger.error(f"Error in on_pause_game: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while toggling game pause'})
+        emit('error', {'message': 'An error occurred while toggling game pause'})  # type: ignore
 
 @socketio.on('disconnect')
-def on_disconnect():
+def on_disconnect() -> None:
     try:
-        from flask import request
-        sid = request.sid
+        sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
             if sid in dashboard_last_activity:
@@ -657,13 +654,12 @@ def on_disconnect():
         logger.error(f"Error in on_disconnect: {str(e)}", exc_info=True)
 
 @socketio.on('restart_game')
-def on_restart_game():
+def on_restart_game() -> None:
     try:
-        from flask import request
-        logger.info(f"Received restart_game from {request.sid}")
-        if request.sid not in state.dashboard_clients:
-            emit('error', {'message': 'Unauthorized: Not a dashboard client'})
-            emit('game_reset_complete', room=request.sid)
+        logger.info(f"Received restart_game from {request.sid}")  # type: ignore
+        if request.sid not in state.dashboard_clients:  # type: ignore
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
+            emit('game_reset_complete', to=request.sid)  # type: ignore
             return
 
         # First update game state to prevent new answers during reset
@@ -682,15 +678,15 @@ def on_restart_game():
         except Exception as db_error:
             db.session.rollback()
             logger.error(f"Database error during game reset: {str(db_error)}", exc_info=True)
-            emit('error', {'message': 'Database error during reset'})
-            emit('game_reset_complete', room=request.sid)
+            emit('error', {'message': 'Database error during reset'})  # type: ignore
+            emit('game_reset_complete', to=request.sid)  # type: ignore
             return
 
         # If no active teams, still complete the reset successfully
         if not state.active_teams:
-            emit('game_state_changed', {'game_started': False})
+            socketio.emit('game_state_changed', {'game_started': False})  # type: ignore
             emit_dashboard_full_update()
-            emit('game_reset_complete', room=request.sid)
+            emit('game_reset_complete', to=request.sid)  # type: ignore
             return
         
         # Reset team state after successful database clear
@@ -703,10 +699,10 @@ def on_restart_game():
         
         # Notify all teams about the reset
         for team_name in state.active_teams.keys():
-            socketio.emit('game_reset', room=team_name)
+            socketio.emit('game_reset', to=team_name)  # type: ignore
         
         # Ensure all clients are notified of the state change
-        socketio.emit('game_state_changed', {'game_started': False})
+        socketio.emit('game_state_changed', {'game_started': False})  # type: ignore
         
         # Update dashboard with reset state
         emit_dashboard_full_update()
@@ -714,14 +710,14 @@ def on_restart_game():
         # Notify dashboard clients that reset is complete
         logger.info("Emitting game_reset_complete to all dashboard clients")
         for dash_sid in state.dashboard_clients:
-            socketio.emit('game_reset_complete', room=dash_sid)
+            socketio.emit('game_reset_complete', to=dash_sid)  # type: ignore
             
     except Exception as e:
         logger.error(f"Error in on_restart_game: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while restarting the game'})
+        emit('error', {'message': 'An error occurred while restarting the game'})  # type: ignore
 
 @app.route('/api/dashboard/data', methods=['GET'])
-def get_dashboard_data():
+def get_dashboard_data() -> Response:
     try:
         # Get all answers ordered by timestamp
         with app.app_context():
@@ -750,7 +746,7 @@ def get_dashboard_data():
         return jsonify({'error': 'An error occurred while retrieving dashboard data'}), 500
 
 @app.route('/download', methods=['GET'])
-def download_csv():
+def download_csv() -> Response:
     try:
         # Get all answers ordered by timestamp
         with app.app_context():

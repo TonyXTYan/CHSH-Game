@@ -9,6 +9,7 @@ from src.config import app, socketio
 from src.sockets.game import on_submit_answer
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
+from typing import Dict, Any
 
 @pytest.fixture
 def app_context():
@@ -168,7 +169,7 @@ def test_round_completion_when_both_players_answer(mock_request_context):
                 'team_name': test_team,
                 'round_number': 1
             },
-            room=test_team
+            to=test_team
         )
         
         # Verify new round was started
@@ -225,7 +226,7 @@ def test_dashboard_notifications_on_answer(mock_request_context):
                 'assigned_item': 'A',
                 'response_value': True
             },
-            room='dash1'
+            to='dash1'
         )
         
         mock_socketio_emit.assert_any_call(
@@ -239,7 +240,7 @@ def test_dashboard_notifications_on_answer(mock_request_context):
                 'assigned_item': 'A',
                 'response_value': True
             },
-            room='dash2'
+            to='dash2'
         )
         
         # Verify dashboard team update was called

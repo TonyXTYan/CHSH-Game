@@ -8,11 +8,12 @@ from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
 import logging
+from typing import Dict, Any, List, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
-def get_available_teams_list():
+def get_available_teams_list() -> List[Dict[str, Any]]:
     try:
         # Get active teams that aren't full
         active_teams = [{'team_name': name, 'team_id': info['team_id'], 'is_active': True}
@@ -41,7 +42,7 @@ def get_available_teams_list():
         logger.error(f"Error in get_available_teams_list: {str(e)}", exc_info=True)
         return []
 
-def get_team_members(team_name):
+def get_team_members(team_name: str) -> List[str]:
     try:
         team_info = state.active_teams.get(team_name)
         if not team_info: return []
@@ -51,9 +52,9 @@ def get_team_members(team_name):
         return []
 
 @socketio.on('connect')
-def handle_connect():
+def handle_connect() -> None:
     try:
-        sid = request.sid
+        sid = request.sid  # type: ignore
         logger.info(f'Client connected: {sid}')
         
         # By default, treat all non-dashboard connections as players
@@ -64,13 +65,13 @@ def handle_connect():
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list()
-        })
+        })  # type: ignore
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
 
 @socketio.on('disconnect')
-def handle_disconnect():
-    sid = request.sid
+def handle_disconnect() -> None:
+    sid = request.sid  # type: ignore
     logger.info(f'Client disconnected: {sid}')
     try:
         if sid in state.dashboard_clients:
@@ -110,14 +111,14 @@ def handle_disconnect():
                         # Notify remaining players
                         remaining_players = team_info['players']
                         if remaining_players:
-                            emit('player_left', {'message': 'A team member has disconnected.'}, room=team_name)
+                            emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
                             # Keep team active with remaining player
                             emit('team_status_update', {
                                 'team_name': team_name,
                                 'status': 'waiting_pair',
                                 'members': remaining_players,
                                 'game_started': state.game_started
-                            }, room=team_name)
+                            }, to=team_name)  # type: ignore
                         else:
                             # If no players left, mark team as inactive
                             existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
@@ -139,7 +140,7 @@ def handle_disconnect():
                         socketio.emit('teams_updated', {
                             'teams': get_available_teams_list(),
                             'game_started': state.game_started
-                        })
+                        })  # type: ignore
                         
                         try:
                             leave_room(team_name, sid=sid)
@@ -150,16 +151,21 @@ def handle_disconnect():
         logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
 @socketio.on('create_team')
-def on_create_team(data):
+def on_create_team(data: Dict[str, Any]) -> None:
     try:
         team_name = data.get('team_name')
-        sid = request.sid
+        sid = request.sid  # type: ignore
         if not team_name:
-            emit('error', {'message': 'Team name is required'}); return
+            emit('error', {'message': 'Team name is required'})  # type: ignore
+            return
         if team_name in state.active_teams or Teams.query.filter_by(team_name=team_name, is_active=True).first():
-            emit('error', {'message': 'Team name already exists or is active'}); return
+            emit('error', {'message': 'Team name already exists or is active'})  # type: ignore
+            return
 
-        new_team_db = Teams(team_name=team_name, player1_session_id=sid)
+        new_team_db = Teams(
+            team_name=team_name,
+            player1_session_id=sid
+        )
         db.session.add(new_team_db)
         db.session.commit()
         # Clear caches after team state change
@@ -174,49 +180,49 @@ def on_create_team(data):
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[new_team_db.team_id] = team_name
-        join_room(team_name)
+        join_room(team_name, sid=sid)  # type: ignore
         
         emit('team_created', {
             'team_name': team_name,
             'team_id': new_team_db.team_id,
             'message': 'Team created. Waiting for another player.',
             'game_started': state.game_started
-        })
+        })  # type: ignore
         # This team_status_update for 'created' seems specific to the creator,
         # and might be redundant if 'team_created' already conveys enough.
         # Consider if this is still needed or if 'team_created' is sufficient.
         # For now, keeping it as it was.
-        emit('team_status_update', {'status': 'created'}, room=request.sid) 
+        emit('team_status_update', {'status': 'created'}, to=request.sid)  # type: ignore
         
         socketio.emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
-        })
+        })  # type: ignore
         
         emit_dashboard_team_update()
     except Exception as e:
         logger.error(f"Error in on_create_team: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while creating the team'})
+        emit('error', {'message': 'An error occurred while creating the team'})  # type: ignore
 
 @socketio.on('join_team')
-def on_join_team(data):
+def on_join_team(data: Dict[str, Any]) -> None:
     try:
         team_name = data.get('team_name')
-        sid = request.sid
+        sid = request.sid  # type: ignore
         if not team_name or team_name not in state.active_teams:
-            emit('error', {'message': 'Team not found or invalid team name.'})
+            emit('error', {'message': 'Team not found or invalid team name.'})  # type: ignore
             return
         team_info = state.active_teams[team_name]
         if len(team_info['players']) >= 2:
-            emit('error', {'message': 'Team is already full.'})
+            emit('error', {'message': 'Team is already full.'})  # type: ignore
             return
         if sid in team_info['players']:
-            emit('error', {'message': 'You are already in this team.'})
+            emit('error', {'message': 'You are already in this team.'})  # type: ignore
             return
 
         team_info['players'].append(sid)
         state.player_to_team[sid] = team_name
-        join_room(team_name)
+        join_room(team_name, sid=sid)  # type: ignore
         
         # Using Session.get() instead of Query.get()
         db_team = db.session.get(Teams, team_info['team_id'])
@@ -244,7 +250,7 @@ def on_join_team(data):
             'message': f'You joined team {team_name}.',
             'game_started': state.game_started,
             'team_status': current_team_status_for_clients # Let P2 know if team is full now
-        }, room=sid)
+        }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
         # This replaces the separate 'player_joined' and multiple 'team_status_update' emits
@@ -253,13 +259,13 @@ def on_join_team(data):
             'status': current_team_status_for_clients,
             'members': get_team_members(team_name),
             'game_started': state.game_started
-        }, room=team_name)
+        }, to=team_name)  # type: ignore
         
         # Update all clients about the list of available teams
         socketio.emit('teams_updated', {
             'teams': get_available_teams_list(),
             'game_started': state.game_started
-        })
+        })  # type: ignore
         
         # Update dashboard
         emit_dashboard_team_update()
@@ -274,26 +280,29 @@ def on_join_team(data):
 
     except Exception as e:
         logger.error(f"Error in on_join_team: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while joining the team'})
+        emit('error', {'message': 'An error occurred while joining the team'})  # type: ignore
 
 @socketio.on('reactivate_team')
-def on_reactivate_team(data):
+def on_reactivate_team(data: Dict[str, Any]) -> None:
     try:
         team_name = data.get('team_name')
-        sid = request.sid
+        sid = request.sid  # type: ignore
         
         if not team_name:
-            emit('error', {'message': 'Team name is required'}); return
+            emit('error', {'message': 'Team name is required'})  # type: ignore
+            return
             
         # Find the inactive team in the database
         with app.app_context():
             team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
             if not team:
-                emit('error', {'message': 'Team not found or is already active'}); return
+                emit('error', {'message': 'Team not found or is already active'})  # type: ignore
+                return
                 
             # Check if team name would conflict with any active team
             if team_name in state.active_teams:
-                emit('error', {'message': 'An active team with this name already exists'}); return
+                emit('error', {'message': 'An active team with this name already exists'})  # type: ignore
+                return
                 
             # Reactivate the team
             team.is_active = True
@@ -319,38 +328,40 @@ def on_reactivate_team(data):
             state.player_to_team[sid] = team_name
             state.team_id_to_name[team.team_id] = team_name
             
-            join_room(team_name)
+            join_room(team_name, sid=sid)  # type: ignore
             
             emit('team_created', { # Client treats this like a new team creation
                 'team_name': team_name,
                 'team_id': team.team_id,
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started
-            })
+            })  # type: ignore
             
             socketio.emit('teams_updated', {
                 'teams': get_available_teams_list(),
                 'game_started': state.game_started
-            })
+            })  # type: ignore
             
             emit_dashboard_team_update()
             
     except Exception as e:
         logger.error(f"Error in on_reactivate_team: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while reactivating the team'})
+        emit('error', {'message': 'An error occurred while reactivating the team'})  # type: ignore
 
 @socketio.on('leave_team')
-def on_leave_team(data):
+def on_leave_team(data: Dict[str, Any]) -> None:
     try:
-        sid = request.sid
+        sid = request.sid  # type: ignore
         if sid not in state.player_to_team:
-            emit('error', {'message': 'You are not in a team.'}); return
+            emit('error', {'message': 'You are not in a team.'})  # type: ignore
+            return
         team_name = state.player_to_team[sid]
         team_info = state.active_teams.get(team_name)
         if not team_info:
             if sid in state.player_to_team: # Check before deleting
                  del state.player_to_team[sid]
-            emit('error', {'message': 'Team info not found, you have been removed.'}); return
+            emit('error', {'message': 'Team info not found, you have been removed.'})  # type: ignore
+            return
 
         # Using Session.get() instead of Query.get()
         db_team = db.session.get(Teams, team_info['team_id'])
@@ -365,13 +376,13 @@ def on_leave_team(data):
 
             if len(team_info['players']) > 0:
                 team_info['status'] = 'waiting_pair'
-                emit('player_left', {'message': 'A team member has left.'}, room=team_name)
+                emit('player_left', {'message': 'A team member has left.'}, to=team_name)  # type: ignore
                 emit('team_status_update', {
                     'team_name': team_name,
                     'status': 'waiting_pair', 
                     'members': get_team_members(team_name),
                     'game_started': state.game_started
-                }, room=team_name)
+                }, to=team_name)  # type: ignore
             else:
                 # No players left, team becomes inactive
                 if team_name in state.active_teams:
@@ -395,7 +406,7 @@ def on_leave_team(data):
                 # Clear caches after team state change
                 clear_team_caches()
 
-            emit('left_team_success', {'message': 'You have left the team.'}, room=sid)
+            emit('left_team_success', {'message': 'You have left the team.'}, to=sid)  # type: ignore
             try:
                 leave_room(team_name, sid=sid)
             except Exception as e: # Catch potential error if room/sid is already gone
@@ -407,8 +418,8 @@ def on_leave_team(data):
             socketio.emit('teams_updated', {
                 'teams': get_available_teams_list(),
                 'game_started': state.game_started
-            })
+            })  # type: ignore
             emit_dashboard_team_update()
     except Exception as e:
         logger.error(f"Error in on_leave_team: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while leaving the team'})
+        emit('error', {'message': 'An error occurred while leaving the team'})  # type: ignore

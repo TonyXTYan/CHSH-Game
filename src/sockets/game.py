@@ -7,39 +7,46 @@ from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
 import logging
+from typing import Dict, Any, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
 @socketio.on('submit_answer')
-def on_submit_answer(data):
+def on_submit_answer(data: Dict[str, Any]) -> None:
     try:
-        sid = request.sid
+        sid = request.sid  # type: ignore
         if sid not in state.player_to_team:
-            emit('error', {'message': 'You are not in a team or session expired.'}); return
+            emit('error', {'message': 'You are not in a team or session expired.'})  # type: ignore
+            return
             
         if state.game_paused:
-            emit('error', {'message': 'Game is currently paused.'}); return
+            emit('error', {'message': 'Game is currently paused.'})  # type: ignore
+            return
         team_name = state.player_to_team[sid]
         team_info = state.active_teams.get(team_name)
         if not team_info or len(team_info['players']) != 2:
-            emit('error', {'message': 'Team not valid or other player missing.'}); return
+            emit('error', {'message': 'Team not valid or other player missing.'})  # type: ignore
+            return
 
         round_id = data.get('round_id')
         assigned_item_str = data.get('item')
         response_bool = data.get('answer')
 
         if round_id != team_info.get('current_db_round_id') or assigned_item_str is None or response_bool is None:
-            emit('error', {'message': 'Invalid answer submission data.'}); return
+            emit('error', {'message': 'Invalid answer submission data.'})  # type: ignore
+            return
 
         try:
             assigned_item_enum = ItemEnum(assigned_item_str)
         except ValueError:
-            emit('error', {'message': 'Invalid item in answer.'}); return
+            emit('error', {'message': 'Invalid item in answer.'})  # type: ignore
+            return
 
         player_idx = team_info['players'].index(sid)
         if team_info['answered_current_round'].get(sid):
-            emit('error', {'message': 'You have already answered this round.'}); return
+            emit('error', {'message': 'You have already answered this round.'})  # type: ignore
+            return
 
         new_answer_db = Answers(
             team_id=team_info['team_id'],
@@ -53,7 +60,7 @@ def on_submit_answer(data):
 
         round_db_entry = PairQuestionRounds.query.get(round_id)
         if not round_db_entry:
-            emit('error', {'message': 'Round not found in DB.'})
+            emit('error', {'message': 'Round not found in DB.'})  # type: ignore
             db.session.rollback()
             return
 
@@ -66,7 +73,7 @@ def on_submit_answer(data):
         db.session.commit()
         # Clear caches after database commit
         clear_team_caches()
-        emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, room=sid)
+        emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, to=sid)  # type: ignore
 
         # Emit to dashboard
         answer_for_dash = {
@@ -79,7 +86,7 @@ def on_submit_answer(data):
             'response_value': response_bool
         }
         for dash_sid in state.dashboard_clients:
-            socketio.emit('new_answer_for_dashboard', answer_for_dash, room=dash_sid)
+            socketio.emit('new_answer_for_dashboard', answer_for_dash, to=dash_sid)  # type: ignore
         
         # Only emit team update, not full dashboard refresh
         emit_dashboard_team_update()
@@ -89,8 +96,8 @@ def on_submit_answer(data):
             socketio.emit('round_complete', {
                 'team_name': team_name,
                 'round_number': team_info['current_round_number']
-            }, room=team_name)
+            }, to=team_name)  # type: ignore
             start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_submit_answer: {str(e)}", exc_info=True)
-        emit('error', {'message': 'An error occurred while submitting your answer'})
+        emit('error', {'message': 'An error occurred while submitting your answer'})  # type: ignore

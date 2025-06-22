@@ -5,6 +5,7 @@ from src.config import app, socketio, db
 from src.models.quiz_models import Teams
 from src.state import state
 import warnings
+from typing import Dict, Any
 
 @pytest.fixture
 def app_context():
@@ -252,7 +253,7 @@ def test_create_team_success(mock_request_context):
         )
         
         mock_dashboard_update.assert_called_once()
-        mock_join_room.assert_called_once_with('new_team')
+        mock_join_room.assert_called_once_with('new_team', sid='test_sid')
         
         # Cleanup
         db.session.delete(team)
@@ -311,7 +312,7 @@ def test_join_team_success(mock_request_context, active_team):
                 'game_started': state.game_started,
                 'team_status': 'full'
             },
-            room='test_sid'
+            to='test_sid'
         )
         
         mock_socketio_emit.assert_called_with(
@@ -323,7 +324,7 @@ def test_join_team_success(mock_request_context, active_team):
         )
         
         mock_dashboard_update.assert_called_once()
-        mock_join_room.assert_called_once_with('active_team')
+        mock_join_room.assert_called_once_with('active_team', sid='test_sid')
 
 def test_join_nonexistent_team(mock_request_context):
     """Test joining a nonexistent team"""
@@ -430,7 +431,7 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
         mock_emit.assert_any_call(
             'player_left',
             {'message': 'A team member has disconnected.'},
-            room='full_team'
+            to='full_team'
         )
         
         mock_emit.assert_any_call(
@@ -441,7 +442,7 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
                 'members': ['player2_sid'],
                 'game_started': state.game_started
             },
-            room='full_team'
+            to='full_team'
         )
         
         mock_leave_room.assert_called_once_with('full_team', sid='player1_sid')
@@ -470,7 +471,7 @@ def test_leave_team_success(mock_request_context, active_team):
         mock_emit.assert_any_call(
             'left_team_success',
             {'message': 'You have left the team.'},
-            room='player1_sid'
+            to='player1_sid'
         )
         
         mock_leave_room.assert_called_once_with('active_team', sid='player1_sid')
@@ -514,7 +515,7 @@ def test_leave_full_team(mock_request_context, full_team):
         mock_emit.assert_any_call(
             'player_left',
             {'message': 'A team member has left.'},
-            room='full_team'
+            to='full_team'
         )
         
         mock_emit.assert_any_call(
@@ -525,13 +526,13 @@ def test_leave_full_team(mock_request_context, full_team):
                 'members': ['player2_sid'],
                 'game_started': state.game_started
             },
-            room='full_team'
+            to='full_team'
         )
         
         mock_emit.assert_any_call(
             'left_team_success',
             {'message': 'You have left the team.'},
-            room='player1_sid'
+            to='player1_sid'
         )
         
         mock_leave_room.assert_called_once_with('full_team', sid='player1_sid')
