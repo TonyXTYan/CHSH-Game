@@ -87,9 +87,7 @@ with app.app_context():
         socketio.emit('game_reset_complete')
         
     except Exception as e:
-        logger.error(f"Error resetting database: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error resetting database: {str(e)}", exc_info=True)
         db.session.rollback()
         
     finally:

@@ -67,6 +67,4 @@ def start_new_round_for_pair(team_name):
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
     except Exception as e:
-        logger.error(f"Error in start_new_round_for_pair: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in start_new_round_for_pair: {str(e)}", exc_info=True)

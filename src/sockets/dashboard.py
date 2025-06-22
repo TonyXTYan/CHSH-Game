@@ -200,9 +200,7 @@ def compute_correlation_matrix(team_id):
                 avg_same_item_balance, same_item_balance, same_item_responses,
                 correlation_sums, pair_counts)
     except Exception as e:
-        logger.error(f"Error computing correlation matrix: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error computing correlation matrix: {str(e)}", exc_info=True)
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
@@ -251,9 +249,7 @@ def compute_correlation_stats(team_id): # NOT USED
         
         return trace_average_statistic, chsh_value_statistic, same_item_balance_avg
     except Exception as e:
-        logger.error(f"Error computing correlation statistics: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error computing correlation statistics: {str(e)}", exc_info=True)
         return 0.0, 0.0, 0.0
 
 
@@ -387,9 +383,7 @@ def _calculate_team_statistics(correlation_matrix_tuple_str):
                                               if not math.isinf(avg_same_item_balance_ufloat.s) else None)
         }
     except Exception as e:
-        logger.error(f"Error calculating team statistics: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error calculating team statistics: {str(e)}", exc_info=True)
         return {
             'trace_average_statistic': 0.0,
             'trace_average_statistic_uncertainty': None,
@@ -458,9 +452,7 @@ def _process_single_team(team_id, team_name, is_active, created_at, current_roun
             
         return team_data
     except Exception as e:
-        logger.error(f"Error processing team {team_id}: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error processing team {team_id}: {str(e)}", exc_info=True)
         return None
 
 def get_all_teams():
@@ -511,9 +503,7 @@ def get_all_teams():
         
         return teams_list
     except Exception as e:
-        logger.error(f"Error in get_all_teams: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in get_all_teams: {str(e)}", exc_info=True)
         return []
 
 def clear_team_caches():
@@ -530,9 +520,7 @@ def clear_team_caches():
         # _last_refresh_time = 0
         # _cached_teams_result = None
     except Exception as e:
-        logger.error(f"Error clearing team caches: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update():
     try:
@@ -544,9 +532,7 @@ def emit_dashboard_team_update():
         for sid in state.dashboard_clients:
             socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
     except Exception as e:
-        logger.error(f"Error in emit_dashboard_team_update: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
 def emit_dashboard_full_update(client_sid=None):
     try:
@@ -569,9 +555,7 @@ def emit_dashboard_full_update(client_sid=None):
             for dash_sid in state.dashboard_clients:
                 socketio.emit('dashboard_update', update_data, room=dash_sid)
     except Exception as e:
-        logger.error(f"Error in emit_dashboard_full_update: {str(e)}")
-        import traceback
-        traceback.print_exc()
+        logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
 
 @socketio.on('dashboard_join')
 def on_dashboard_join(data=None, callback=None):

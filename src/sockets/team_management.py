@@ -7,7 +7,6 @@ from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
-import traceback
 import logging
 
 # Configure logging
@@ -39,8 +38,7 @@ def get_available_teams_list():
         # Combine and return all teams
         return active_teams + inactive_teams_list
     except Exception as e:
-        logger.error(f"Error in get_available_teams_list: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in get_available_teams_list: {str(e)}", exc_info=True)
         return []
 
 def get_team_members(team_name):
@@ -49,8 +47,7 @@ def get_team_members(team_name):
         if not team_info: return []
         return team_info['players']
     except Exception as e:
-        logger.error(f"Error in get_team_members: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in get_team_members: {str(e)}", exc_info=True)
         return []
 
 @socketio.on('connect')
@@ -69,8 +66,7 @@ def handle_connect():
             'available_teams': get_available_teams_list()
         })
     except Exception as e:
-        logger.error(f"Error in handle_connect: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
 
 @socketio.on('disconnect')
 def handle_disconnect():
@@ -151,8 +147,7 @@ def handle_disconnect():
                             logger.error(f"Error leaving room: {str(e)}")
                         del state.player_to_team[sid]
     except Exception as e:
-        logger.error(f"Disconnect handler error: {str(e)}")
-        traceback.print_exc()
+        logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
 @socketio.on('create_team')
 def on_create_team(data):
