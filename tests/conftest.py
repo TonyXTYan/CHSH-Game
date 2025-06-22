@@ -3,9 +3,112 @@ import sys
 import os
 import warnings
 from unittest.mock import MagicMock
+import subprocess
+import time
+import requests
+import atexit
+import signal
 
 # Add the project root to the path so we can import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+# Global variable to track server process
+_server_process = None
+
+def _cleanup_server():
+    """Clean up the server process on exit"""
+    global _server_process
+    if _server_process and _server_process.poll() is None:
+        try:
+            _server_process.terminate()
+            _server_process.wait(timeout=5)
+        except (subprocess.TimeoutExpired, ProcessLookupError):
+            try:
+                _server_process.kill()
+                _server_process.wait(timeout=5)
+            except:
+                pass
+        _server_process = None
+
+# Register cleanup function
+atexit.register(_cleanup_server)
+
+@pytest.fixture(scope="session", autouse=True)
+def flask_server(request):
+    """Start Flask server for integration tests and shut it down after tests complete"""
+    global _server_process
+    
+    # Check if integration tests are being run
+    integration_tests_present = False
+    
+    # Check if any integration tests are being collected
+    for item in request.session.items:
+        if hasattr(item, 'pytestmark'):
+            for mark in item.pytestmark:
+                if mark.name == 'integration':
+                    integration_tests_present = True
+                    break
+        if integration_tests_present:
+            break
+    
+    # If no integration tests, skip server startup
+    if not integration_tests_present:
+        print("No integration tests found, skipping Flask server startup")
+        yield None
+        return
+    
+    # Start the server using gunicorn with eventlet worker
+    server_cmd = [
+        'gunicorn', 
+        'wsgi:app',
+        '--worker-class', 'eventlet',
+        '--bind', '0.0.0.0:8080',
+        '--timeout', '30',
+        '--preload'
+    ]
+    
+    try:
+        print("Starting Flask server for integration tests...")
+        _server_process = subprocess.Popen(
+            server_cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            preexec_fn=os.setsid  # Create new process group
+        )
+        
+        # Wait for server to be ready
+        max_retries = 30
+        for i in range(max_retries):
+            try:
+                response = requests.get('http://localhost:8080', timeout=2)
+                if response.status_code == 200:
+                    print("Flask server is ready!")
+                    break
+            except requests.exceptions.RequestException:
+                if i == max_retries - 1:
+                    raise Exception("Flask server failed to start within timeout")
+                time.sleep(1)
+        
+        yield _server_process
+        
+    finally:
+        # Clean shutdown
+        print("Shutting down Flask server...")
+        if _server_process and _server_process.poll() is None:
+            try:
+                # Send SIGTERM to the process group
+                os.killpg(os.getpgid(_server_process.pid), signal.SIGTERM)
+                _server_process.wait(timeout=10)
+                print("Flask server shut down gracefully")
+            except (subprocess.TimeoutExpired, ProcessLookupError, OSError):
+                try:
+                    # Force kill if graceful shutdown fails
+                    os.killpg(os.getpgid(_server_process.pid), signal.SIGKILL)
+                    _server_process.wait(timeout=5)
+                    print("Flask server forcefully terminated")
+                except:
+                    pass
+            _server_process = None
 
 # Filter specific warnings
 # @pytest.fixture(autouse=True)
