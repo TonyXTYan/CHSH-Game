@@ -1,7 +1,11 @@
 import os
-from flask import send_from_directory, abort
+import uuid
+from flask import send_from_directory, abort, jsonify
 from src.config import app
 from pathlib import Path
+
+# Unique ID for server instance
+server_instance_id = str(uuid.uuid4())
 
 @app.route('/', defaults={'path': ''})
 @app.route('/<path:path>')
@@ -51,3 +55,8 @@ def serve(path):
             return send_from_directory(static_folder_path, 'index.html')
         else:
             return "index.html not found", 404
+
+@app.route('/api/server/id')
+def get_server_id():
+    """Return the unique server instance ID"""
+    return jsonify({'instance_id': server_instance_id})

@@ -130,9 +130,10 @@ def app_context(base_app_context):
 class TestPlayerInteraction:
     """Test class for player interaction scenarios"""
 
-    def get_received_event(self, client, event_name):
+    def get_received_event(self, client, event_name, messages=None):
         """Helper method to get a specific event from received messages"""
-        messages = client.get_received()
+        if messages is None:
+            messages = client.get_received()
         return next((msg for msg in messages if msg.get('name') == event_name), None)
 
     def verify_connection(self, client):
@@ -140,8 +141,11 @@ class TestPlayerInteraction:
         assert client.connected, "Client failed to connect to server"
         time.sleep(0.1)
         
+        # Get received messages
+        messages = client.get_received()
+        
         # Verify connection_established event
-        msg = self.get_received_event(client, 'connection_established')
+        msg = next((msg for msg in messages if msg.get('name') == 'connection_established'), None)
         assert msg is not None, "Did not receive connection_established event"
         data = msg.get('args', [{}])[0]
         assert 'game_started' in data, "connection_established missing game_started status"

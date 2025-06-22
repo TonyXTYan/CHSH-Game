@@ -59,16 +59,14 @@ def test_download_endpoint():
         else:
             logger.error(f"❌ Download endpoint returned error: {response.status_code}")
             logger.error(f"Response: {response.text}")
-            return False
+            assert False, f"Download endpoint returned error: {response.status_code}"
             
     except requests.exceptions.ConnectionError:
         logger.error("❌ Could not connect to server. Make sure the server is running on localhost:8080")
-        return False
+        assert False, "Could not connect to server"
     except Exception as e:
         logger.error(f"❌ Error testing download endpoint: {str(e)}")
-        return False
-    
-    return True
+        assert False, f"Error testing download endpoint: {str(e)}"
 
 def main():
     """Main test runner"""

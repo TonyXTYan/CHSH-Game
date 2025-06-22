@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import request
+from flask import request, has_app_context
 from flask_socketio import emit, join_room, leave_room
 from sqlalchemy import func
 from src.config import app, socketio, db
@@ -19,11 +19,22 @@ def get_available_teams_list():
         active_teams = [{'team_name': name, 'team_id': info['team_id'], 'is_active': True}
                        for name, info in state.active_teams.items() if len(info['players']) < 2]
         
-        # Get inactive teams from database
-        with app.app_context():
-            inactive_teams = Teams.query.filter_by(is_active=False).all()
-            inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
-                                 for team in inactive_teams]
+        # Get inactive teams from database (only if we have an app context)
+        inactive_teams_list = []
+        try:
+            # Check if we're already in an app context, if not, create one
+            if has_app_context():
+                inactive_teams = Teams.query.filter_by(is_active=False).all()
+                inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
+                                     for team in inactive_teams]
+            else:
+                with app.app_context():
+                    inactive_teams = Teams.query.filter_by(is_active=False).all()
+                    inactive_teams_list = [{'team_name': team.team_name, 'team_id': team.team_id, 'is_active': False}
+                                         for team in inactive_teams]
+        except Exception as db_error:
+            logger.warning(f"Could not fetch inactive teams: {str(db_error)}")
+            inactive_teams_list = []
         
         # Combine and return all teams
         return active_teams + inactive_teams_list

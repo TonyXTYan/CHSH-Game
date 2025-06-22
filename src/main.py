@@ -99,10 +99,6 @@ with app.app_context():
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve
-
-@app.route('/api/server/id')
-def get_server_id():
-    return {'instance_id': server_instance_id}
 from src.sockets import dashboard
 from src.sockets.team_management import (
     handle_connect, 
