@@ -112,7 +112,7 @@ def main(url: str, teams: int, pattern: str, connection_strategy: str,
         signal.signal(signal.SIGTERM, signal_handler)
         
         # Run the test
-        asyncio.run(tester.run_load_test())
+        asyncio.run(tester.run())
         
     except KeyboardInterrupt:
         console.print("\n[red]⚠️  Test interrupted by user[/red]")

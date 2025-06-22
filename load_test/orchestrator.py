@@ -96,13 +96,13 @@ class CHSHLoadTester:
         # Show configuration
         config_panel = Panel(
             f"""[bold]Configuration:[/bold]
-🎯 Target URL: {self.config.server_url}
-👥 Total Players: {self.config.num_players}
+🎯 Target URL: {self.config.deployment_url}
+👥 Total Players: {self.config.total_players}
 🏆 Teams: {self.config.num_teams}
-⏱️  Test Duration: {self.config.test_duration_seconds}s
-📊 Concurrent Connections: {self.config.concurrent_connections}
-🎮 Game Simulation: {'✓' if self.config.simulate_game_play else '✗'}
-📈 Dashboard Monitoring: {'✓' if self.config.enable_dashboard_monitoring else '✗'}""",
+⏱️  Test Duration: {self.config.max_test_duration}s
+📊 Connection Strategy: {self.config.connection_strategy.value}
+🎮 Response Pattern: {self.config.response_pattern.value}
+📈 Dashboard Monitoring: {'✓' if self.config.enable_dashboard_simulation else '✗'}""",
             title="Load Test Parameters",
             border_style="blue"
         )
@@ -136,7 +136,7 @@ class CHSHLoadTester:
 
     async def _create_players(self) -> bool:
         """Create player instances for the load test."""
-        logger.info(f"Creating {self.config.num_players} player instances...")
+        logger.info(f"Creating {self.config.total_players} player instances...")
         players = await self.team_manager.create_players()
         success_rate = len([p for p in players if p.connected]) / len(players)
         
@@ -166,7 +166,7 @@ class CHSHLoadTester:
 
     async def _setup_dashboard(self) -> bool:
         """Setup dashboard monitoring if enabled."""
-        if not self.config.enable_dashboard_monitoring:
+        if not self.config.enable_dashboard_simulation:
             self.console.print("Dashboard simulation disabled - skipping")
             logger.info("Dashboard simulation disabled - skipping")
             return True
