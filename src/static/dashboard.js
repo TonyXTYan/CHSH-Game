@@ -71,6 +71,12 @@ socket.on("connect", async () => {
     connectionStatusDiv.textContent = "Connected to server";
     connectionStatusDiv.className = "status-connected";
     
+    // Set dashboard session ID immediately when connected
+    const dashboardSessionIdSpan = document.getElementById('dashboardSessionId');
+    if (dashboardSessionIdSpan) {
+        dashboardSessionIdSpan.textContent = socket.id;
+    }
+    
     try {
         // Get server instance ID
         const response = await fetch('/api/server/id');
@@ -84,13 +90,10 @@ socket.on("connect", async () => {
             localStorage.setItem('server_instance_id', instance_id);
         }
         
-        // Display full server ID at the bottom
-        const sessionInfo = document.getElementById('sessionInfo');
-        if (sessionInfo) {
-            const sessionIdSpan = sessionInfo.querySelector('.session-id');
-            if (sessionIdSpan) {
-                sessionIdSpan.textContent = instance_id;
-            }
+        // Display server instance ID at the bottom
+        const serverInstanceIdSpan = document.getElementById('serverInstanceId');
+        if (serverInstanceIdSpan) {
+            serverInstanceIdSpan.textContent = instance_id;
         }
     } catch (error) {
         console.error('Error checking server ID:', error);
@@ -117,6 +120,13 @@ function clearAllUITables() {
 socket.on("disconnect", () => {
     connectionStatusDiv.textContent = "Disconnected from server";
     connectionStatusDiv.className = "status-disconnected";
+    
+    // Clear dashboard session ID when disconnected
+    const dashboardSessionIdSpan = document.getElementById('dashboardSessionId');
+    if (dashboardSessionIdSpan) {
+        dashboardSessionIdSpan.textContent = '';
+    }
+    
     // Clear current state
     activeTeamsTableBody.innerHTML = "";
     noActiveTeamsMsg.style.display = "block";
@@ -130,6 +140,13 @@ socket.on("disconnect", () => {
 socket.on("server_shutdown", () => {
     connectionStatusDiv.textContent = "Server is shutting down";
     connectionStatusDiv.className = "status-disconnected";
+    
+    // Clear dashboard session ID when server shuts down
+    const dashboardSessionIdSpan = document.getElementById('dashboardSessionId');
+    if (dashboardSessionIdSpan) {
+        dashboardSessionIdSpan.textContent = '';
+    }
+    
     // Clear all UI elements
     activeTeamsTableBody.innerHTML = "";
     answerLogTableBody.innerHTML = "";
