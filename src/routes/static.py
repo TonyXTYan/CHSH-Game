@@ -27,9 +27,12 @@ def serve(path):
     if ".." in normalized_path.split(os.sep):
         abort(403)  # Forbidden - attempt to traverse directories
     
-    # Sanitize the file name to remove special characters
+    # Sanitize each path component to avoid directory traversal while still
+    # allowing subdirectories (secure_filename strips path separators)
     from werkzeug.utils import secure_filename
-    safe_path = secure_filename(normalized_path)
+    safe_parts = [secure_filename(part) for part in normalized_path.split(os.sep)
+                  if part not in ("", ".")]
+    safe_path = os.path.join(*safe_parts)
     
     # Resolve the full requested path
     requested_path = os.path.realpath(os.path.join(static_folder_path, safe_path))
