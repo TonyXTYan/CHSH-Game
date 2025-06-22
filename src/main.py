@@ -2,6 +2,15 @@ import os
 import sys
 import signal
 import uuid
+import logging
+
+# Configure logging for main module
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(name)s: %(message)s'
+)
+logger = logging.getLogger(__name__)
+
 # DON'T CHANGE THIS !!!
 sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
@@ -14,45 +23,45 @@ server_instance_id = str(uuid.uuid4())
 
 # Signal handler for graceful shutdown
 def handle_shutdown(signum, frame):
-    print("\nServer shutting down gracefully...")
+    logger.info("Server shutting down gracefully...")
     try:
         # Notify all connected clients about the shutdown
         socketio.emit('server_shutdown')
         socketio.sleep(0.5)  # Allow time for clients to receive the message
         # Close the socket connections
         socketio.stop()
-        print("Socket connections closed.")
+        logger.info("Socket connections closed.")
     except Exception as e:
-        print(f"Error during socket shutdown: {e}")
+        logger.error(f"Error during socket shutdown: {e}")
     try:
         # Reset the in-memory state
-        print("Resetting in-memory state...")
+        logger.info("Resetting in-memory state...")
         if hasattr(state, 'reset'): # Ensure reset method exists
             state.reset()
     except Exception as e:
-        print(f"Error during shutdown: {e}")
+        logger.error(f"Error during shutdown: {e}")
     finally:
         sys.exit(0)
 
 # Initialize the database tables
 with app.app_context():
     db.create_all()
-    print("Initializing database and cleaning up old data...")
+    logger.info("Initializing database and cleaning up old data...")
     try:
         # Start transaction
         db.session.begin_nested()
 
         # Delete all answers first to avoid foreign key constraints
         answers_count = Answers.query.delete()
-        print(f"Deleted {answers_count} answers")
+        logger.info(f"Deleted {answers_count} answers")
 
         # Delete all question rounds
         rounds_count = PairQuestionRounds.query.delete()
-        print(f"Deleted {rounds_count} question rounds")
+        logger.info(f"Deleted {rounds_count} question rounds")
 
         # Delete all inactive teams
         inactive_count = Teams.query.filter_by(is_active=False).delete()
-        print(f"Deleted {inactive_count} inactive teams")
+        logger.info(f"Deleted {inactive_count} inactive teams")
 
         # Mark all remaining teams as inactive and rename if needed
         active_teams = Teams.query.filter_by(is_active=True).all()
@@ -72,13 +81,13 @@ with app.app_context():
             db.session.flush()
 
         db.session.commit()
-        print(f"Deactivated {deactivated_count} active teams (renamed {renamed_count} due to conflicts)")
+        logger.info(f"Deactivated {deactivated_count} active teams (renamed {renamed_count} due to conflicts)")
 
         # Notify any connected dashboard clients
         socketio.emit('game_reset_complete')
         
     except Exception as e:
-        print(f"Error resetting database: {str(e)}")
+        logger.error(f"Error resetting database: {str(e)}")
         import traceback
         traceback.print_exc()
         db.session.rollback()
@@ -86,7 +95,7 @@ with app.app_context():
     finally:
         # Always clear memory state
         state.reset()
-        print("Server initialization complete")
+        logger.info("Server initialization complete")
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve

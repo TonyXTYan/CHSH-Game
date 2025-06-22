@@ -1,8 +1,11 @@
 import random
+import logging
 from datetime import datetime
 from src.config import socketio, db
 from src.models.quiz_models import ItemEnum, PairQuestionRounds, Answers
 from src.state import state
+
+logger = logging.getLogger(__name__)
 
 QUESTION_ITEMS = [ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y]
 TARGET_COMBO_REPEATS = 2
@@ -60,10 +63,10 @@ def start_new_round_for_pair(team_name):
         player1, player2 = team_info['players']
         socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1)
         socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2)
-        # print(f"Team {team_name} round {round_number}: P1({player1}) gets {p1_item.value}, P2({player2}) gets {p2_item.value}")
+        # logger.debug(f"Team {team_name} round {round_number}: P1({player1}) gets {p1_item.value}, P2({player2}) gets {p2_item.value}")
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
     except Exception as e:
-        print(f"Error in start_new_round_for_pair: {str(e)}")
+        logger.error(f"Error in start_new_round_for_pair: {str(e)}")
         import traceback
         traceback.print_exc()

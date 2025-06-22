@@ -28,7 +28,7 @@ def get_available_teams_list():
         # Combine and return all teams
         return active_teams + inactive_teams_list
     except Exception as e:
-        print(f"Error in get_available_teams_list: {str(e)}")
+        logger.error(f"Error in get_available_teams_list: {str(e)}")
         traceback.print_exc()
         return []
 
@@ -38,7 +38,7 @@ def get_team_members(team_name):
         if not team_info: return []
         return team_info['players']
     except Exception as e:
-        print(f"Error in get_team_members: {str(e)}")
+        logger.error(f"Error in get_team_members: {str(e)}")
         traceback.print_exc()
         return []
 
@@ -46,7 +46,7 @@ def get_team_members(team_name):
 def handle_connect():
     try:
         sid = request.sid
-        print(f'Client connected: {sid}')
+        logger.info(f'Client connected: {sid}')
         
         # By default, treat all non-dashboard connections as players
         if sid not in state.dashboard_clients:
@@ -58,17 +58,17 @@ def handle_connect():
             'available_teams': get_available_teams_list()
         })
     except Exception as e:
-        print(f"Error in handle_connect: {str(e)}")
+        logger.error(f"Error in handle_connect: {str(e)}")
         traceback.print_exc()
 
 @socketio.on('disconnect')
 def handle_disconnect():
     sid = request.sid
-    print(f'Client disconnected: {sid}')
+    logger.info(f'Client disconnected: {sid}')
     try:
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
-            print(f"Dashboard client disconnected: {sid}")
+            logger.info(f"Dashboard client disconnected: {sid}")
 
         # Remove from connected players list regardless of team status
         if sid in state.connected_players:
@@ -137,10 +137,10 @@ def handle_disconnect():
                         try:
                             leave_room(team_name, sid=sid)
                         except Exception as e:
-                            print(f"Error leaving room: {str(e)}")
+                            logger.error(f"Error leaving room: {str(e)}")
                         del state.player_to_team[sid]
     except Exception as e:
-        print(f"Disconnect handler error: {str(e)}")
+        logger.error(f"Disconnect handler error: {str(e)}")
         traceback.print_exc()
 
 @socketio.on('create_team')
@@ -393,7 +393,7 @@ def on_leave_team(data):
             try:
                 leave_room(team_name, sid=sid)
             except Exception as e: # Catch potential error if room/sid is already gone
-                print(f"Error leaving room on leave_team: {str(e)}")
+                logger.error(f"Error leaving room on leave_team: {str(e)}")
 
             if sid in state.player_to_team: # Check before deleting
                 del state.player_to_team[sid]
