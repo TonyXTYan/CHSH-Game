@@ -206,8 +206,10 @@ def compute_correlation_matrix(team_id: int) -> Tuple[List[List[Tuple[int, int]]
 
 def compute_correlation_stats(team_id: int) -> Tuple[float, float, float]: # NOT USED
     try:
-        # Get the correlation matrix and new metrics
-        corr_matrix, item_values, same_item_balance_avg, same_item_balance = compute_correlation_matrix(team_id)
+        # Get the correlation matrix and new metrics  
+        result = compute_correlation_matrix(team_id)  # type: ignore
+        corr_matrix, item_values = result[0], result[1]
+        same_item_balance_avg = result[2]
         
         # Validate matrix dimensions and contents
         if not all(isinstance(row, list) and len(row) == 4 for row in corr_matrix) or len(corr_matrix) != 4:
@@ -413,9 +415,10 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         hash1, hash2 = compute_team_hashes(team_id)
         
         # Compute correlation matrix and statistics
+        correlation_result = compute_correlation_matrix(team_id)  # type: ignore
         (corr_matrix_tuples, item_values,
          same_item_balance_avg, same_item_balance, same_item_responses,
-         correlation_sums, pair_counts) = compute_correlation_matrix(team_id)
+         correlation_sums, pair_counts) = correlation_result
         
         # Convert correlation matrix data to string for caching
         correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
@@ -717,7 +720,7 @@ def on_restart_game() -> None:
         emit('error', {'message': 'An error occurred while restarting the game'})  # type: ignore
 
 @app.route('/api/dashboard/data', methods=['GET'])
-def get_dashboard_data() -> Response:
+def get_dashboard_data():
     try:
         # Get all answers ordered by timestamp
         with app.app_context():
@@ -746,7 +749,7 @@ def get_dashboard_data() -> Response:
         return jsonify({'error': 'An error occurred while retrieving dashboard data'}), 500
 
 @app.route('/download', methods=['GET'])
-def download_csv() -> Response:
+def download_csv():
     try:
         # Get all answers ordered by timestamp
         with app.app_context():

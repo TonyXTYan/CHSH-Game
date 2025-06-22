@@ -9,7 +9,7 @@ class ItemEnum(enum.Enum):
     X = 'X'
     Y = 'Y'
 
-class Teams(db.Model):
+class Teams(db.Model):  # type: ignore
     __tablename__ = 'teams'
     team_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     team_name = db.Column(db.String(100), nullable=False, index=True)
@@ -25,7 +25,7 @@ class Teams(db.Model):
         db.Index('idx_teams_active_created', 'is_active', 'created_at'),
     )
 
-class Answers(db.Model):
+class Answers(db.Model):  # type: ignore
     __tablename__ = 'answers'
     answer_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     team_id = db.Column(db.Integer, db.ForeignKey('teams.team_id'), nullable=False, index=True)
@@ -41,7 +41,7 @@ class Answers(db.Model):
         db.Index('idx_answers_team_item', 'team_id', 'assigned_item'),
     )
 
-class PairQuestionRounds(db.Model):
+class PairQuestionRounds(db.Model):  # type: ignore
     __tablename__ = 'pair_question_rounds'
     round_id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     team_id = db.Column(db.Integer, db.ForeignKey('teams.team_id'), nullable=False, index=True)

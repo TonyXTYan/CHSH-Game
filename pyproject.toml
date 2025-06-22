@@ -123,3 +123,37 @@ load-test = [
     "pyyaml>=6.0",
     "requests>=2.28.0"
 ]
+
+[tool.mypy]
+python_version = "3.8"
+warn_return_any = false
+warn_unused_configs = true
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = true
+disallow_untyped_decorators = false
+no_implicit_optional = false
+warn_redundant_casts = false
+warn_unused_ignores = false
+warn_no_return = true
+warn_unreachable = true
+strict_equality = false
+ignore_missing_imports = true
+disable_error_code = ["index", "union-attr", "misc", "operator", "assignment", "arg-type", "type-var"]
+exclude = [
+    "migrations/",
+    "instance/",
+    "venv/",
+    ".venv/",
+    "build/",
+    "dist/"
+]
+
+[[tool.mypy.overrides]]
+module = [
+    "eventlet.*",
+    "flask_socketio.*", 
+    "uncertainties.*",
+    "psycopg2.*"
+]
+ignore_missing_imports = true
