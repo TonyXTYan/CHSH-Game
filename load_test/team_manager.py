@@ -6,14 +6,16 @@ Handles team creation, player assignment, and coordination.
 
 import asyncio
 import random
+import logging
 from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from faker import Faker
-from loguru import logger
 
 from .config import LoadTestConfig, ConnectionStrategy
 from .player import Player, PlayerState
 from .metrics import LoadTestMetrics
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass

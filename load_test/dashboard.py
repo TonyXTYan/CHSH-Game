@@ -6,11 +6,13 @@ Simulates dashboard connections and game control operations.
 
 import asyncio
 import time
+import logging
 from typing import Optional, Dict, Any
 import socketio
-from loguru import logger
 
 from .config import LoadTestConfig
+
+logger = logging.getLogger(__name__)
 
 
 class DashboardSimulator:
