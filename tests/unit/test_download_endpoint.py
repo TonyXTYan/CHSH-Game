@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Simple test script to verify the new /download endpoint works correctly.
+Simple test script to verify the /download endpoint works correctly.
 This can be run independently to test the CSV download functionality.
 """
 
@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 @pytest.mark.integration
 def test_download_endpoint():
     """Test the CSV download endpoint"""
-    url = "http://localhost:8080/download-data"
+    url = "http://localhost:8080/download"
     
     try:
         logger.info(f"Testing download endpoint: {url}")
