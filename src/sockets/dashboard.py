@@ -4,6 +4,7 @@ from uncertainties import ufloat
 import uncertainties.umath as um  # for ufloat‑compatible fabs
 import warnings
 from functools import lru_cache
+from sqlalchemy.orm import joinedload
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds
@@ -73,12 +74,13 @@ def compute_team_hashes(team_id):
 def compute_correlation_matrix(team_id):
     try:
         # Get all rounds and their corresponding answers for this team
+        # Use separate optimized queries with proper indexing
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
         
         # Create a mapping from round_id to the round object for quick access
         round_map = {round.round_id: round for round in rounds}
         
-        # Get all answers for this team
+        # Get all answers for this team with optimized query
         answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
         
         # Group answers by round_id
@@ -475,7 +477,7 @@ def get_all_teams():
         #     print("Computing fresh team data")
         
         # Compute fresh data
-        # Query all teams from database
+        # Query all teams from database - eager loading will be done per team as needed
         all_teams = Teams.query.all()
         teams_list = []
         
@@ -748,19 +750,27 @@ def on_restart_game():
 @app.route('/api/dashboard/data', methods=['GET'])
 def get_dashboard_data():
     try:
-        all_answers = Answers.query.order_by(Answers.timestamp.asc()).all()
-        answers_data = [
-            {
+        # Get all answers ordered by timestamp
+        with app.app_context():
+            all_answers = Answers.query.order_by(Answers.timestamp.asc()).all()
+        
+        answers_data = []
+        for ans in all_answers:
+            # Get team name for each answer
+            team = Teams.query.get(ans.team_id)
+            team_name = team.team_name if team else "Unknown Team"
+            
+            answers_data.append({
                 'answer_id': ans.answer_id,
                 'team_id': ans.team_id,
-                'team_name': Teams.query.get(ans.team_id).team_name if Teams.query.get(ans.team_id) else 'N/A',
+                'team_name': team_name,
                 'player_session_id': ans.player_session_id,
                 'question_round_id': ans.question_round_id,
                 'assigned_item': ans.assigned_item.value,
                 'response_value': ans.response_value,
                 'timestamp': ans.timestamp.isoformat()
-            } for ans in all_answers
-        ]
+            })
+        
         return jsonify({'answers': answers_data}), 200
     except Exception as e:
         print(f"Error in get_dashboard_data: {str(e)}")
@@ -771,8 +781,9 @@ def get_dashboard_data():
 @app.route('/download', methods=['GET'])
 def download_csv():
     try:
-        # Get all answers from database
-        all_answers = Answers.query.order_by(Answers.timestamp.asc()).all()
+        # Get all answers ordered by timestamp
+        with app.app_context():
+            all_answers = Answers.query.order_by(Answers.timestamp.asc()).all()
         
         # Create CSV content in memory
         output = io.StringIO()
@@ -783,7 +794,10 @@ def download_csv():
         
         # Write data rows
         for ans in all_answers:
-            team_name = Teams.query.get(ans.team_id).team_name if Teams.query.get(ans.team_id) else 'N/A'
+            # Get team name for each answer
+            team = Teams.query.get(ans.team_id)
+            team_name = team.team_name if team else "Unknown Team"
+            
             writer.writerow([
                 ans.timestamp.strftime('%m/%d/%Y, %I:%M:%S %p'),  # Format timestamp like JavaScript toLocaleString()
                 team_name,

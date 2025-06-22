@@ -27,8 +27,8 @@ def handle_shutdown(signum, frame):
     try:
         # Reset the in-memory state
         print("Resetting in-memory state...")
-        if hasattr(state, 'reset'): # Ensure reset method exists    
-        state.reset()
+        if hasattr(state, 'reset'): # Ensure reset method exists
+            state.reset()
     except Exception as e:
         print(f"Error during shutdown: {e}")
     finally:
