@@ -78,7 +78,9 @@ def on_submit_answer(data):
             'assigned_item': assigned_item_str,
             'response_value': response_bool
         }
-        for dash_sid in state.dashboard_clients:
+        # Create a copy of the set to avoid "Set changed size during iteration" error
+        dashboard_clients_copy = set(state.dashboard_clients)
+        for dash_sid in dashboard_clients_copy:
             socketio.emit('new_answer_for_dashboard', answer_for_dash, room=dash_sid)
         
         # Only emit team update, not full dashboard refresh

@@ -1,7 +1,12 @@
-// Initialize socket with ping timeout settings
+// Initialize socket with optimized ping settings for interactive gameplay
 const socket = io(window.location.origin, {
-    pingTimeout: 60000, // Increase ping timeout to 60 seconds
-    pingInterval: 25000 // Ping every 25 seconds
+    pingTimeout: 15000, // Match server ping_timeout (15 seconds for quick disconnection detection)
+    pingInterval: 3000, // Match server ping_interval (3 seconds for responsive monitoring)
+    transports: ['websocket', 'polling'], // Prefer websocket, fallback to polling
+    upgrade: true, // Allow transport upgrades
+    rememberUpgrade: true, // Remember transport upgrades
+    timeout: 20000, // Connection timeout
+    forceNew: false // Reuse existing connections when possible
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 

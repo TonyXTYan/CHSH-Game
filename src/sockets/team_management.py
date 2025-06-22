@@ -12,6 +12,18 @@ import logging
 # Configure logging
 logger = logging.getLogger(__name__)
 
+def safe_socket_emit(event, data, room=None, skip_sid=None):
+    """
+    Safely emit a socket message with error handling to prevent 'Bad file descriptor' errors.
+    """
+    try:
+        if room:
+            socketio.emit(event, data, room=room, skip_sid=skip_sid)
+        else:
+            socketio.emit(event, data, skip_sid=skip_sid)
+    except Exception as e:
+        logger.warning(f"Failed to emit {event} to room {room}: {str(e)}")
+
 def get_available_teams_list():
     try:
         # Get active teams that aren't full
@@ -73,6 +85,10 @@ def handle_disconnect():
     sid = request.sid
     logger.info(f'Client disconnected: {sid}')
     try:
+        # Create a set of operations to perform after all state cleanup
+        # to avoid emitting to disconnected clients
+        operations_to_perform = []
+        
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
             logger.info(f"Dashboard client disconnected: {sid}")
@@ -80,7 +96,7 @@ def handle_disconnect():
         # Remove from connected players list regardless of team status
         if sid in state.connected_players:
             state.connected_players.remove(sid)
-            emit_dashboard_full_update()  # Update dashboard with new player count
+            operations_to_perform.append(('emit_dashboard_full_update', None))
 
         # Handle team-related disconnection
         if sid in state.player_to_team:
@@ -107,17 +123,24 @@ def handle_disconnect():
                         elif db_team.player2_session_id == sid:
                             db_team.player2_session_id = None
                             
-                        # Notify remaining players
+                        # Notify remaining players (but don't emit to disconnected client)
                         remaining_players = team_info['players']
                         if remaining_players:
-                            emit('player_left', {'message': 'A team member has disconnected.'}, room=team_name)
-                            # Keep team active with remaining player
-                            emit('team_status_update', {
-                                'team_name': team_name,
-                                'status': 'waiting_pair',
-                                'members': remaining_players,
-                                'game_started': state.game_started
-                            }, room=team_name)
+                            operations_to_perform.append(('emit_to_team', {
+                                'event': 'player_left',
+                                'data': {'message': 'A team member has disconnected.'},
+                                'room': team_name
+                            }))
+                            operations_to_perform.append(('emit_to_team', {
+                                'event': 'team_status_update',
+                                'data': {
+                                    'team_name': team_name,
+                                    'status': 'waiting_pair',
+                                    'members': remaining_players,
+                                    'game_started': state.game_started
+                                },
+                                'room': team_name
+                            }))
                         else:
                             # If no players left, mark team as inactive
                             existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
@@ -134,18 +157,38 @@ def handle_disconnect():
                         # Clear caches after team state change
                         clear_team_caches()
                         
-                        # Update all clients
-                        emit_dashboard_team_update()
-                        socketio.emit('teams_updated', {
-                            'teams': get_available_teams_list(),
-                            'game_started': state.game_started
-                        })
+                        # Add operations to update all clients
+                        operations_to_perform.append(('emit_dashboard_team_update', None))
+                        operations_to_perform.append(('emit_to_all', {
+                            'event': 'teams_updated',
+                            'data': {
+                                'teams': get_available_teams_list(),
+                                'game_started': state.game_started
+                            }
+                        }))
                         
+                        # Clean up room membership (this should be safe)
                         try:
                             leave_room(team_name, sid=sid)
                         except Exception as e:
-                            logger.error(f"Error leaving room: {str(e)}")
+                            logger.warning(f"Error leaving room (non-critical): {str(e)}")
+                        
                         del state.player_to_team[sid]
+        
+        # Perform all operations after state cleanup to avoid emitting to disconnected clients
+        for operation, params in operations_to_perform:
+            try:
+                if operation == 'emit_dashboard_full_update':
+                    emit_dashboard_full_update()
+                elif operation == 'emit_dashboard_team_update':
+                    emit_dashboard_team_update()
+                elif operation == 'emit_to_team':
+                    safe_socket_emit(params['event'], params['data'], room=params['room'], skip_sid=sid)
+                elif operation == 'emit_to_all':
+                    safe_socket_emit(params['event'], params['data'], skip_sid=sid)
+            except Exception as e:
+                logger.warning(f"Error during post-disconnect operation {operation}: {str(e)}")
+                
     except Exception as e:
         logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 

@@ -26,13 +26,21 @@ def handle_shutdown(signum, frame):
     logger.info("Server shutting down gracefully...")
     try:
         # Notify all connected clients about the shutdown
-        socketio.emit('server_shutdown')
-        socketio.sleep(0.5)  # Allow time for clients to receive the message
-        # Close the socket connections
-        socketio.stop()
-        logger.info("Socket connections closed.")
+        try:
+            socketio.emit('server_shutdown')
+            socketio.sleep(1)  # Allow time for clients to receive the message (1 second)
+        except Exception as e:
+            logger.warning(f"Error notifying clients of shutdown: {e}")
+        
+        # Close the socket connections more gracefully
+        try:
+            socketio.stop()
+            logger.info("Socket connections closed.")
+        except Exception as e:
+            logger.warning(f"Error during socket stop: {e}")
     except Exception as e:
         logger.error(f"Error during socket shutdown: {e}")
+    
     try:
         # Reset the in-memory state
         logger.info("Resetting in-memory state...")
@@ -41,6 +49,7 @@ def handle_shutdown(signum, frame):
     except Exception as e:
         logger.error(f"Error during shutdown: {e}")
     finally:
+        logger.info("Server shutdown complete")
         sys.exit(0)
 
 # Initialize the database tables

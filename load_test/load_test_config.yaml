@@ -4,9 +4,10 @@
 # Server Configuration
 deployment_url: "http://localhost:8080"
 # deployment_url: "https://chsh-game.fly.dev"
+# deployment_url: "https://chsh-game.onrender.com"
 
 # Load Parameters
-num_teams: 100                    # Number of teams to create 
+num_teams: 30                    # Number of teams to create 
 
 # Connection Strategy
 connection_strategy: "gradual"    # Options: gradual, burst, immediate

@@ -444,8 +444,16 @@ const callbacks = {
     }
 };
 
-// Initialize Socket.io
-const socket = io();
+// Initialize Socket.io with optimized settings for interactive gameplay
+const socket = io(window.location.origin, {
+    pingTimeout: 15000, // Match server ping_timeout (15 seconds for quick disconnection detection)
+    pingInterval: 3000, // Match server ping_interval (3 seconds for responsive monitoring)
+    transports: ['websocket', 'polling'], // Prefer websocket, fallback to polling
+    upgrade: true, // Allow transport upgrades
+    rememberUpgrade: true, // Remember transport upgrades
+    timeout: 20000, // Connection timeout
+    forceNew: false // Reuse existing connections when possible
+});
 initializeSocketHandlers(socket, callbacks);
 
 // Debug socket events

@@ -381,8 +381,7 @@ def test_handle_disconnect_team_member(mock_request_context, active_team):
     request.sid = 'player1_sid'
     state.connected_players.add('player1_sid')
     
-    with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+    with patch('src.sockets.team_management.safe_socket_emit') as mock_safe_emit, \
          patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.leave_room') as mock_leave_room:
         
@@ -407,8 +406,7 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
     request.sid = 'player1_sid'
     state.connected_players.add('player1_sid')
     
-    with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+    with patch('src.sockets.team_management.safe_socket_emit') as mock_safe_emit, \
          patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.leave_room') as mock_leave_room:
         
@@ -426,14 +424,15 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
         assert team.player1_session_id is None
         assert team.player2_session_id == 'player2_sid'
         
-        # Verify notifications
-        mock_emit.assert_any_call(
+        # Verify notifications using safe_socket_emit
+        mock_safe_emit.assert_any_call(
             'player_left',
             {'message': 'A team member has disconnected.'},
-            room='full_team'
+            room='full_team',
+            skip_sid='player1_sid'
         )
         
-        mock_emit.assert_any_call(
+        mock_safe_emit.assert_any_call(
             'team_status_update',
             {
                 'team_name': 'full_team',
@@ -441,7 +440,8 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
                 'members': ['player2_sid'],
                 'game_started': state.game_started
             },
-            room='full_team'
+            room='full_team',
+            skip_sid='player1_sid'
         )
         
         mock_leave_room.assert_called_once_with('full_team', sid='player1_sid')

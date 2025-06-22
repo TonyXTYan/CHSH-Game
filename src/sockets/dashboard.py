@@ -528,7 +528,9 @@ def emit_dashboard_team_update():
             'teams': serialized_teams,
             'connected_players_count': len(state.connected_players)
         }
-        for sid in state.dashboard_clients:
+        # Create a copy of the set to avoid "Set changed size during iteration" error
+        dashboard_clients_copy = set(state.dashboard_clients)
+        for sid in dashboard_clients_copy:
             socketio.emit('team_status_changed_for_dashboard', update_data, room=sid)
     except Exception as e:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
@@ -551,8 +553,10 @@ def emit_dashboard_full_update(client_sid=None):
         if client_sid:
             socketio.emit('dashboard_update', update_data, room=client_sid)
         else:
-            for dash_sid in state.dashboard_clients:
-                socketio.emit('dashboard_update', update_data, room=dash_sid)
+            # Create a copy of the set to avoid "Set changed size during iteration" error
+            dashboard_clients_copy = set(state.dashboard_clients)
+            for dashboard_sid in dashboard_clients_copy:
+                socketio.emit('dashboard_update', update_data, room=dashboard_sid)
     except Exception as e:
         logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
 
@@ -605,7 +609,9 @@ def on_start_game(data=None):
                     socketio.emit('game_start', {'game_started': True}, room=team_name)
             
             # Notify dashboard
-            for dashboard_sid in state.dashboard_clients:
+            # Create a copy of the set to avoid "Set changed size during iteration" error
+            dashboard_clients_copy = set(state.dashboard_clients)
+            for dashboard_sid in dashboard_clients_copy:
                 socketio.emit('game_started', room=dashboard_sid)
                 
             # Notify all clients about game state change
@@ -713,7 +719,9 @@ def on_restart_game():
 
         # Notify dashboard clients that reset is complete
         logger.info("Emitting game_reset_complete to all dashboard clients")
-        for dash_sid in state.dashboard_clients:
+        # Create a copy of the set to avoid "Set changed size during iteration" error
+        dashboard_clients_copy = set(state.dashboard_clients)
+        for dash_sid in dashboard_clients_copy:
             socketio.emit('game_reset_complete', room=dash_sid)
             
     except Exception as e:
