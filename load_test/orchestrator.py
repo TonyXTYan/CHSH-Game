@@ -134,17 +134,21 @@ class CHSHLoadTester:
                 return False
 
     async def _create_players(self) -> bool:
-        """Create player instances for the load test."""
+        """Create player instances and establish connections."""
         logger.info(f"Creating {self.config.total_players} player instances...")
         players = await self.team_manager.create_players()
-        success_rate = len([p for p in players if p.connected]) / len(players)
+        
+        # Now establish connections
+        self.console.print("Establishing player connections...")
+        logger.info("Establishing connections to server...")
+        success_rate = await self.team_manager.establish_connections()
         
         if success_rate < 0.8:  # Require 80% connection success
             self.console.print(f"[red]Connection success rate too low: {success_rate:.1%}[/red]")
             logger.error(f"Connection success rate too low: {success_rate:.1%}")
             return False
         
-        self.console.print(f"Connection success rate: {success_rate:.1%}")
+        self.console.print(f"[green]Connection success rate: {success_rate:.1%}[/green]")
         logger.info(f"Connection success rate: {success_rate:.1%}")
         self.players = players
         return True
@@ -180,7 +184,7 @@ class CHSHLoadTester:
 
     async def _start_game(self) -> bool:
         """Start the game if teams are ready."""
-        ready_teams = [team for team in self.teams if len(team.members) == 2]
+        ready_teams = [team for team in self.teams if len(team.players) == 2]
         
         if len(ready_teams) < len(self.teams) * 0.8:
             self.console.print("[red]Teams not ready for game start[/red]")
