@@ -17,8 +17,8 @@
 
 ## Overview
 
-**CHSH Game** is a multiplayer, web-based implementation of the famous quantum CHSH Bell's inequality. 
-It allows teams to compete in a game to explore quantum-classical boundaries. This project also features a real-time dashboard of the CHSH parameters and various statistics. Currently it support upto 30 teams (60 players).
+**CHSH Game** is an real-time multiplayer web app of the CHSH (Clauser-Horne-Shimony-Holt) Bell's inequality. 
+Teams of two players answer random A/B/X/Y questions while a host dashboard tracks scores and CHSH statistics.
 
 - Live demo: 
     - ⚠️ As of May 2025, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire interenet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
@@ -137,34 +137,11 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 ```
 
 
+## Load Testing
+The `chsh_load_test.py` script simulates many teams and players. See [`LOAD_TEST_README.md`](load_test/LOAD_TEST_README.md) for more details.
+
 
 ## Acknowledgements
-- \>99% of the code are AI generated, thanks to GitHub Copilot, ChatGPT, Manus, DeepSeek, Antropic and Qwen. Probably, more than 30 million tokens got burned up in generating this app. 
+- More than 99% of the code are AI generated, thanks to GitHub Copilot, ChatGPT, Cursor, Manus, DeepSeek, Antropic, Qwen and more. Probably, more than 100 million tokens got burned up in generating this app. 
 
 
-
-# TODOs
-- [ ] button clear all inactive teams
-- [ ] perhaps use cookies to store game state?
-- [ ] compact rows
-- [ ] multiple simultaneous games
-- [x] ± statistics
-- [x] Bug, sometimes after reforming (reactivating) a team then inputs are disabled??
-- [x] Optimise CHSH normalisation
-- [x] Put a crown on winning team
-- [ ] fly.io deploy via CI
-- [x] /about.html
-- [ ] optimise server side CPU / RAM utilisation
-- [ ] persistent storage of game state, re-downloadable, maybe use browser storage too?
-- [ ] multiple game instances on multiple server machines
-- [ ] more unit tests, increase coverage for now
-- [?] bug in the two CHSH value calc, once should be lower by 1/sqrt(2) ??
-
-## Harder TODOs
-- [ ] details stats shouldn't stream, should be on request, it also needs auto update upon team stats change
-- [ ] batch load dashboard, i.e. don't instant update
-
-## Delegate to Cursor Background Agent
-- [ ] Improve README.md
-- [ ] use proper logging
-- [ ] load_test should also validate info in dashabord 

@@ -51,10 +51,10 @@ python chsh_load_test.py --url https://your-server.fly.dev --teams 100
 
 ```bash
 # Use predefined configuration
-python chsh_load_test.py --config load_test_config.yaml
+python chsh_load_test.py --config load_test/load_test_config.yaml
 
 # Override specific settings
-python chsh_load_test.py --config load_test_config.yaml --teams 50 --max-duration 600
+python chsh_load_test.py --config load_test/load_test_config.yaml --teams 50 --max-duration 600
 ```
 
 ## Configuration Options
