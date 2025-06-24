@@ -1,7 +1,5 @@
-from flask_sqlalchemy import SQLAlchemy
 from typing import Dict, Any
-
-db = SQLAlchemy()
+from src.models.quiz_models import db
 
 class User(db.Model):  # type: ignore
     id = db.Column(db.Integer, primary_key=True)

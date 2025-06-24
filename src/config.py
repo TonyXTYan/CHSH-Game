@@ -22,6 +22,8 @@ socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_t
 
 # Import routes to register them
 from src.routes import static
+from src.routes.user import user_bp
+app.register_blueprint(user_bp)
 
 # Import socket handlers to register them
 from src.sockets.team_management import handle_connect, handle_disconnect
