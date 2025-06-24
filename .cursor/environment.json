@@ -1,0 +1,8 @@
+{
+  "pythonVersion": "3.11",
+  "dependencies": [
+    "pip>=23.0.0",
+    "-r requirements.txt",
+    "-r load_test/load_test_requirements.txt"
+  ]
+}
