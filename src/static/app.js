@@ -473,14 +473,6 @@ const callbacks = {
 const socket = io();
 initializeSocketHandlers(socket, callbacks);
 
-// Debug socket events
-socket.on('team_status_update', (data) => {
-    console.log('Received team_status_update:', data);
-    if (callbacks.updateTeamStatus) {
-        callbacks.updateTeamStatus(data.status);
-    }
-});
-
 // Event listeners
 createTeamBtn.addEventListener('click', createTeam);
 trueBtn.addEventListener('click', () => submitAnswer(true));
