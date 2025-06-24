@@ -29,10 +29,10 @@ primary_region = 'syd'  # You can choose a region closer to your users
     soft_limit = 200
 
 [[vm]]
-  memory = '512mb'
-  size = "shared-cpu-2x"
-  # memory = '1gb'
-  # size = "performance-1x"
+  # memory = '512mb'
+  # size = "shared-cpu-2x"
+  memory = '1gb'
+  size = "performance-1x"
 
 # Optional: Define a deploy strategy
 # [deploy]
