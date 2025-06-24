@@ -33,21 +33,44 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 ## How to play
 - The game is designed to be played in a group setting, such as a classroom, auditorium, or at pubs. 
 
-- To play this game, you need **at least two players** (one team of two), the more the better. 
-    - Each round, every players in a team receive a randomly selected questions (**A**,**B**,**X**,**Y**), each player gets their own random question.
-    - Players answer either **True** or **False** independently.  
-    - They can discuss a strategy before the game starts, but they should *not communicate* to each other during the game.
-    - ***Winning condition:*** 
-        - **Session 1.** If both players get asked the same question, they should answer the same and answer **True**/**False** about half the time. 
-          i.e. highest score of "Balanced ⏐⟨Tr⟩⏐" wins. 
-            - Winning team is awarded the badge 🎯.
-        - **Session 2.** When one player is asked **B** and the other player is asked **Y**, they should answer the same and answer **True**/**False** as much as possible. 
-          i.e. highest score of "CHSH Value" wins.
-            - Winning team is awarded the badge 🏆.
+- This game requires **at least two players** (one team of two), though it's more fun with more teams. 
+- In each round: 
+    - Each player is idependently assigned a random questions: **A**,**B**,**X** or **Y**.  
+    - Players respond with either **True** or **False**, base on a shared strategy agreed upon before the game starts.
+    - ***No communicate*** is allowed during the game! 
+
+Winning condition:
+- Highest **balanced ⏐⟨Tr⟩⏐ 🎯** (consistency):
+  - If both players are asked the same question (A/A, B/B, X/X, or Y/Y), they should give the **same** answer. 
+    - Trace/4 = ⟨Tr⟩ = ±1 if partners always agree, and 0 if players always disagrees.
+    - Balance = 1 if answers to each question is True/False about 50:50 of the time, and 0 if always the same.
+    - Balanced |⟨Tr⟩| = 0.5 * (balance + |⟨Tr⟩|); higher is better.
+- Best **CHSH 🏆** (non-local correlation):
+  - If one player is asked **B** and the other is asked **Y**, they have to answer **differently** as much as possible, i.e. one True and one False.
+  - For any other question pair, you have to give same response as much as possible.
+
 
 <details>
 <summary>Winning Strategy</summary>
-TODO
+### Normal human strategy
+Note the following response table
+
+| Question | A | B | X | Y |
+|---|---|---|---|---|
+| Response | T | T | T | F |
+
+This strategy wins ⏐⟨Tr⟩⏐ = 1 and CHSH = 2.
+To have balance = 1, two players need to share a sequence bit bits $\{b_i\}$ where $b_i = 0$ means using the table and $b_i = 1$ means using the negation of the table, i.e. (F,F,F,T), this sequence could simply be even/odd bits of the current round number.
+
+### Unhumanly classical strategy
+For each round, each player pre-generates an agreed answer.
+i.e. have a lookup table that tells the player at each round what to answer for each question.
+This lookup table have the size of $(2 \text{ players}) \times (4 \text{ responses})^{(\text{number of rounds})} \approx 4,600,000\text{TB}$ of data.
+If you could do this, then your CHSH = 4, known as the Tsirelson bound. 
+
+### Quantum strategy
+See below
+
 </details>
 
 ## The Physics
