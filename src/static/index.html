@@ -72,6 +72,47 @@
         <div class="session-info" id="sessionInfo">Session ID: <span class="session-id"></span></div>
     </div>
 
+    <!-- Hint Sections -->
+    <div class="hint-sections" style="margin-top: 30px; padding: 20px;">
+        <!-- Game Rules Section -->
+        <div class="collapsible-section">
+            <div class="collapsible-header">
+                <h3 class="toggle-target">Game rules</h3>
+                <span class="toggle-indicator">▼</span>
+            </div>
+            <div class="hint-content" style="display: none; border: 2px solid #4CAF50; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
+                <ul style="margin: 0; padding-left: 20px;">
+                    <li>Discuss your strategy before the game starts.</li>
+                    <li>Do not communicate during the game.</li>
+                    <li>Focus on consistency rather than randomness.</li>
+                    <li>Watch the dashboard to see your teams' progress.</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Winning Conditions Section -->
+        <div class="collapsible-section" style="margin-top: 15px;">
+            <div class="collapsible-header">
+                <h3 class="toggle-target">Winning conditions</h3>
+                <span class="toggle-indicator">▼</span>
+            </div>
+            <div class="hint-content" style="display: none; border: 2px solid #2196F3; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
+                <div style="margin-bottom: 15px;">
+                    <strong>Best balanced 🎯:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li>When you and your partner got asked the same question (A/B/X/Y) you both answer the same and answer True/False half the time.</li>
+                    </ul>
+                </div>
+                <div>
+                    <strong>Best CHSH 🏆:</strong>
+                    <ul style="margin: 5px 0; padding-left: 20px;">
+                        <li>When one of you is asked B and the other is asked Y, you have to answer differently, i.e. one True and the other False.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
     <script src="socket-handlers.js"></script>
     <script src="app.js"></script>
