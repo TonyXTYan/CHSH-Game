@@ -452,7 +452,7 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         logger.error(f"Error processing team {team_id}: {str(e)}", exc_info=True)
         return None
 
-def get_all_teams() -> List[Dict[str, Any]]:
+def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
     global _last_refresh_time, _cached_teams_result
     
     try:
@@ -461,7 +461,8 @@ def get_all_teams() -> List[Dict[str, Any]]:
         time_since_last_refresh = current_time - _last_refresh_time
         
         # If within refresh delay and we have cached data, return cached result
-        if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
+        # UNLESS force_refresh is True (for critical updates like disconnections)
+        if not force_refresh and time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
             # logger.debug("Returning cached team data")
             return _cached_teams_result
         # else:
@@ -520,9 +521,9 @@ def clear_team_caches() -> None:
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
-def emit_dashboard_team_update() -> None:
+def emit_dashboard_team_update(force_refresh: bool = False) -> None:
     try:
-        serialized_teams = get_all_teams()
+        serialized_teams = get_all_teams(force_refresh=force_refresh)
         update_data = {
             'teams': serialized_teams,
             'connected_players_count': len(state.connected_players)
