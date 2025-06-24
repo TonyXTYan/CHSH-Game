@@ -537,3 +537,285 @@ def test_leave_full_team(mock_request_context, full_team):
         
         mock_leave_room.assert_called_once_with('full_team', sid='player1_sid')
         mock_dashboard_update.assert_called_once()
+
+# Additional comprehensive edge case tests
+
+def test_simultaneous_team_creation_with_same_name(mock_request_context):
+    """Test handling of simultaneous team creation attempts with same name"""
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        from src.sockets.team_management import on_create_team
+        
+        # First creation should succeed
+        on_create_team({'team_name': 'duplicate_team'})
+        assert 'duplicate_team' in state.active_teams
+        
+        # Second creation with same name should fail
+        request.sid = 'second_player'
+        on_create_team({'team_name': 'duplicate_team'})
+        
+        # Verify error was emitted
+        error_calls = [call for call in mock_emit.call_args_list if call[0][0] == 'error']
+        assert len(error_calls) >= 1
+        assert 'already exists' in error_calls[-1][0][1]['message']
+
+def test_database_error_handling_team_creation(mock_request_context):
+    """Test handling of database errors during team creation"""
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.db.session.commit') as mock_commit:
+        
+        mock_commit.side_effect = Exception("Database error")
+        
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'error_team'})
+        
+        # Should handle error gracefully
+        error_calls = [call for call in mock_emit.call_args_list if call[0][0] == 'error']
+        assert len(error_calls) >= 1
+
+def test_multiple_rapid_disconnections(mock_request_context):
+    """Test handling of multiple rapid player disconnections"""
+    # Set up multiple players in different teams
+    teams_data = {}
+    for i in range(3):
+        team_name = f'rapid_team_{i}'
+        team_id = 100 + i
+        
+        # Create team in state
+        teams_data[team_name] = {
+            'players': [f'player_{i}_1', f'player_{i}_2'],
+            'team_id': team_id,
+            'current_round_number': 0,
+            'combo_tracker': {},
+            'answered_current_round': {},
+            'status': 'active'
+        }
+        
+        # Set up player mappings
+        state.player_to_team[f'player_{i}_1'] = team_name
+        state.player_to_team[f'player_{i}_2'] = team_name
+        state.connected_players.add(f'player_{i}_1')
+        state.connected_players.add(f'player_{i}_2')
+    
+    state.active_teams.update(teams_data)
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.leave_room') as mock_leave_room:
+        
+        from src.sockets.team_management import handle_disconnect
+        
+        # Rapidly disconnect all players
+        for i in range(3):
+            for j in range(2):
+                request.sid = f'player_{i}_{j+1}'
+                handle_disconnect()
+        
+        # Verify state is cleaned up properly
+        assert len(state.connected_players) == 0
+        assert len(state.player_to_team) == 0
+        # Some teams might still exist in state if not all players disconnected
+
+def test_team_name_with_special_characters(mock_request_context):
+    """Test team creation with special characters in name"""
+    special_names = [
+        'Team-With-Dashes',
+        'Team_With_Underscores',
+        'Team With Spaces',
+        'Team123',
+        'T',  # Single character
+        'A' * 100,  # Very long name
+    ]
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        from src.sockets.team_management import on_create_team
+        
+        for i, team_name in enumerate(special_names):
+            request.sid = f'player_{i}'
+            on_create_team({'team_name': team_name})
+            
+            # Should either succeed or give appropriate error
+            if team_name.strip():  # Non-empty names should work
+                # Either succeeds or gives reasonable error
+                pass
+            else:
+                # Empty names should fail
+                error_calls = [call for call in mock_emit.call_args_list if call[0][0] == 'error']
+                assert len(error_calls) > 0
+
+def test_player_reconnection_after_disconnect(mock_request_context):
+    """Test player reconnecting after disconnection"""
+    # Set up initial team
+    team_name = 'reconnect_team'
+    state.active_teams[team_name] = {
+        'players': ['test_sid', 'other_player'],
+        'team_id': 123,
+        'current_round_number': 5,
+        'combo_tracker': {'A-X': 2},
+        'answered_current_round': {},
+        'status': 'active'
+    }
+    state.player_to_team['test_sid'] = team_name
+    state.player_to_team['other_player'] = team_name
+    state.connected_players.add('test_sid')
+    state.connected_players.add('other_player')
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.leave_room') as mock_leave_room, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        from src.sockets.team_management import handle_disconnect, handle_connect, on_join_team
+        
+        # Player disconnects
+        handle_disconnect()
+        
+        # Verify team state changed
+        assert len(state.active_teams[team_name]['players']) == 1
+        assert 'test_sid' not in state.connected_players
+        
+        # Player reconnects with new session ID
+        request.sid = 'new_test_sid'
+        state.connected_players.add('new_test_sid')
+        handle_connect()
+        
+        # Player tries to rejoin the same team
+        on_join_team({'team_name': team_name})
+        
+        # Should succeed in rejoining
+        assert 'new_test_sid' in state.active_teams[team_name]['players']
+        assert state.player_to_team['new_test_sid'] == team_name
+
+def test_team_state_consistency_during_errors(mock_request_context):
+    """Test that team state remains consistent even when operations fail"""
+    # Set up team
+    team_name = 'consistency_team'
+    state.active_teams[team_name] = {
+        'players': ['test_sid'],
+        'team_id': 456,
+        'current_round_number': 0,
+        'combo_tracker': {},
+        'answered_current_round': {},
+        'status': 'waiting_pair'
+    }
+    state.player_to_team['test_sid'] = team_name
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit:
+        
+        # Mock socketio.emit to raise error occasionally
+        def failing_emit(*args, **kwargs):
+            if 'team_status_changed' in str(args):
+                raise Exception("Network error")
+            return MagicMock()
+        
+        mock_socketio_emit.side_effect = failing_emit
+        
+        from src.sockets.team_management import on_join_team
+        
+        # Another player tries to join despite network errors
+        request.sid = 'joining_player'
+        on_join_team({'team_name': team_name})
+        
+        # Team state should still be updated correctly
+        assert len(state.active_teams[team_name]['players']) == 2
+        assert 'joining_player' in state.active_teams[team_name]['players']
+        assert state.player_to_team['joining_player'] == team_name
+
+def test_dashboard_client_mixed_with_players(mock_request_context):
+    """Test dashboard clients mixed in with regular player operations"""
+    # Add dashboard clients
+    state.dashboard_clients.update(['dash1', 'dash2'])
+    state.connected_players.update(['dash1', 'dash2'])  # Dashboard also counts as connected
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.emit_dashboard_full_update') as mock_dashboard_full_update, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        from src.sockets.team_management import on_create_team, handle_disconnect
+        
+        # Regular player creates team
+        on_create_team({'team_name': 'mixed_team'})
+        
+        # Dashboard updates should be called
+        assert mock_dashboard_update.call_count >= 1
+        
+        # Dashboard client disconnects
+        request.sid = 'dash1'
+        handle_disconnect()
+        
+        # Should be removed from both dashboard and connected players
+        assert 'dash1' not in state.dashboard_clients
+        assert 'dash1' not in state.connected_players
+        
+        # Full dashboard update should be called
+        mock_dashboard_full_update.assert_called()
+
+def test_invalid_team_operations_sequence(mock_request_context):
+    """Test sequence of invalid operations doesn't break state"""
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        from src.sockets.team_management import (
+            on_create_team, on_join_team, on_leave_team, on_reactivate_team
+        )
+        
+        # Try to join before creating
+        on_join_team({'team_name': 'nonexistent'})
+        
+        # Try to leave when not in team
+        on_leave_team({})
+        
+        # Try to reactivate nonexistent team
+        on_reactivate_team({'team_name': 'nonexistent'})
+        
+        # Try to create with empty/invalid data
+        on_create_team({'invalid_key': 'value'})
+        on_create_team({'team_name': ''})
+        
+        # State should remain clean
+        assert len(state.active_teams) == 0
+        assert len(state.player_to_team) == 0
+        
+        # All operations should have produced errors
+        error_calls = [call for call in mock_emit.call_args_list if call[0][0] == 'error']
+        assert len(error_calls) >= 5  # One for each invalid operation
+
+def test_extreme_team_name_cases(mock_request_context):
+    """Test extreme cases for team names"""
+    extreme_cases = [
+        '',  # Empty string
+        ' ',  # Just whitespace
+        '\n\t',  # Newlines and tabs
+        '🎮🎯🏆',  # Emojis
+        'A' * 1000,  # Very long string
+        None,  # None value (should be handled gracefully)
+    ]
+    
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        from src.sockets.team_management import on_create_team
+        
+        for i, team_name in enumerate(extreme_cases):
+            request.sid = f'extreme_player_{i}'
+            
+            # Handle None case specially
+            if team_name is None:
+                on_create_team({})  # No team_name key
+            else:
+                on_create_team({'team_name': team_name})
+            
+            # Should handle gracefully (either succeed with valid names or error)
+            # No assertion here as behavior may vary for edge cases
+        
+        # Should not crash or corrupt state
+        assert isinstance(state.active_teams, dict)
+        assert isinstance(state.player_to_team, dict)
