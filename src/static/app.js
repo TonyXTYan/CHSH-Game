@@ -461,25 +461,29 @@ createTeamBtn.addEventListener('click', createTeam);
 trueBtn.addEventListener('click', () => submitAnswer(true));
 falseBtn.addEventListener('click', () => submitAnswer(false));
 
-// Initialize collapsible inactive teams section
+// Initialize all collapsible sections
 document.addEventListener('DOMContentLoaded', function() {
-    const collapsibleHeader = document.querySelector('.collapsible-header');
-    const toggleIndicator = document.querySelector('.toggle-indicator');
-    const inactiveTeams = document.getElementById('inactiveTeams');
+    const collapsibleSections = document.querySelectorAll('.collapsible-section');
     
-    if (collapsibleHeader && inactiveTeams) {
-        collapsibleHeader.addEventListener('click', function() {
-            toggleIndicator.classList.toggle('collapsed');
-            if (inactiveTeams.style.display === 'none') {
-                inactiveTeams.style.display = 'block';
-            } else {
-                inactiveTeams.style.display = 'none';
-            }
-        });
+    collapsibleSections.forEach(function(section) {
+        const header = section.querySelector('.collapsible-header');
+        const indicator = section.querySelector('.toggle-indicator');
+        const content = section.querySelector('#inactiveTeams, .hint-content');
         
-        // Initialize as collapsed
-        toggleIndicator.classList.add('collapsed');
-    }
+        if (header && indicator && content) {
+            header.addEventListener('click', function() {
+                indicator.classList.toggle('collapsed');
+                if (content.style.display === 'none') {
+                    content.style.display = 'block';
+                } else {
+                    content.style.display = 'none';
+                }
+            });
+            
+            // Initialize as collapsed
+            indicator.classList.add('collapsed');
+        }
+    });
 });
 
 // Initialize UI
