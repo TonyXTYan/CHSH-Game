@@ -618,3 +618,305 @@ class TestPlayerInteraction:
         with app.app_context():
             completed_rounds = PairQuestionRounds.query.filter_by(team_id=team_id).count()
             assert completed_rounds >= len(test_scenarios), f"Expected at least {len(test_scenarios)} rounds, got {completed_rounds}"
+
+    @pytest.mark.integration
+    def test_team_disconnects_dashboard_reflects(self, app_context, socket_client, second_client):
+        """Two players form a team, one disconnects, dashboard reflects 'waiting_pair', second disconnects, team becomes inactive."""
+        # Create dashboard client
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+
+        # Player 1 creates team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'DisconnectTeam'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Player 2 joins team
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'DisconnectTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # Dashboard should see team as active and full
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'DisconnectTeam' and t['status'] == 'active':
+                        found = True
+        assert found, "Dashboard did not see team as active after both joined"
+
+        # Player 2 disconnects
+        second_client.disconnect()
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'team_status_changed_for_dashboard':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'DisconnectTeam' and t['status'] == 'waiting_pair':
+                        found = True
+        assert found, "Dashboard did not see team as waiting_pair after one disconnects"
+
+        # Player 1 disconnects
+        socket_client.disconnect()
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'team_status_changed_for_dashboard':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'DisconnectTeam' and t['status'] == 'inactive':
+                        found = True
+        assert found, "Dashboard did not see team as inactive after both disconnect"
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_team_reactivation_dashboard_reflects(self, app_context, socket_client, second_client):
+        """Two players form a team, both disconnect, one reconnects (reactivates team), dashboard reflects this."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+
+        # Player 1 creates team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'ReactivateTeam'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Player 2 joins team
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'ReactivateTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # Both disconnect
+        second_client.disconnect()
+        socket_client.disconnect()
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+
+        # Player 1 reconnects and reactivates team
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('reactivate_team', {'team_name': 'ReactivateTeam'})
+        eventlet.sleep(0.5)  # Give server time to process reactivation and clear cache
+        new_client.get_received()
+
+        # Dashboard should see team as waiting_pair
+        dashboard_client.emit('dashboard_join')  # First join to trigger update
+        eventlet.sleep(0.3)
+        dashboard_client.emit('dashboard_join')  # Second join to ensure cache refresh
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'ReactivateTeam' and t['status'] == 'waiting_pair':
+                        found = True
+        assert found, "Dashboard did not see team as waiting_pair after reactivation"
+        new_client.disconnect()
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_dashboard_sees_status_on_disconnects(self, app_context, socket_client, second_client):
+        """Dashboard client sees correct team/player status after each disconnect/reconnect."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+
+        # Player 1 creates team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'DashStatusTeam'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Player 2 joins team
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'DashStatusTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # Dashboard sees both players
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'DashStatusTeam' and t['status'] == 'active':
+                        found = True
+        assert found, "Dashboard did not see both players as active"
+
+        # Player 2 disconnects, dashboard sees waiting_pair
+        second_client.disconnect()
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'team_status_changed_for_dashboard':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'DashStatusTeam' and t['status'] == 'waiting_pair':
+                        found = True
+        assert found, "Dashboard did not see waiting_pair after one disconnect"
+
+        # Player 2 reconnects (joins again)
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('join_team', {'team_name': 'DashStatusTeam'})
+        self.wait_for_event(new_client, 'team_joined')
+        new_client.get_received()
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'DashStatusTeam' and t['status'] == 'active':
+                        found = True
+        assert found, "Dashboard did not see both players as active after reconnect"
+        new_client.disconnect()
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_player_disconnect_reconnect_same_sid(self, app_context, socket_client, second_client):
+        """Edge case: Player disconnects and reconnects with same SID, dashboard and team state remain consistent."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+
+        # Player 1 creates team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'ReconnectSIDTeam'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Player 2 joins team
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'ReconnectSIDTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # Player 2 disconnects
+        second_client.disconnect()
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'team_status_changed_for_dashboard':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'ReconnectSIDTeam' and t['status'] == 'waiting_pair':
+                        found = True
+        assert found, "Dashboard did not see waiting_pair after disconnect"
+
+        # Simulate reconnect with same SID (not possible with SocketIOTestClient, but we can check state remains consistent)
+        # Instead, join as a new client
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('join_team', {'team_name': 'ReconnectSIDTeam'})
+        self.wait_for_event(new_client, 'team_joined')
+        new_client.get_received()
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'ReconnectSIDTeam' and t['status'] == 'active':
+                        found = True
+        assert found, "Dashboard did not see both players as active after reconnect"
+        new_client.disconnect()
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_two_teams_one_loses_player_dashboard_updates_only_that_team(self, app_context, socket_client, second_client):
+        """Edge case: Two teams, one loses a player, dashboard only updates that team's status."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+
+        # Team 1
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'TeamOne'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        client2a = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(client2a)
+        client2a.emit('join_team', {'team_name': 'TeamOne'})
+        self.wait_for_event(client2a, 'team_joined')
+        client2a.get_received()
+
+        # Team 2
+        client1b = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(client1b)
+        client1b.emit('create_team', {'team_name': 'TeamTwo'})
+        self.wait_for_event(client1b, 'team_created')
+        client1b.get_received()
+        client2b = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(client2b)
+        client2b.emit('join_team', {'team_name': 'TeamTwo'})
+        self.wait_for_event(client2b, 'team_joined')
+        client2b.get_received()
+
+        # Dashboard sees both teams as active
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found1 = found2 = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'TeamOne' and t['status'] == 'active':
+                        found1 = True
+                    if t['team_name'] == 'TeamTwo' and t['status'] == 'active':
+                        found2 = True
+        assert found1 and found2, "Dashboard did not see both teams as active"
+
+        # TeamOne loses a player
+        client2a.disconnect()
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found_waiting = found_active = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'team_status_changed_for_dashboard':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'TeamOne' and t['status'] == 'waiting_pair':
+                        found_waiting = True
+                    if t['team_name'] == 'TeamTwo' and t['status'] == 'active':
+                        found_active = True
+        assert found_waiting and found_active, "Dashboard did not see correct status for both teams after one lost a player"
+
+        # Clean up
+        socket_client.disconnect()
+        client1b.disconnect()
+        client2b.disconnect()
+        dashboard_client.disconnect()
