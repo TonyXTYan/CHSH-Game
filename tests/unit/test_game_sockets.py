@@ -250,3 +250,91 @@ def test_dashboard_notifications_on_answer(mock_request_context):
         state.player_to_team.clear()
         state.active_teams.clear()
         state.dashboard_clients.clear()
+
+def test_submit_answer_round_not_found(mock_request_context):
+    """Test error when round is not found in DB"""
+    with patch('src.sockets.game.emit') as mock_emit, \
+         patch('src.sockets.game.db.session') as mock_session, \
+         patch('src.sockets.game.PairQuestionRounds') as mock_rounds:
+        # Set up valid team state
+        test_team = 'Test Team'
+        test_round_id = 1
+        state.player_to_team['test_sid'] = test_team
+        state.active_teams[test_team] = {
+            'team_id': 1,
+            'players': ['test_sid', 'other_player_sid'],
+            'current_db_round_id': test_round_id,
+            'current_round_number': 1,
+            'answered_current_round': {}
+        }
+        # Mock database round query returns None
+        mock_rounds.query.get.return_value = None
+        data = {
+            'round_id': test_round_id,
+            'item': 'A',
+            'answer': True
+        }
+        on_submit_answer(data)
+        mock_emit.assert_called_with('error', {'message': 'Round not found in DB.'})
+        # Clean up state
+        state.player_to_team.clear()
+        state.active_teams.clear()
+
+def test_submit_answer_invalid_item(mock_request_context):
+    """Test error when invalid item is submitted"""
+    with patch('src.sockets.game.emit') as mock_emit, \
+         patch('src.sockets.game.db.session') as mock_session, \
+         patch('src.sockets.game.PairQuestionRounds') as mock_rounds:
+        # Set up valid team state
+        test_team = 'Test Team'
+        test_round_id = 1
+        state.player_to_team['test_sid'] = test_team
+        state.active_teams[test_team] = {
+            'team_id': 1,
+            'players': ['test_sid', 'other_player_sid'],
+            'current_db_round_id': test_round_id,
+            'current_round_number': 1,
+            'answered_current_round': {}
+        }
+        # Mock database round query returns a valid round
+        mock_round = MagicMock()
+        mock_rounds.query.get.return_value = mock_round
+        data = {
+            'round_id': test_round_id,
+            'item': 'INVALID',
+            'answer': True
+        }
+        on_submit_answer(data)
+        mock_emit.assert_called_with('error', {'message': 'Invalid item in answer.'})
+        # Clean up state
+        state.player_to_team.clear()
+        state.active_teams.clear()
+
+def test_submit_answer_incomplete_data(mock_request_context):
+    """Test error when answer submission data is incomplete"""
+    with patch('src.sockets.game.emit') as mock_emit, \
+         patch('src.sockets.game.db.session') as mock_session, \
+         patch('src.sockets.game.PairQuestionRounds') as mock_rounds:
+        # Set up valid team state
+        test_team = 'Test Team'
+        test_round_id = 1
+        state.player_to_team['test_sid'] = test_team
+        state.active_teams[test_team] = {
+            'team_id': 1,
+            'players': ['test_sid', 'other_player_sid'],
+            'current_db_round_id': test_round_id,
+            'current_round_number': 1,
+            'answered_current_round': {}
+        }
+        # Mock database round query returns a valid round
+        mock_round = MagicMock()
+        mock_rounds.query.get.return_value = mock_round
+        # Missing 'item' and 'answer'
+        data = {
+            'round_id': test_round_id
+        }
+        on_submit_answer(data)
+        mock_emit.assert_called_with('error', {'message': 'Invalid answer submission data.'})
+        # Clean up state
+        state.player_to_team.clear()
+        state.active_teams.clear()

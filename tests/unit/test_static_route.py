@@ -15,3 +15,39 @@ def test_static_subdirectory_serving(tmp_path):
     resp = client.get('/sub/hello.txt')
     assert resp.status_code == 200
     assert resp.data.decode().strip() == 'hello world'
+
+def test_serve_dashboard():
+    client = app.test_client()
+    resp = client.get('/dashboard')
+    assert resp.status_code == 200
+    assert b'Host Dashboard' in resp.data
+
+def test_serve_about():
+    client = app.test_client()
+    resp = client.get('/about')
+    assert resp.status_code == 200
+    assert b'url=https://github.com/TonyXTYan/CHSH-Game' in resp.data
+
+def test_serve_index():
+    client = app.test_client()
+    resp = client.get('/index')
+    assert resp.status_code == 200
+    assert b'CHSH Game' in resp.data
+
+def test_serve_fallback_to_index():
+    client = app.test_client()
+    resp = client.get('/nonexistentfile.txt')
+    assert resp.status_code == 200
+    assert b'CHSH Game' in resp.data
+
+def test_serve_forbidden_traversal():
+    client = app.test_client()
+    resp = client.get('/../secret.txt')
+    assert resp.status_code == 403
+
+def test_get_server_id():
+    client = app.test_client()
+    resp = client.get('/api/server/id')
+    assert resp.status_code == 200
+    data = resp.get_json()
+    assert 'instance_id' in data

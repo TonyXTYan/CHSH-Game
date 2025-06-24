@@ -8,3 +8,4 @@ downloaded_test.csv
 src/static/sub/hello.txt
 .idea
 .prompts
+coverage.xml

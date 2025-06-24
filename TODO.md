@@ -1,5 +1,5 @@
 # TODOs
-= [ ] test webside on windows
+= [ ] test website on windows
 - [ ] button clear all inactive teams
 - [ ] compact rows
 - [x] ± statistics

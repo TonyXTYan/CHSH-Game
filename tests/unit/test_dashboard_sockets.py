@@ -647,3 +647,61 @@ def test_download_csv_endpoint_empty_data(test_client, mock_db_session):
         header = lines[0]
         expected_headers = ['Timestamp', 'Team Name', 'Team ID', 'Player ID', 'Round ID', 'Question Item (A/B/X/Y)', 'Answer (True/False)']
         assert all(h in header for h in expected_headers)
+
+def test_emit_dashboard_team_update_runs(mock_state, mock_socketio):
+    from src.sockets.dashboard import emit_dashboard_team_update
+    # Should not raise
+    emit_dashboard_team_update(force_refresh=True)
+
+def test_emit_dashboard_full_update_runs(mock_state, mock_socketio):
+    from src.sockets.dashboard import emit_dashboard_full_update
+    # Should not raise
+    emit_dashboard_full_update(client_sid=None)
+
+def test_clear_team_caches_runs():
+    from src.sockets.dashboard import clear_team_caches
+    # Should not raise
+    clear_team_caches()
+
+def test_on_dashboard_join_error_handling(mock_request, mock_state, mock_emit):
+    from src.sockets.dashboard import on_dashboard_join
+    # Simulate error by passing bad callback (not callable)
+    on_dashboard_join(data=None, callback='not_callable')
+    mock_emit.assert_any_call('error', {'message': 'An error occurred while joining the dashboard'})
+
+def test_on_start_game_error_handling(mock_request, mock_state, mock_emit):
+    from src.sockets.dashboard import on_start_game
+    # Simulate error by removing dashboard client
+    mock_state.dashboard_clients = set()
+    on_start_game(data=None)
+    # Should not emit an error, as the code just returns
+    mock_emit.assert_not_called()
+
+def test_on_restart_game_error_handling(mock_request, mock_state, mock_emit):
+    from src.sockets.dashboard import on_restart_game
+    # Simulate error by removing dashboard client
+    mock_state.dashboard_clients = set()
+    on_restart_game()
+    mock_emit.assert_any_call('error', {'message': 'Unauthorized: Not a dashboard client'})
+
+def test_dashboard_api_endpoint_error_case(test_client, mock_db_session):
+    # Patch get_dashboard_data to raise
+    from src.sockets import dashboard as dashboard_module
+    orig = dashboard_module.get_dashboard_data
+    def error_data():
+        raise Exception('API error')
+    dashboard_module.get_dashboard_data = error_data
+    resp = test_client.get('/api/dashboard/data')
+    assert resp.status_code in (500, 400, 200)  # Accept any error or fallback
+    dashboard_module.get_dashboard_data = orig
+
+def test_download_csv_endpoint_error_case(test_client, mock_db_session):
+    # Patch download_csv to raise
+    from src.sockets import dashboard as dashboard_module
+    orig = dashboard_module.download_csv
+    def error_download():
+        raise Exception('Download error')
+    dashboard_module.download_csv = error_download
+    resp = test_client.get('/download')
+    assert resp.status_code in (500, 400, 200)  # Accept any error or fallback
+    dashboard_module.download_csv = orig

@@ -47,7 +47,7 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 
 <details>
 <summary>Winning Strategy</summary>
-TOOD
+TODO
 </details>
 
 ## The Physics

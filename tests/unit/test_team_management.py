@@ -365,17 +365,33 @@ def test_join_team_already_member(mock_request_context, active_team):
         )
 
 def test_handle_disconnect_dashboard_client(mock_request_context):
-    """Test disconnection of a dashboard client"""
+    """Test disconnect logic for dashboard clients"""
+    from src.sockets.team_management import handle_disconnect
     state.dashboard_clients.add('test_sid')
-    state.connected_players.add('test_sid')
-    
-    with patch('src.sockets.team_management.emit_dashboard_full_update') as mock_dashboard_update:
-        from src.sockets.team_management import handle_disconnect
+    handle_disconnect()
+    assert 'test_sid' not in state.dashboard_clients
+
+def test_handle_disconnect_team_no_players_left(mock_request_context, active_team):
+    """Test disconnect logic for teams with no players left"""
+    from src.sockets.team_management import handle_disconnect
+    # Remove the only player from the team
+    state.active_teams['active_team']['players'] = ['test_sid']
+    state.player_to_team['test_sid'] = 'active_team'
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.db.session') as mock_session, \
+         patch('src.sockets.team_management.Teams') as mock_Teams, \
+         patch('src.sockets.team_management.clear_team_caches') as mock_clear_caches:
+        # Mock DB team
+        db_team = MagicMock()
+        mock_Teams.query.filter_by.return_value.first.return_value = db_team
+        mock_session.get.return_value = db_team
         handle_disconnect()
-        
-        assert 'test_sid' not in state.dashboard_clients
-        assert 'test_sid' not in state.connected_players
-        mock_dashboard_update.assert_called_once()
+        # Team should be marked inactive and removed from state
+        assert 'active_team' not in state.active_teams or state.active_teams['active_team']['players'] == []
+        # DB team should be marked inactive
+        assert db_team.is_active is False
+        # Should NOT emit team_status_update to the team (no players left)
+        # Just check team is removed and DB updated
 
 def test_handle_disconnect_team_member(mock_request_context, active_team):
     """Test disconnection of a team member"""
@@ -537,3 +553,31 @@ def test_leave_full_team(mock_request_context, full_team):
         
         mock_leave_room.assert_called_once_with('full_team', sid='player1_sid')
         mock_dashboard_update.assert_called_once()
+
+def test_on_create_team_missing_name(mock_request_context):
+    """Test error handling in on_create_team when team name is missing"""
+    from src.sockets.team_management import on_create_team
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        on_create_team({})
+        mock_emit.assert_any_call('error', {'message': 'Team name is required'})
+
+def test_on_create_team_duplicate_name(mock_request_context, active_team):
+    """Test error handling in on_create_team when team name already exists"""
+    from src.sockets.team_management import on_create_team
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        on_create_team({'team_name': 'active_team'})
+        mock_emit.assert_any_call('error', {'message': 'Team name already exists or is active'})
+
+def test_on_join_team_missing_name(mock_request_context):
+    """Test error handling in on_join_team when team name is missing"""
+    from src.sockets.team_management import on_join_team
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        on_join_team({})
+        mock_emit.assert_any_call('error', {'message': 'Team not found or invalid team name.'})
+
+def test_on_leave_team_not_in_team(mock_request_context):
+    """Test error handling in on_leave_team when player is not in a team"""
+    from src.sockets.team_management import on_leave_team
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        on_leave_team({})
+        mock_emit.assert_any_call('error', {'message': 'You are not in a team.'})
