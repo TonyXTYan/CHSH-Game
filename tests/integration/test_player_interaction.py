@@ -920,3 +920,230 @@ class TestPlayerInteraction:
         client1b.disconnect()
         client2b.disconnect()
         dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_rapid_join_leave_team(self, app_context, socket_client, second_client):
+        """Two players rapidly join and leave a team multiple times, dashboard always reflects correct status."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        for i in range(3):
+            player1 = SocketIOTestClient(app, server_socketio)
+            player2 = SocketIOTestClient(app, server_socketio)
+            self.verify_connection(player1)
+            # Create team
+            player1.emit('create_team', {'team_name': f'RapidTeam{i}'})
+            self.wait_for_event(player1, 'team_created')
+            player1.get_received()
+            # Player 2 joins
+            self.verify_connection(player2)
+            player2.emit('join_team', {'team_name': f'RapidTeam{i}'})
+            self.wait_for_event(player2, 'team_joined')
+            player2.get_received()
+            # Player 2 leaves
+            player2.emit('leave_team', {})
+            eventlet.sleep(0.2)
+            player2.get_received()
+            # Player 2 rejoins
+            player2.emit('join_team', {'team_name': f'RapidTeam{i}'})
+            self.wait_for_event(player2, 'team_joined')
+            player2.get_received()
+            # Player 1 leaves
+            player1.emit('leave_team', {})
+            eventlet.sleep(0.2)
+            player1.get_received()
+            # Dashboard should see team as inactive or waiting_pair
+            dashboard_client.emit('dashboard_join')
+            eventlet.sleep(0.2)
+            dash_msgs = dashboard_client.get_received()
+            found = False
+            for msg in dash_msgs:
+                if msg.get('name') == 'dashboard_update':
+                    teams = msg.get('args', [{}])[0].get('teams', [])
+                    for t in teams:
+                        if t['team_name'] == f'RapidTeam{i}' and t['status'] in ('inactive', 'waiting_pair'):
+                            found = True
+            assert found, f"Dashboard did not see correct status for RapidTeam{i} after rapid join/leave"
+            player1.disconnect()
+            player2.disconnect()
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_simultaneous_disconnects(self, app_context, socket_client, second_client):
+        """Both players disconnect at nearly the same time, team becomes inactive, dashboard reflects this."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'SimulTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'SimulTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        # Both disconnect nearly simultaneously
+        second_client.disconnect()
+        socket_client.disconnect()
+        eventlet.sleep(0.5)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'SimulTeam' and t['status'] == 'inactive':
+                        found = True
+        assert found, "Dashboard did not see team as inactive after simultaneous disconnects"
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_rejoin_after_inactivity(self, app_context, socket_client, second_client):
+        """Player tries to join a team that is inactive before reactivation, should get error."""
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'InactiveTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'InactiveTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        # Both leave
+        second_client.emit('leave_team', {})
+        eventlet.sleep(0.2)
+        second_client.get_received()
+        socket_client.emit('leave_team', {})
+        eventlet.sleep(0.2)
+        socket_client.get_received()
+        # Try to join as a new client before reactivation
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('join_team', {'team_name': 'InactiveTeam'})
+        eventlet.sleep(0.2)
+        msgs = new_client.get_received()
+        found_error = any(msg.get('name') == 'error' for msg in msgs)
+        assert found_error, "Player did not get error when joining inactive team before reactivation"
+        new_client.disconnect()
+
+    @pytest.mark.integration
+    def test_dashboard_connects_midgame(self, app_context, socket_client, second_client):
+        """Dashboard connects after teams/players have joined/left, sees correct state."""
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'MidGameTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'MidGameTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        # Player 2 leaves
+        second_client.emit('leave_team', {})
+        eventlet.sleep(0.2)
+        second_client.get_received()
+        # Dashboard connects now
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'MidGameTeam' and t['status'] == 'waiting_pair':
+                        found = True
+        assert found, "Dashboard did not see correct state when connecting mid-game"
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_player_tries_to_join_full_team(self, app_context, socket_client, second_client):
+        """Third player tries to join a full team, gets error, dashboard unchanged."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'FullTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'FullTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        # Third player tries to join
+        third_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(third_client)
+        third_client.emit('join_team', {'team_name': 'FullTeam'})
+        eventlet.sleep(0.2)
+        msgs = third_client.get_received()
+        found_error = any(msg.get('name') == 'error' for msg in msgs)
+        assert found_error, "Third player did not get error when joining full team"
+        # Dashboard should still see team as active
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'FullTeam' and t['status'] == 'active':
+                        found = True
+        assert found, "Dashboard did not see team as active after full join attempt"
+        third_client.disconnect()
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_player_leaves_and_rejoins_quickly(self, app_context, socket_client, second_client):
+        """Player leaves and immediately rejoins, team goes from waiting_pair to active, dashboard reflects this."""
+        dashboard_client = SocketIOTestClient(app, server_socketio)
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'QuickRejoinTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'QuickRejoinTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        # Player 2 leaves and immediately rejoins
+        second_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        second_client.emit('join_team', {'team_name': 'QuickRejoinTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        dashboard_client.emit('dashboard_join')
+        eventlet.sleep(0.2)
+        dash_msgs = dashboard_client.get_received()
+        found = False
+        for msg in dash_msgs:
+            if msg.get('name') == 'dashboard_update':
+                teams = msg.get('args', [{}])[0].get('teams', [])
+                for t in teams:
+                    if t['team_name'] == 'QuickRejoinTeam' and t['status'] == 'active':
+                        found = True
+        assert found, "Dashboard did not see team as active after quick rejoin"
+        dashboard_client.disconnect()
+
+    @pytest.mark.integration
+    def test_team_name_collision_on_reactivation(self, app_context, socket_client, second_client):
+        """Player tries to reactivate a team name that is already active, gets error."""
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'CollisionTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        # Try to reactivate same team name while it's active
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('reactivate_team', {'team_name': 'CollisionTeam'})
+        eventlet.sleep(0.2)
+        msgs = new_client.get_received()
+        found_error = any(msg.get('name') == 'error' for msg in msgs)
+        assert found_error, "Player did not get error when reactivating already active team name"
+        new_client.disconnect()
