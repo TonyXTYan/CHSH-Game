@@ -402,8 +402,17 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
                         for combo in all_combos) if team_info else False
         
-        # Get players list
+        # Get players list and validate they're still connected
         players = team_info['players'] if team_info else []
+        
+        # Filter out disconnected players from the team's player list
+        connected_players = [p for p in players if p in state.connected_players]
+        
+        # If team_info exists but has disconnected players, log the discrepancy
+        if team_info and len(connected_players) != len(players):
+            logger.warning(f"Team {team_name} has {len(players)} players in state but only {len(connected_players)} connected")
+            # Use connected players for status determination
+            players = connected_players
 
         # Compute hashes for the team
         hash1, hash2 = compute_team_hashes(team_id)
@@ -421,12 +430,21 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         # Calculate statistics using cached function
         correlation_stats = _calculate_team_statistics(correlation_matrix_str)
         
+        # Determine actual player SIDs based on connected players and database
+        actual_player1_sid = None
+        actual_player2_sid = None
+        
+        if len(connected_players) >= 1:
+            actual_player1_sid = connected_players[0]
+        if len(connected_players) >= 2:
+            actual_player2_sid = connected_players[1]
+        
         team_data = {
             'team_name': team_name,
             'team_id': team_id,
             'is_active': is_active,
-            'player1_sid': player1_sid,
-            'player2_sid': player2_sid,
+            'player1_sid': actual_player1_sid,
+            'player2_sid': actual_player2_sid,
             'current_round_number': current_round,
             'history_hash1': hash1,
             'history_hash2': hash2,
@@ -437,15 +455,21 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
             'created_at': created_at
         }
         
-        # Add status field for active teams
-        if team_info and 'status' in team_info:
-            team_data['status'] = team_info['status']
-        elif is_active and len(players) < 2:
-            team_data['status'] = 'waiting_pair'
-        elif is_active:
-            team_data['status'] = 'active'
-        else:
+        # Determine status based on actual connected players and database state
+        if not is_active:
             team_data['status'] = 'inactive'
+        elif len(connected_players) == 0:
+            team_data['status'] = 'inactive'  # No connected players = inactive
+        elif len(connected_players) == 1:
+            team_data['status'] = 'waiting_pair'
+        elif len(connected_players) == 2:
+            if team_info and 'status' in team_info:
+                team_data['status'] = team_info['status']
+            else:
+                team_data['status'] = 'active'
+        else:
+            # This shouldn't happen (more than 2 players), but handle gracefully
+            team_data['status'] = 'active'
             
         return team_data
     except Exception as e:
@@ -472,6 +496,9 @@ def get_all_teams() -> List[Dict[str, Any]]:
         all_teams = Teams.query.all()
         teams_list = []
         
+        # Track teams that should be cleaned up from active state
+        teams_to_cleanup = []
+        
         for team in all_teams:
             # Get active team info from state if available
             team_info = state.active_teams.get(team.team_name)
@@ -479,6 +506,14 @@ def get_all_teams() -> List[Dict[str, Any]]:
             # Get players from either active state or database
             players = team_info['players'] if team_info else []
             current_round = team_info.get('current_round_number', 0) if team_info else 0
+            
+            # Check if team has disconnected players that need cleanup
+            if team_info:
+                connected_players = [p for p in players if p in state.connected_players]
+                if len(connected_players) == 0 and len(players) > 0:
+                    # Team has players in state but none are connected - mark for cleanup
+                    teams_to_cleanup.append(team.team_name)
+                    logger.warning(f"Team {team.team_name} has {len(players)} players in state but none connected - marking for cleanup")
             
             # Use cached helper function for heavy computation
             team_data = _process_single_team(
@@ -494,6 +529,35 @@ def get_all_teams() -> List[Dict[str, Any]]:
             if team_data:
                 teams_list.append(team_data)
         
+        # Clean up orphaned teams from active state
+        for team_name in teams_to_cleanup:
+            try:
+                team_info = state.active_teams.get(team_name)
+                if team_info:
+                    # Mark database team as inactive if needed
+                    db_team = Teams.query.filter_by(team_name=team_name, is_active=True).first()
+                    if db_team:
+                        db_team.is_active = False
+                        db_team.player1_session_id = None
+                        db_team.player2_session_id = None
+                        db.session.commit()
+                        logger.info(f"Marked database team {team_name} as inactive during cleanup")
+                    
+                    # Remove from active state
+                    if team_name in state.active_teams:
+                        del state.active_teams[team_name]
+                    if team_info['team_id'] in state.team_id_to_name:
+                        del state.team_id_to_name[team_info['team_id']]
+                    
+                    logger.info(f"Cleaned up orphaned team {team_name} from active state")
+            except Exception as cleanup_error:
+                logger.error(f"Error cleaning up team {team_name}: {cleanup_error}")
+        
+        # If we cleaned up teams, force cache refresh
+        if teams_to_cleanup:
+            clear_team_caches()
+            logger.debug(f"Forced cache refresh after cleaning up {len(teams_to_cleanup)} orphaned teams")
+        
         # Update cache and timestamp
         _cached_teams_result = teams_list
         _last_refresh_time = current_time
@@ -505,7 +569,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
 
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
-    # global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _cached_teams_result
     
     try:
         compute_team_hashes.cache_clear()
@@ -513,15 +577,23 @@ def clear_team_caches() -> None:
         _calculate_team_statistics.cache_clear()
         _process_single_team.cache_clear()
         
-        # Clear throttle cache to ensure fresh data is computed immediately
-        # _last_refresh_time = 0
-        # _cached_teams_result = None
+        # Force immediate cache refresh by clearing throttle cache
+        _last_refresh_time = 0
+        _cached_teams_result = None
+        logger.debug("Team caches cleared and refresh forced")
+        
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update() -> None:
     try:
         serialized_teams = get_all_teams()
+        
+        # Debug logging for team status during mass disconnections
+        active_teams = [t for t in serialized_teams if t.get('is_active', False)]
+        teams_with_players = [t for t in active_teams if t.get('player1_sid') or t.get('player2_sid')]
+        logger.debug(f"Dashboard update: {len(serialized_teams)} total teams, {len(active_teams)} active, {len(teams_with_players)} with connected players")
+        
         update_data = {
             'teams': serialized_teams,
             'connected_players_count': len(state.connected_players)

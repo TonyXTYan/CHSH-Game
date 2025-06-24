@@ -74,6 +74,7 @@ def handle_disconnect() -> None:
     sid = request.sid  # type: ignore
     logger.info(f'Client disconnected: {sid}')
     try:
+        # Dashboard client handling
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
             logger.info(f"Dashboard client disconnected: {sid}")
@@ -81,74 +82,109 @@ def handle_disconnect() -> None:
         # Remove from connected players list regardless of team status
         if sid in state.connected_players:
             state.connected_players.remove(sid)
+            # Force immediate cache invalidation for mass disconnections
+            clear_team_caches()
             emit_dashboard_full_update()  # Update dashboard with new player count
 
-        # Handle team-related disconnection
+        # Handle team-related disconnection with better error handling
         if sid in state.player_to_team:
             team_name = state.player_to_team[sid]
             team_info = state.active_teams.get(team_name)
+            
             if team_info:
-                # Using Session.get() instead of Query.get()
-                db_team = db.session.get(Teams, team_info['team_id'])
-                if db_team:
-                    # Check if the team was full before this player disconnected
-                    was_full_team = len(team_info['players']) == 2
+                try:
+                    # Begin database transaction
+                    db.session.begin()
+                    
+                    # Using Session.get() instead of Query.get()
+                    db_team = db.session.get(Teams, team_info['team_id'])
+                    if db_team:
+                        # Check if the team was full before this player disconnected
+                        was_full_team = len(team_info['players']) == 2
 
-                    # Remove player from team
-                    if sid in team_info['players']:
-                        team_info['players'].remove(sid)
-                        
-                        # If the team was full and now has one player, update status
-                        if was_full_team and len(team_info['players']) == 1:
-                            team_info['status'] = 'waiting_pair'
-                        
-                        # Update the database
-                        if db_team.player1_session_id == sid:
-                            db_team.player1_session_id = None
-                        elif db_team.player2_session_id == sid:
-                            db_team.player2_session_id = None
+                        # Remove player from team state immediately
+                        if sid in team_info['players']:
+                            team_info['players'].remove(sid)
+                            logger.debug(f"Removed player {sid} from team {team_name}, {len(team_info['players'])} players remaining")
                             
-                        # Notify remaining players
-                        remaining_players = team_info['players']
-                        if remaining_players:
-                            emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
-                            # Keep team active with remaining player
-                            emit('team_status_update', {
-                                'team_name': team_name,
-                                'status': 'waiting_pair',
-                                'members': remaining_players,
+                            # If the team was full and now has one player, update status
+                            if was_full_team and len(team_info['players']) == 1:
+                                team_info['status'] = 'waiting_pair'
+                            
+                            # Update the database
+                            if db_team.player1_session_id == sid:
+                                db_team.player1_session_id = None
+                            elif db_team.player2_session_id == sid:
+                                db_team.player2_session_id = None
+                                
+                            # Handle remaining players
+                            remaining_players = team_info['players']
+                            if remaining_players:
+                                # Keep team active with remaining player
+                                try:
+                                    emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
+                                    emit('team_status_update', {
+                                        'team_name': team_name,
+                                        'status': 'waiting_pair',
+                                        'members': remaining_players,
+                                        'game_started': state.game_started
+                                    }, to=team_name)  # type: ignore
+                                except Exception as emit_error:
+                                    logger.warning(f"Failed to emit to remaining players in team {team_name}: {emit_error}")
+                            else:
+                                # No players left, mark team as inactive
+                                existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+                                if existing_inactive:
+                                    db_team.team_name = f"{team_name}_{db_team.team_id}"
+                                db_team.is_active = False
+                                
+                                # Remove from active_teams state
+                                if team_name in state.active_teams:
+                                    del state.active_teams[team_name]
+                                if team_info['team_id'] in state.team_id_to_name:
+                                    del state.team_id_to_name[team_info['team_id']]
+                                
+                                logger.debug(f"Team {team_name} marked as inactive (no players remaining)")
+                            
+                            # Commit database changes
+                            db.session.commit()
+                            
+                            # Force immediate cache invalidation and dashboard update
+                            clear_team_caches()
+                            emit_dashboard_team_update()
+                            socketio.emit('teams_updated', {
+                                'teams': get_available_teams_list(),
                                 'game_started': state.game_started
-                            }, to=team_name)  # type: ignore
-                        else:
-                            # If no players left, mark team as inactive
-                            existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
-                            if existing_inactive:
-                                db_team.team_name = f"{team_name}_{db_team.team_id}"
-                            db_team.is_active = False
-                            # Remove from active_teams state only if it exists
-                            if team_name in state.active_teams:
-                                del state.active_teams[team_name]
-                            if team_info['team_id'] in state.team_id_to_name:
-                                del state.team_id_to_name[team_info['team_id']]
-                        
-                        db.session.commit()
-                        # Clear caches after team state change
-                        clear_team_caches()
-                        
-                        # Update all clients
-                        emit_dashboard_team_update()
-                        socketio.emit('teams_updated', {
-                            'teams': get_available_teams_list(),
-                            'game_started': state.game_started
-                        })  # type: ignore
-                        
-                        try:
-                            leave_room(team_name, sid=sid)
-                        except Exception as e:
-                            logger.error(f"Error leaving room: {str(e)}")
+                            })  # type: ignore
+                            
+                except Exception as db_error:
+                    logger.error(f"Database error during disconnect for player {sid}: {db_error}")
+                    db.session.rollback()
+                finally:
+                    # Always clean up player mapping and room membership
+                    try:
+                        leave_room(team_name, sid=sid)
+                    except Exception as room_error:
+                        logger.warning(f"Error leaving room {team_name} for player {sid}: {room_error}")
+                    
+                    if sid in state.player_to_team:
                         del state.player_to_team[sid]
+            else:
+                # Team info not found, clean up orphaned player mapping
+                logger.warning(f"Player {sid} was in team {team_name} but team info not found in state")
+                if sid in state.player_to_team:
+                    del state.player_to_team[sid]
+                
     except Exception as e:
-        logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
+        logger.error(f"Disconnect handler error for {sid}: {str(e)}", exc_info=True)
+        # Emergency cleanup - ensure player is removed from all mappings
+        try:
+            if sid in state.player_to_team:
+                del state.player_to_team[sid]
+            if sid in state.connected_players:
+                state.connected_players.remove(sid)
+        except Exception as cleanup_error:
+            logger.error(f"Emergency cleanup failed for {sid}: {cleanup_error}")
 
 @socketio.on('create_team')
 def on_create_team(data: Dict[str, Any]) -> None:
