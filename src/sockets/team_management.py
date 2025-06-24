@@ -98,19 +98,19 @@ def handle_disconnect() -> None:
                     if sid in team_info['players']:
                         team_info['players'].remove(sid)
                         
-                        # If the team was full and now has one player, update status
-                        if was_full_team and len(team_info['players']) == 1:
-                            team_info['status'] = 'waiting_pair'
-                        
                         # Update the database
                         if db_team.player1_session_id == sid:
                             db_team.player1_session_id = None
                         elif db_team.player2_session_id == sid:
                             db_team.player2_session_id = None
                             
-                        # Notify remaining players
+                        # Notify remaining players and update team status
                         remaining_players = team_info['players']
                         if remaining_players:
+                            # If the team was full and now has one player, update status
+                            if was_full_team and len(team_info['players']) == 1:
+                                team_info['status'] = 'waiting_pair'
+                            
                             emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
                             # Keep team active with remaining player
                             emit('team_status_update', {
@@ -135,7 +135,7 @@ def handle_disconnect() -> None:
                         # Clear caches after team state change
                         clear_team_caches()
                         
-                        # Update all clients
+                        # Update all clients - this should happen regardless of whether team becomes inactive
                         emit_dashboard_team_update()
                         socketio.emit('teams_updated', {
                             'teams': get_available_teams_list(),

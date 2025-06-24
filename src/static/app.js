@@ -7,6 +7,7 @@ let gamePaused = false;
 let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
+let currentTeamStatus = null; // Track current team status
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -65,6 +66,7 @@ function resetToInitialView() {
     isCreator = false;
     currentRound = null;
     teamId = null;
+    currentTeamStatus = null; // Reset team status
     localStorage.removeItem('quizSessionData');
     gameHeader.textContent = 'CHSH Game';
     updateGameState(); // This will show team creation/joining
@@ -96,6 +98,9 @@ function updateGameState(newGameStarted = null, isReset = false) {
         return;
     }
     
+    // Check if team is incomplete (waiting for pair)
+    const teamIncomplete = currentTeamStatus === 'waiting_pair';
+    
     if (gameStarted && currentRound) {
         // Show question section
         teamSection.style.display = 'none';
@@ -106,6 +111,12 @@ function updateGameState(newGameStarted = null, isReset = false) {
         if (currentRound.alreadyAnswered) {
             trueBtn.disabled = true;
             falseBtn.disabled = true;
+            waitingMessage.classList.add('visible');
+        } else if (teamIncomplete) {
+            // Team is incomplete - disable input
+            trueBtn.disabled = true;
+            falseBtn.disabled = true;
+            waitingMessage.textContent = "Waiting for teammate to reconnect...";
             waitingMessage.classList.add('visible');
         } else {
             trueBtn.disabled = gamePaused;
@@ -123,9 +134,18 @@ function updateGameState(newGameStarted = null, isReset = false) {
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
         questionItem.textContent = "...";
-        trueBtn.disabled = true;
-        falseBtn.disabled = true;
-        waitingMessage.classList.remove('visible');
+        
+        if (teamIncomplete) {
+            // Team is incomplete - disable input and show appropriate message
+            trueBtn.disabled = true;
+            falseBtn.disabled = true;
+            waitingMessage.textContent = "Waiting for teammate to reconnect...";
+            waitingMessage.classList.add('visible');
+        } else {
+            trueBtn.disabled = true;
+            falseBtn.disabled = true;
+            waitingMessage.classList.remove('visible');
+        }
     } else {
         // In team but game not started
         teamSection.style.display = 'block';
@@ -335,6 +355,7 @@ const callbacks = {
         teamId = data.team_id;
         isCreator = true;
         gameStarted = data.game_started;
+        currentTeamStatus = 'created'; // Set initial team status
         
         // Hide both create and join team sections when creating a new team
         document.getElementById('joinTeamSection').style.display = 'none';
@@ -364,6 +385,7 @@ const callbacks = {
         
         // If the team_status is part of this event, we can use it
         if (data.team_status) {
+            currentTeamStatus = data.team_status; // Track team status
             updateTeamStatus(data.team_status);
             if (data.team_status === 'full' && gameStarted) {
                  // If game started and team is full, expect new_question soon
@@ -385,6 +407,7 @@ const callbacks = {
         gameStarted = data.game_started; // Update global gameStarted state
 
         if (currentTeam === data.team_name) { // Ensure this update is for the current player's team
+            currentTeamStatus = data.status; // Update tracked team status
             updateTeamStatus(data.status); // Update the "Team Paired Up!" or "Waiting for Player..." header
 
             if (data.status === 'full') {
@@ -425,6 +448,7 @@ const callbacks = {
         isCreator = false;
         currentRound = null;
         lastClickedButton = null;
+        currentTeamStatus = null; // Reset team status
         localStorage.removeItem('quizSessionData');
         // Reset header
         gameHeader.textContent = 'CHSH Game';
@@ -436,6 +460,7 @@ const callbacks = {
         currentTeam = null;
         isCreator = false;
         currentRound = null;
+        currentTeamStatus = null; // Reset team status
         localStorage.removeItem('quizSessionData');
         // Reset header
         gameHeader.textContent = 'CHSH Game';
