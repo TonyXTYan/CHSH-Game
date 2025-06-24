@@ -2,12 +2,12 @@
 
 ## Issues Identified and Fixed
 
-### Issue 1: Dashboard Not Updating Real-time When Player Disconnects
-**Problem**: When one player disconnects (e.g., by refreshing their screen), the dashboard doesn't update automatically - requires manual refresh to see team status change from "Active" to "Waiting Pair".
+### Issue 1: Dashboard Not Updating When Player Disconnects
+**Problem**: When one player disconnects (e.g., by refreshing their screen), the dashboard doesn't update to show team status change from "Active" to "Waiting Pair", even after the normal refresh delay.
 
 **Root Cause Analysis**: 
 1. **In-memory State Inconsistency**: The `team_info['status']` was only conditionally updated in the disconnect handler, creating inconsistency between what clients received and what the dashboard queried
-2. **Caching/Throttling Issue**: The dashboard's `get_all_teams()` function has throttling logic that was preventing real-time updates. When `clear_team_caches()` was called, it cleared individual LRU caches but not the throttle cache, so stale data was returned
+2. **Dashboard Query Issue**: Even when the dashboard's throttle period expired (every 1 second), it was reading incorrect status from the in-memory state
 
 **Fixes Applied**:
 
@@ -28,21 +28,7 @@
    - Moved dashboard updates to happen after all state changes are committed
    - Fixed both `handle_disconnect` and `on_leave_team` handlers
 
-#### Dashboard Caching Fix (`src/sockets/dashboard.py`):
-
-3. **Fixed Throttle Cache Clearing**:
-   ```python
-   def clear_team_caches() -> None:
-       # Clear all LRU caches
-       compute_team_hashes.cache_clear()
-       compute_correlation_matrix.cache_clear()
-       _calculate_team_statistics.cache_clear()
-       _process_single_team.cache_clear()
-       
-       # Clear throttle cache to ensure fresh data for real-time updates
-       _last_refresh_time = 0
-       _cached_teams_result = None
-   ```
+**Note**: Dashboard updates respect the existing `REFRESH_DELAY = 1` second for performance. The fix ensures that when the dashboard queries for fresh data (every 1 second), it gets the correct team status from the in-memory state.
 
 ### Issue 2: Still Connected Player Should Have Input Disabled Until Team Reformed
 **Problem**: When one player disconnects, the remaining player can still interact with the game (answer questions) even though their team is incomplete.
@@ -94,23 +80,23 @@
    - Create a team with 2 players
    - Start the game
    - One player refreshes their browser
-   - **Expected**: Dashboard updates immediately to show "Waiting Pair", remaining player cannot submit answers
+   - **Expected**: Within 1 second, dashboard shows team as "Waiting Pair", remaining player cannot submit answers
 
 2. **Scenario 2: Player Disconnects During Round**:
    - Create a team with 2 players, start game
    - Begin a round (both players get questions)
    - One player disconnects
-   - **Expected**: Remaining player sees "Waiting for teammate to reconnect...", input disabled, dashboard updates immediately
+   - **Expected**: Remaining player sees "Waiting for teammate to reconnect...", input disabled, dashboard updates within 1 second
 
 3. **Scenario 3: Player Reconnects**:
    - Following scenario 1 or 2
    - Disconnected player creates/joins teams again
    - Another player joins to reform the team
-   - **Expected**: Both players can now participate normally, dashboard shows "Active"
+   - **Expected**: Both players can now participate normally, dashboard shows "Active" within 1 second
 
-4. **Scenario 4: Dashboard Real-time Updates**:
+4. **Scenario 4: Dashboard Refresh Cycle**:
    - Monitor dashboard while players disconnect/reconnect
-   - **Expected**: Team status updates immediately from "Active" to "Waiting Pair" to "Active" without manual refresh
+   - **Expected**: Team status updates from "Active" to "Waiting Pair" to "Active" within the normal 1-second refresh cycle
 
 ## Files Modified
 
@@ -124,9 +110,6 @@
    - Fixed team status update logic in disconnect and leave handlers
    - Ensured proper update ordering
 
-3. `src/sockets/dashboard.py`:
-   - Fixed cache clearing to include throttle cache for real-time updates
-
 ## Testing
 
-The fixes maintain backward compatibility and don't break existing functionality. All server-side validation was already in place, so the changes primarily enhance the client-side user experience and fix the real-time dashboard update issue that was caused by caching.
+The fixes maintain backward compatibility and don't break existing functionality. All server-side validation was already in place. The key fix was ensuring the in-memory team status is always consistent, so that when the dashboard refreshes every 1 second, it reads the correct status. The client-side enhancements provide better user experience with proper input control and messaging.
