@@ -16,11 +16,11 @@ WORKDIR /home/ubuntu
 
 # Do NOT copy the application code
 
-# Install gunicorn and eventlet
-RUN pip install gunicorn eventlet
+# # Install gunicorn and eventlet
+# RUN pip install gunicorn eventlet
 
-# Expose the port the app runs on
-EXPOSE 8080
+# # Expose the port the app runs on
+# EXPOSE 8080
 
-# Set the command to run the application
-CMD ["gunicorn", "wsgi:app", "--worker-class", "eventlet"]
+# # Set the command to run the application
+# CMD ["gunicorn", "wsgi:app", "--worker-class", "eventlet"]
