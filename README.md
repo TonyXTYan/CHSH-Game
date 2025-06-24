@@ -45,6 +45,10 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
           i.e. highest score of "CHSH Value" wins.
             - Winning team is awarded the badge 🏆.
 
+<details>
+<summary>Winning Strategy</summary>
+TOOD
+</details>
 
 ## The Physics
 TODO 
@@ -81,6 +85,7 @@ are the relavent angles of the measurement.
 
 Some algebra excercises can show the expectation value of 
 $$
+E(\theta_A, \theta_B) = 
 \mathcal P(\uparrow_{\theta_A} \uparrow_{\theta_B}) + 
 \mathcal P(\downarrow_{\theta_A} \downarrow_{\theta_B}) -
 \mathcal P(\uparrow_{\theta_A} \downarrow_{\theta_B}) -

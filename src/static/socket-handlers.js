@@ -134,18 +134,6 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onLeftTeam(data);
     });
 
-    socket.on('player_left', (data) => {
-        callbacks.showStatus(data.message, 'warning');
-    });
-
-    socket.on('team_disbanded', (data) => {
-        callbacks.onTeamDisbanded(data);
-    });
-
-    socket.on('left_team_success', (data) => {
-        callbacks.onLeftTeam(data);
-    });
-
     socket.on('game_reset', () => {
         // Reset client-side state
         callbacks.showStatus('Game has been reset. Ready to start new game.', 'info');
@@ -187,28 +175,6 @@ function initializeSocketHandlers(socket, callbacks) {
             if (callbacks.showStatus) {
                 callbacks.showStatus(data.message || 'Failed to reactivate team', 'error');
             }
-        }
-    });
-    
-    socket.on('game_state_changed', (data) => {
-        // Update game state only if callback exists
-        if (typeof callbacks.updateGameState === 'function') {
-            callbacks.updateGameState(data.game_started);
-        }
-        // Show appropriate status message based on game state
-        if (data.game_started) {
-            if (data.paused) {
-                callbacks.showStatus('Game is paused', 'warning');
-            } else {
-                callbacks.showStatus('Game has started!', 'info');
-            }
-        } else {
-            callbacks.showStatus('Game has been stopped.', 'info');
-        }
-        
-        // Update answer buttons state
-        if (typeof callbacks.setAnswerButtonsEnabled === 'function') {
-            callbacks.setAnswerButtonsEnabled(data.game_started && !data.paused);
         }
     });
 }

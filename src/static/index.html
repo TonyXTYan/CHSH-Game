@@ -69,6 +69,53 @@
             </div>
         </div>
         
+        <!-- Hint Sections -->
+        <div class="hint-sections" style="margin-top: 30px;">
+            <!-- Game Rules Section -->
+            <div class="collapsible-section">
+                <div class="collapsible-header">
+                    <h3 class="toggle-target">Game rules</h3>
+                    <span class="toggle-indicator">▼</span>
+                </div>
+                <div class="hint-content" style="display: none; border: 2px solid #9900ff; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Discuss your strategy before the game starts.</li>
+                        <li>Do <strong>not</strong> communicate during the game.</li>
+                        <li>Focus on <strong>consistency</strong> rather than <strong>randomness</strong>.</li>
+                        <li>Watch the dashboard to see your teams' progress.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Winning Conditions Section -->
+            <div class="collapsible-section" style="margin-top: 15px;">
+                <div class="collapsible-header">
+                    <h3 class="toggle-target">Winning conditions</h3>
+                    <span class="toggle-indicator">▼</span>
+                </div>
+                <div class="hint-content" style="display: none; border: 2px solid #9900ff; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
+                    <div style="margin-bottom: 15px;">
+                        <strong>Best balanced ⏐⟨Tr⟩⏐ 🎯:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When you and your partner got asked the same question (<strong>A/B/X/Y</strong>) you both answer the same and answer <strong>True/False</strong> half the time.</li>
+                            <ul style="margin: 5px 0;">
+                                <li>Trace/4 = ⟨Tr⟩ = ±1 if you and your partner answer the same, and 0 if you answer differently.</li>
+                                <li>Balance = 1 if players answer the same for the same question, and 0 if they answer differently.</li>
+                            </ul>
+                            <li>For any other question pair, see "Best CHSH 🏆" below.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>Best CHSH 🏆:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When one of you is asked <strong>B</strong> and the other is asked <strong>Y</strong>, you have to answer differently, i.e. one <strong></strong>True</strong> and the other <strong>False</strong>.</li>
+                            <li>For any other question pair, you have to answer the same.</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
         <div class="session-info" id="sessionInfo">Session ID: <span class="session-id"></span></div>
     </div>
 

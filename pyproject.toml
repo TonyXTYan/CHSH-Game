@@ -1,5 +1,5 @@
 [tool.pyright]
-pythonVersion = "3.8"
+pythonVersion = "3.11"
 typeCheckingMode = "basic"
 reportMissingImports = true
 reportMissingTypeStubs = false
@@ -95,7 +95,7 @@ authors = [
     {name = "Tony Yan", email = "tony@example.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.11"
 dependencies = [
     "flask>=2.0.0",
     "flask-socketio>=5.0.0",
