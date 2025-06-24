@@ -98,19 +98,18 @@ def handle_disconnect() -> None:
                     if sid in team_info['players']:
                         team_info['players'].remove(sid)
                         
-                        # If the team was full and now has one player, update status
-                        if was_full_team and len(team_info['players']) == 1:
-                            team_info['status'] = 'waiting_pair'
-                        
                         # Update the database
                         if db_team.player1_session_id == sid:
                             db_team.player1_session_id = None
                         elif db_team.player2_session_id == sid:
                             db_team.player2_session_id = None
                             
-                        # Notify remaining players
+                        # Notify remaining players and update team status
                         remaining_players = team_info['players']
                         if remaining_players:
+                            # Always update status to waiting_pair when there's only one player
+                            team_info['status'] = 'waiting_pair'
+                            
                             emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
                             # Keep team active with remaining player
                             emit('team_status_update', {
@@ -135,18 +134,20 @@ def handle_disconnect() -> None:
                         # Clear caches after team state change
                         clear_team_caches()
                         
-                        # Update all clients
-                        emit_dashboard_team_update()
-                        socketio.emit('teams_updated', {
-                            'teams': get_available_teams_list(),
-                            'game_started': state.game_started
-                        })  # type: ignore
-                        
                         try:
                             leave_room(team_name, sid=sid)
                         except Exception as e:
                             logger.error(f"Error leaving room: {str(e)}")
                         del state.player_to_team[sid]
+                        
+                        # Update all clients - this should happen regardless of whether team becomes inactive
+                        # Move dashboard update to end to ensure all state changes are committed
+                        # Force refresh for critical team state changes like disconnections
+                        emit_dashboard_team_update(force_refresh=True)
+                        socketio.emit('teams_updated', {
+                            'teams': get_available_teams_list(),
+                            'game_started': state.game_started
+                        })  # type: ignore
     except Exception as e:
         logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
@@ -268,7 +269,8 @@ def on_join_team(data: Dict[str, Any]) -> None:
         })  # type: ignore
         
         # Update dashboard
-        emit_dashboard_team_update()
+        # Force refresh when team becomes active (critical state change)
+        emit_dashboard_team_update(force_refresh=team_is_now_full)
         
         # If the game has already started and the team is now full, start a new round for them
         if state.game_started and team_is_now_full:
@@ -375,6 +377,7 @@ def on_leave_team(data: Dict[str, Any]) -> None:
                     db_team.player2_session_id = None
 
             if len(team_info['players']) > 0:
+                # Always set status to waiting_pair when there's only one player left
                 team_info['status'] = 'waiting_pair'
                 emit('player_left', {'message': 'A team member has left.'}, to=team_name)  # type: ignore
                 emit('team_status_update', {
@@ -419,7 +422,8 @@ def on_leave_team(data: Dict[str, Any]) -> None:
                 'teams': get_available_teams_list(),
                 'game_started': state.game_started
             })  # type: ignore
-            emit_dashboard_team_update()
+            # Force refresh for critical team state changes like leaving
+            emit_dashboard_team_update(force_refresh=True)
     except Exception as e:
         logger.error(f"Error in on_leave_team: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while leaving the team'})  # type: ignore
