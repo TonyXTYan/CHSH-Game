@@ -73,20 +73,40 @@ def flask_server(pytestconfig, request):
             session = request.session
             if hasattr(session, 'items'):
                 for item in session.items:
+                    # Check for no_server marker first - if found, skip server startup
+                    if hasattr(item, 'iter_markers'):
+                        for marker in item.iter_markers('no_server'):
+                            print("Found tests with no_server marker, skipping Flask server startup")
+                            yield None
+                            return
+                    
                     # Check the file path
                     file_path = str(item.fspath) if hasattr(item, 'fspath') else str(item.path)
                     if ('integration' in file_path or 
                         'test_download_endpoint.py' in file_path or 
                         'test_player_interaction.py' in file_path or
                         'test_server_functionality.py' in file_path):
-                        integration_tests_present = True
-                        break
-                    
-                    # Also check for integration markers
-                    if hasattr(item, 'iter_markers'):
-                        for marker in item.iter_markers('integration'):
+                        # But also check if these files have no_server marker
+                        has_no_server = False
+                        if hasattr(item, 'iter_markers'):
+                            for marker in item.iter_markers('no_server'):
+                                has_no_server = True
+                                break
+                        if not has_no_server:
                             integration_tests_present = True
                             break
+                    
+                    # Also check for integration markers (but not if no_server is present)
+                    if hasattr(item, 'iter_markers'):
+                        for marker in item.iter_markers('integration'):
+                            # Check if same item also has no_server marker
+                            has_no_server = False
+                            for no_server_marker in item.iter_markers('no_server'):
+                                has_no_server = True
+                                break
+                            if not has_no_server:
+                                integration_tests_present = True
+                                break
                     if integration_tests_present:
                         break
         except Exception as e:
