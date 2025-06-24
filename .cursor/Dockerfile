@@ -7,9 +7,9 @@ USER ubuntu
 WORKDIR /home/ubuntu
 
 # Copy only requirements and install dependencies
-COPY requirements.txt requirements.txt
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir -r requirements.txt
+# COPY requirements.txt requirements.txt
+# RUN pip install --no-cache-dir --upgrade pip \
+#     && pip install --no-cache-dir -r requirements.txt
 
 # Install any additional dev tools you need here
 # RUN pip install <dev-tools>
