@@ -1,5 +1,5 @@
 {
   "snapshot": "snapshot-20250624-35def779-33e8-487d-b99d-9949e95c86f7",
-  "terminals": [
-  ]
+  "terminals": [],
+  "agentCanUpdateSnapshot": false
 }
