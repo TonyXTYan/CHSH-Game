@@ -423,7 +423,9 @@ socket.on("dashboard_update", (data) => {
     }
     
     updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
-    updateMetrics(data.active_teams, data.total_answers_count, data.connected_players_count);
+    
+    // Update metrics using dedicated fields from backend (not dependent on teams streaming)
+    updateMetrics(data.active_teams_count, data.ready_players_count, data.total_answers_count, data.connected_players_count);
     
     // Sync streaming state with server
     if (data.game_state && data.game_state.streaming_enabled !== undefined) {
@@ -484,22 +486,24 @@ socket.on("team_status_changed_for_dashboard", (data) => {
         }
     }
     
-    updateMetrics(data.teams, currentAnswersCount, data.connected_players_count);
+    // For team status changes, calculate metrics from teams data since this only goes to streaming clients
+    const activeTeams = data.teams ? data.teams.filter(team => team.is_active) : [];
+    const activeTeamsCount = activeTeams.length;
+    const readyPlayersCount = activeTeams.reduce((count, team) => {
+        return count + (team.player1_sid ? 1 : 0) + (team.player2_sid ? 1 : 0);
+    }, 0);
+    
+    updateMetrics(activeTeamsCount, readyPlayersCount, currentAnswersCount, data.connected_players_count);
 });
 
-function updateMetrics(teams, totalAnswers, connectedCount) {
-    if (teams) {
-        // Count active teams
-        const activeTeams = teams.filter(team => team.is_active);
-        activeTeamsCountEl.textContent = activeTeams.length;
-        
-        // Count ready players (only from active teams)
-        let readyPlayerCount = 0;
-        activeTeams.forEach(team => {
-            if(team.player1_sid) readyPlayerCount++;
-            if(team.player2_sid) readyPlayerCount++;
-        });
-        readyPlayersCountEl.textContent = readyPlayerCount;
+function updateMetrics(activeTeamsCount, readyPlayersCount, totalAnswers, connectedCount) {
+    // Update team metrics if provided
+    if (typeof activeTeamsCount === 'number') {
+        activeTeamsCountEl.textContent = activeTeamsCount;
+    }
+    
+    if (typeof readyPlayersCount === 'number') {
+        readyPlayersCountEl.textContent = readyPlayersCount;
     }
     
     // Update connected players count

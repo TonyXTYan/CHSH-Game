@@ -469,6 +469,9 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
             team_data['status'] = 'waiting_pair'
         elif is_active:
             team_data['status'] = 'active'
+        elif len(players) == 1:
+            # Team with one player should be waiting_pair even if not marked as active in DB
+            team_data['status'] = 'waiting_pair'
         else:
             team_data['status'] = 'inactive'
             
@@ -571,9 +574,23 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
         with app.app_context():
             total_answers = Answers.query.count()
 
+        # Always get teams data for metrics calculation
+        all_teams_for_metrics = get_all_teams()
+        
+        # Calculate metrics that should always be sent
+        # Count teams that are active or waiting for a pair as "active" for metrics
+        active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+        active_teams_count = len(active_teams)
+        ready_players_count = sum(
+            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+            for team in active_teams
+        )
+
         base_update_data = {
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
+            'active_teams_count': active_teams_count,  # Always send metrics
+            'ready_players_count': ready_players_count,  # Always send metrics
             'game_state': {
                 'started': state.game_started,
                 'paused': state.game_paused,
@@ -585,20 +602,16 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
             # For specific client, include teams only if they have streaming enabled
             update_data = base_update_data.copy()
             if dashboard_teams_streaming.get(client_sid, False):
-                update_data['teams'] = get_all_teams()
+                update_data['teams'] = all_teams_for_metrics
             else:
                 update_data['teams'] = []  # Send empty array if streaming disabled
             socketio.emit('dashboard_update', update_data, to=client_sid)  # type: ignore
         else:
             # For all clients, send appropriate data based on their preferences
-            all_teams = None  # Lazy load teams data only if needed
-            
             for dash_sid in state.dashboard_clients:
                 update_data = base_update_data.copy()
                 if dashboard_teams_streaming.get(dash_sid, False):
-                    if all_teams is None:
-                        all_teams = get_all_teams()
-                    update_data['teams'] = all_teams
+                    update_data['teams'] = all_teams_for_metrics
                 else:
                     update_data['teams'] = []  # Send empty array if streaming disabled
                 socketio.emit('dashboard_update', update_data, to=dash_sid)  # type: ignore
@@ -620,13 +633,28 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
         # Whenever a dashboard client joins, emit updated status to all dashboards
         emit_dashboard_full_update()
         
-        # Prepare update data for this specific client (no teams since streaming is off by default)
+        # Prepare update data for this specific client, respecting their streaming preference
         with app.app_context():
             total_answers = Answers.query.count()
+            
+        # Always get teams data for metrics calculation
+        all_teams_for_metrics = get_all_teams()
+        
+        # Calculate metrics that should always be sent
+        # Count teams that are active or waiting for a pair as "active" for metrics
+        active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+        active_teams_count = len(active_teams)
+        ready_players_count = sum(
+            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+            for team in active_teams
+        )
+        
         update_data = {
-            'teams': [],  # Empty since teams streaming is off by default
+            'teams': all_teams_for_metrics if dashboard_teams_streaming.get(sid, False) else [],  # Respect client's streaming preference
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
+            'active_teams_count': active_teams_count,  # Always send metrics
+            'ready_players_count': ready_players_count,  # Always send metrics
             'game_state': {
                 'started': state.game_started,
                 'streaming_enabled': state.answer_stream_enabled
