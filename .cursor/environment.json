@@ -1,0 +1,6 @@
+{
+  "snapshot": "snapshot-20250625-4f6abac6-f0cb-4841-8653-3291218d89df",
+  "start": "pip install -r requirements.txt",
+  "terminals": [],
+  "agentCanUpdateSnapshot": false
+}
