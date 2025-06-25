@@ -627,6 +627,16 @@ class TestPlayerInteraction:
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
         dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
+        dashboard_client.get_received()
+        
+        # Request teams update after enabling streaming
+        dashboard_client.emit('request_teams_update')
+        eventlet.sleep(0.1)
+        dashboard_client.get_received()
 
         # Player 1 creates team
         self.verify_connection(socket_client)
@@ -647,7 +657,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'DisconnectTeam' and t['status'] == 'active':
@@ -660,7 +670,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'team_status_changed_for_dashboard':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'DisconnectTeam' and t['status'] == 'waiting_pair':
@@ -673,7 +683,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'team_status_changed_for_dashboard':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'DisconnectTeam' and t['status'] == 'inactive':
@@ -687,6 +697,16 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
+        dashboard_client.get_received()
+        
+        # Request teams update after enabling streaming
+        dashboard_client.emit('request_teams_update')
+        eventlet.sleep(0.1)
         dashboard_client.get_received()
 
         # Player 1 creates team
@@ -738,6 +758,11 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
         dashboard_client.get_received()
 
         # Player 1 creates team
@@ -806,6 +831,11 @@ class TestPlayerInteraction:
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
         dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
+        dashboard_client.get_received()
 
         # Player 1 creates team
         self.verify_connection(socket_client)
@@ -860,6 +890,11 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
         dashboard_client.get_received()
 
         # Team 1
@@ -928,6 +963,11 @@ class TestPlayerInteraction:
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
         dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
+        dashboard_client.get_received()
         for i in range(3):
             player1 = SocketIOTestClient(app, server_socketio)
             player2 = SocketIOTestClient(app, server_socketio)
@@ -975,6 +1015,11 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
         dashboard_client.get_received()
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'SimulTeam'})
@@ -1048,6 +1093,11 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
@@ -1065,6 +1115,11 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
         dashboard_client.get_received()
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'FullTeam'})
@@ -1103,6 +1158,11 @@ class TestPlayerInteraction:
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
         eventlet.sleep(0.2)
+        dashboard_client.get_received()
+        
+        # Enable teams streaming
+        dashboard_client.emit('set_teams_streaming', {'enabled': True})
+        eventlet.sleep(0.1)
         dashboard_client.get_received()
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'QuickRejoinTeam'})

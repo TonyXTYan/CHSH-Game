@@ -377,21 +377,31 @@ def test_on_keep_alive(mock_request, mock_state):
 def test_on_disconnect(mock_request, mock_state):
     """Test disconnect handler"""
     mock_state.dashboard_clients = {'test_dashboard_sid'}
-    from src.sockets.dashboard import dashboard_last_activity
+    from src.sockets.dashboard import dashboard_last_activity, dashboard_teams_streaming
     dashboard_last_activity['test_dashboard_sid'] = 12345
+    dashboard_teams_streaming['test_dashboard_sid'] = True
     
     on_disconnect()
     
     # Verify client was removed
     assert 'test_dashboard_sid' not in mock_state.dashboard_clients
     assert 'test_dashboard_sid' not in dashboard_last_activity
+    assert 'test_dashboard_sid' not in dashboard_teams_streaming
 
 def test_emit_dashboard_team_update(mock_state, mock_socketio):
     """Test dashboard team update emission"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # Test with no clients having teams streaming enabled - should not emit
+    emit_dashboard_team_update()
+    mock_socketio.emit.assert_not_called()
+    
+    # Test with client having teams streaming enabled
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = [{'team_name': 'team1'}]
         
-        from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
         
         mock_socketio.emit.assert_called_with('team_status_changed_for_dashboard', {
@@ -431,6 +441,7 @@ def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio
             mock_callback.assert_called_once()
             callback_data = mock_callback.call_args[0][0]
             assert 'teams' in callback_data
+            assert callback_data['teams'] == []  # Empty since teams streaming is off by default
             assert callback_data['total_answers_count'] == 10
             assert callback_data['connected_players_count'] == 2
             assert callback_data['game_state']['started'] == False
@@ -542,13 +553,30 @@ def test_get_all_teams(mock_state, mock_db_session):
 
 def test_emit_dashboard_full_update(mock_state, mock_socketio):
     """Test full dashboard update emission"""
+    from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
+    
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = [{'team_name': 'team1'}]
         
         with patch('src.sockets.dashboard.Answers') as mock_answers:
             mock_answers.query.count.return_value = 10
             
-            # Test update for specific client
+            # Test update for specific client without teams streaming
+            emit_dashboard_full_update('specific_client')
+            mock_socketio.emit.assert_called_with('dashboard_update', {
+                'teams': [],  # Empty since teams streaming is disabled by default
+                'total_answers_count': 10,
+                'connected_players_count': 2,
+                'game_state': {
+                    'started': False,
+                    'paused': False,
+                    'streaming_enabled': True
+                }
+            }, to='specific_client')
+            
+            # Test update for specific client with teams streaming enabled
+            dashboard_teams_streaming['specific_client'] = True
+            mock_socketio.emit.reset_mock()
             emit_dashboard_full_update('specific_client')
             mock_socketio.emit.assert_called_with('dashboard_update', {
                 'teams': [{'team_name': 'team1'}],
@@ -561,11 +589,12 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
                 }
             }, to='specific_client')
             
-            # Test update for all dashboard clients
+            # Test update for all dashboard clients (with teams streaming disabled by default)
+            dashboard_teams_streaming.clear()  # Reset to default state
             mock_socketio.emit.reset_mock()
             emit_dashboard_full_update()
             mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [{'team_name': 'team1'}],
+                'teams': [],  # Empty since teams streaming is disabled by default
                 'total_answers_count': 10,
                 'connected_players_count': 2,
                 'game_state': {
@@ -662,6 +691,27 @@ def test_clear_team_caches_runs():
     from src.sockets.dashboard import clear_team_caches
     # Should not raise
     clear_team_caches()
+
+def test_teams_streaming_socket_events(mock_request, mock_state, mock_socketio):
+    """Test teams streaming socket event handlers"""
+    from src.sockets.dashboard import on_set_teams_streaming, on_request_teams_update, dashboard_teams_streaming
+    
+    # Test set_teams_streaming
+    on_set_teams_streaming({'enabled': True})
+    assert dashboard_teams_streaming['test_dashboard_sid'] == True
+    
+    on_set_teams_streaming({'enabled': False})
+    assert dashboard_teams_streaming['test_dashboard_sid'] == False
+    
+    # Test request_teams_update with streaming disabled - should not emit
+    on_request_teams_update()
+    mock_socketio.emit.assert_not_called()
+    
+    # Test request_teams_update with streaming enabled
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    with patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+        on_request_teams_update()
+        mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
 
 def test_on_dashboard_join_error_handling(mock_request, mock_state, mock_emit):
     from src.sockets.dashboard import on_dashboard_join
