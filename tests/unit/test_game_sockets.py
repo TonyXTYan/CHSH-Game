@@ -185,7 +185,7 @@ def test_dashboard_notifications_on_answer(mock_request_context):
          patch('src.sockets.game.socketio.emit') as mock_socketio_emit, \
          patch('src.sockets.game.db.session') as mock_session, \
          patch('src.sockets.game.PairQuestionRounds') as mock_rounds, \
-         patch('src.sockets.game.emit_dashboard_team_update') as mock_dashboard_update:
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update:
         
         # Set up valid team state
         test_team = 'Test Team'
