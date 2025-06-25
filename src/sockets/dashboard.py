@@ -610,10 +610,11 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
     try:
         sid = request.sid  # type: ignore
         
-        # Add to dashboard clients with teams streaming disabled by default
+        # Add to dashboard clients with teams streaming disabled by default (only for new clients)
         state.dashboard_clients.add(sid)
         dashboard_last_activity[sid] = time()
-        dashboard_teams_streaming[sid] = False  # Teams streaming off by default
+        if sid not in dashboard_teams_streaming:
+            dashboard_teams_streaming[sid] = False  # Teams streaming off by default only for new clients
         logger.info(f"Dashboard client connected: {sid}")
         
         # Whenever a dashboard client joins, emit updated status to all dashboards

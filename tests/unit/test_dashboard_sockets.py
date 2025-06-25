@@ -412,8 +412,8 @@ def test_emit_dashboard_team_update(mock_state, mock_socketio):
 def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
     """Test error handling in socket event handlers"""
     # Test error in dashboard_join
-    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-        mock_get_teams.side_effect = Exception("Database error")
+    with patch('src.sockets.dashboard.Answers') as mock_answers:
+        mock_answers.query.count.side_effect = Exception("Database error")
         on_dashboard_join()
         mock_emit.assert_called_with('error', {'message': 'An error occurred while joining the dashboard'})
     

@@ -743,7 +743,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'ReactivateTeam' and t['status'] == 'waiting_pair':
@@ -784,7 +784,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'DashStatusTeam' and t['status'] == 'active':
@@ -797,7 +797,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'team_status_changed_for_dashboard':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'DashStatusTeam' and t['status'] == 'waiting_pair':
@@ -815,7 +815,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'DashStatusTeam' and t['status'] == 'active':
@@ -856,7 +856,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'team_status_changed_for_dashboard':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'ReconnectSIDTeam' and t['status'] == 'waiting_pair':
@@ -875,7 +875,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'ReconnectSIDTeam' and t['status'] == 'active':
@@ -926,7 +926,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found1 = found2 = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'TeamOne' and t['status'] == 'active':
@@ -941,7 +941,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found_waiting = found_active = False
         for msg in dash_msgs:
-            if msg.get('name') == 'team_status_changed_for_dashboard':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'TeamOne' and t['status'] == 'waiting_pair':
@@ -999,7 +999,7 @@ class TestPlayerInteraction:
             dash_msgs = dashboard_client.get_received()
             found = False
             for msg in dash_msgs:
-                if msg.get('name') == 'dashboard_update':
+                if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                     teams = msg.get('args', [{}])[0].get('teams', [])
                     for t in teams:
                         if t['team_name'] == f'RapidTeam{i}' and t['status'] in ('inactive', 'waiting_pair'):
@@ -1038,7 +1038,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'SimulTeam' and t['status'] == 'inactive':
@@ -1098,10 +1098,15 @@ class TestPlayerInteraction:
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
         eventlet.sleep(0.1)
+        dashboard_client.get_received()
+        
+        # Request teams update after enabling streaming
+        dashboard_client.emit('request_teams_update')
+        eventlet.sleep(0.1)
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'MidGameTeam' and t['status'] == 'waiting_pair':
@@ -1143,7 +1148,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'FullTeam' and t['status'] == 'active':
@@ -1183,7 +1188,7 @@ class TestPlayerInteraction:
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
-            if msg.get('name') == 'dashboard_update':
+            if msg.get('name') in ['dashboard_update', 'team_status_changed_for_dashboard']:
                 teams = msg.get('args', [{}])[0].get('teams', [])
                 for t in teams:
                     if t['team_name'] == 'QuickRejoinTeam' and t['status'] == 'active':
