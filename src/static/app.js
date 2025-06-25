@@ -81,6 +81,7 @@ function saveTeamSessionData(teamName, teamId, isCreatorVal) {
         isCreator: isCreatorVal,
         timestamp: Date.now()
     };
+    console.log('Saving team session data:', sessionData);
     localStorage.setItem('quizSessionData', JSON.stringify(sessionData));
 }
 
@@ -88,16 +89,20 @@ function saveTeamSessionData(teamName, teamId, isCreatorVal) {
 function getSavedTeamSessionData() {
     try {
         const data = localStorage.getItem('quizSessionData');
+        console.log('Raw localStorage data:', data);
         if (!data) return null;
         
         const sessionData = JSON.parse(data);
+        console.log('Parsed session data:', sessionData);
         // Check if data is less than 1 hour old
         if (Date.now() - sessionData.timestamp > 3600000) {
+            console.log('Session data expired, removing');
             localStorage.removeItem('quizSessionData');
             return null;
         }
         return sessionData;
     } catch (e) {
+        console.error('Error parsing session data:', e);
         localStorage.removeItem('quizSessionData');
         return null;
     }
@@ -105,8 +110,20 @@ function getSavedTeamSessionData() {
 
 // Show rejoin team option if available
 function showRejoinOption() {
+    console.log('showRejoinOption called');
     const savedData = getSavedTeamSessionData();
-    if (!savedData) return;
+    if (!savedData) {
+        console.log('No saved team data found, not showing rejoin option');
+        return;
+    }
+
+    console.log('Showing rejoin option for saved data:', savedData);
+    
+    // Check if rejoin section already exists
+    if (document.getElementById('rejoinSection')) {
+        console.log('Rejoin section already exists, skipping');
+        return;
+    }
 
     const rejoinDiv = document.createElement('div');
     rejoinDiv.id = 'rejoinSection';
@@ -124,8 +141,9 @@ function showRejoinOption() {
 
     // Insert before team section
     const teamSection = document.getElementById('teamSection');
-    if (teamSection && !document.getElementById('rejoinSection')) {
+    if (teamSection) {
         teamSection.parentNode.insertBefore(rejoinDiv, teamSection);
+        console.log('Rejoin section added to DOM');
         
         // Add event listeners
         document.getElementById('rejoinBtn').addEventListener('click', () => {
@@ -136,6 +154,8 @@ function showRejoinOption() {
             localStorage.removeItem('quizSessionData');
             hideRejoinOption();
         });
+    } else {
+        console.error('Could not find teamSection element');
     }
 }
 
@@ -149,6 +169,7 @@ function hideRejoinOption() {
 
 // Attempt to rejoin previous team
 function attemptRejoinTeam(savedData) {
+    console.log('Attempting to rejoin team with data:', savedData);
     showStatus('Attempting to rejoin previous team...', 'info');
     socket.emit('rejoin_team', { 
         team_name: savedData.teamName,
@@ -434,6 +455,7 @@ const callbacks = {
     resetToInitialView,
 
     onTeamCreated: (data) => {
+        console.log('Team created event data:', data);
         currentTeam = data.team_name;
         teamId = data.team_id;
         isCreator = true;
@@ -441,7 +463,11 @@ const callbacks = {
         currentTeamStatus = 'created'; // Set initial team status
         
         // Save session data for reconnection
-        saveTeamSessionData(data.team_name, data.team_id, true);
+        if (data.team_id) {
+            saveTeamSessionData(data.team_name, data.team_id, true);
+        } else {
+            console.warn('No team_id in team_created event, cannot save session data');
+        }
         
         // Hide both create and join team sections when creating a new team
         document.getElementById('joinTeamSection').style.display = 'none';
@@ -456,13 +482,18 @@ const callbacks = {
     },
 
     onTeamJoined: (data) => { // For the player who just joined
+        console.log('Team joined event data:', data);
         currentTeam = data.team_name;
         isCreator = false; // Player joining is never the creator of an existing team
         gameStarted = data.game_started;
-        teamId = data.team_id; // Assuming team_id is sent, if not, it might be part of team_status_update
+        teamId = data.team_id;
 
         // Save session data for reconnection
-        saveTeamSessionData(data.team_name, data.team_id, false);
+        if (data.team_id) {
+            saveTeamSessionData(data.team_name, data.team_id, false);
+        } else {
+            console.warn('No team_id in team_joined event, cannot save session data');
+        }
 
         gameHeader.textContent = `Team: ${data.team_name}`;
         showStatus(data.message, 'success');
@@ -577,14 +608,23 @@ const callbacks = {
         callbacks.updateGameState(data.game_started);
         callbacks.updateTeamsList(data.available_teams);
         
-        // Show rejoin option if available
-        setTimeout(() => showRejoinOption(), 500); // Small delay to ensure UI is ready
+        // Show rejoin option if available - check immediately and then again after UI loads
+        showRejoinOption();
+        setTimeout(() => showRejoinOption(), 100); // Small delay to ensure UI is ready
     }
 };
 
 // Initialize Socket.io
 const socket = io();
 initializeSocketHandlers(socket, callbacks);
+
+// Handle page unload (browser refresh/close) to ensure disconnect is detected
+window.addEventListener('beforeunload', function() {
+    if (socket && socket.connected) {
+        // Force immediate disconnect
+        socket.disconnect();
+    }
+});
 
 // Event listeners
 createTeamBtn.addEventListener('click', createTeam);

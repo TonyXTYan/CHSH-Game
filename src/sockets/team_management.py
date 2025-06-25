@@ -259,6 +259,7 @@ def on_join_team(data: Dict[str, Any]) -> None:
         # Notify the player who just joined
         emit('team_joined', {
             'team_name': team_name,
+            'team_id': team_info['team_id'],  # Include team_id for session persistence
             'message': f'You joined team {team_name}.',
             'game_started': state.game_started,
             'team_status': current_team_status_for_clients # Let P2 know if team is full now
@@ -304,10 +305,13 @@ def on_rejoin_team(data: Dict[str, Any]) -> None:
         team_id = data.get('team_id')
         sid = request.sid  # type: ignore
         
+        logger.info(f"Rejoin attempt: team_name='{team_name}', team_id='{team_id}', sid='{sid}'")
+        
         if not team_name or not team_id:
+            logger.warning(f"Rejoin failed - missing info: team_name='{team_name}', team_id='{team_id}'")
             emit('rejoin_team_response', {
                 'success': False,
-                'message': 'Invalid team information.'
+                'message': f'Invalid team information. Missing: {"team_name" if not team_name else ""}{"team_id" if not team_id else ""}'
             })  # type: ignore
             return
         
