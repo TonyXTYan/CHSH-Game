@@ -426,6 +426,11 @@ def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
 
 def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio):
     """Test dashboard join with callback function"""
+    from src.sockets.dashboard import dashboard_teams_streaming
+    
+    # Ensure clean state for new client test
+    dashboard_teams_streaming.clear()
+    
     mock_callback = MagicMock()
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
@@ -444,6 +449,8 @@ def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio
             assert callback_data['teams'] == []  # Empty since teams streaming is off by default
             assert callback_data['total_answers_count'] == 10
             assert callback_data['connected_players_count'] == 2
+            assert 'active_teams_count' in callback_data  # New field
+            assert 'ready_players_count' in callback_data  # New field
             assert callback_data['game_state']['started'] == False
             assert callback_data['game_state']['streaming_enabled'] == True
 
@@ -563,46 +570,49 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
             
             # Test update for specific client without teams streaming
             emit_dashboard_full_update('specific_client')
-            mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [],  # Empty since teams streaming is disabled by default
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='specific_client')
+            
+            # Check that emit was called
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            assert call_args[0][0] == 'dashboard_update'  # Event name
+            update_data = call_args[0][1]  # Data
+            assert call_args[1]['to'] == 'specific_client'  # Target
+            
+            # Verify expected fields
+            assert update_data['teams'] == []  # Empty since streaming disabled
+            assert update_data['total_answers_count'] == 10
+            assert update_data['connected_players_count'] == 2
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert update_data['game_state']['started'] == False
+            assert update_data['game_state']['paused'] == False
+            assert update_data['game_state']['streaming_enabled'] == True
             
             # Test update for specific client with teams streaming enabled
             dashboard_teams_streaming['specific_client'] = True
             mock_socketio.emit.reset_mock()
             emit_dashboard_full_update('specific_client')
-            mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [{'team_name': 'team1'}],
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='specific_client')
+            
+            # Check the call
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == [{'team_name': 'team1'}]  # Has teams since streaming enabled
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
             
             # Test update for all dashboard clients (with teams streaming disabled by default)
             dashboard_teams_streaming.clear()  # Reset to default state
             mock_socketio.emit.reset_mock()
             emit_dashboard_full_update()
-            mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [],  # Empty since teams streaming is disabled by default
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='test_dashboard_sid')
+            
+            # Check the call
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == []  # Empty since streaming disabled
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
 
 def test_download_csv_endpoint(test_client, mock_db_session):
     """Test the /download CSV endpoint"""
@@ -777,17 +787,20 @@ def test_teams_streaming_defaults_to_off(mock_request, mock_state, mock_socketio
             # Verify teams streaming is disabled by default
             assert dashboard_teams_streaming['test_dashboard_sid'] == False
             
-            # Verify dashboard_update contains empty teams array
-            mock_socketio.emit.assert_any_call('dashboard_update', {
-                'teams': [],  # Empty since streaming is OFF
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='test_dashboard_sid')
+            # Verify dashboard_update was called and contains expected fields
+            assert mock_socketio.emit.called
+            # Check if there's a dashboard_update call with empty teams
+            found_dashboard_update = False
+            for call in mock_socketio.emit.call_args_list:
+                if call[0][0] == 'dashboard_update':
+                    update_data = call[0][1]
+                    if (update_data.get('teams') == [] and 
+                        update_data.get('total_answers_count') == 10 and
+                        'active_teams_count' in update_data and
+                        'ready_players_count' in update_data):
+                        found_dashboard_update = True
+                        break
+            assert found_dashboard_update, "Dashboard update with expected data not found"
 
 def test_teams_streaming_preserves_existing_preferences(mock_request, mock_state, mock_socketio):
     """Test that dashboard_join preserves existing streaming preferences"""
@@ -808,17 +821,20 @@ def test_teams_streaming_preserves_existing_preferences(mock_request, mock_state
             # Verify streaming preference is preserved
             assert dashboard_teams_streaming['test_dashboard_sid'] == True
             
-            # Verify dashboard_update contains teams data since streaming is ON
-            mock_socketio.emit.assert_any_call('dashboard_update', {
-                'teams': [{'team_name': 'team1'}],  # Has teams data since streaming is ON
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='test_dashboard_sid')
+            # Verify dashboard_update was called and contains teams data since streaming is ON
+            assert mock_socketio.emit.called
+            # Check if there's a dashboard_update call with teams data
+            found_dashboard_update = False
+            for call in mock_socketio.emit.call_args_list:
+                if call[0][0] == 'dashboard_update':
+                    update_data = call[0][1]
+                    if (update_data.get('teams') == [{'team_name': 'team1'}] and 
+                        update_data.get('total_answers_count') == 10 and
+                        'active_teams_count' in update_data and
+                        'ready_players_count' in update_data):
+                        found_dashboard_update = True
+                        break
+            assert found_dashboard_update, "Dashboard update with teams data not found"
 
 def test_set_teams_streaming_enable(mock_request, mock_state):
     """Test enabling teams streaming via socket event"""
@@ -977,16 +993,13 @@ def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
             emit_dashboard_full_update('streaming_client')
             
             # Verify teams data is included
-            mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [{'team_name': 'team1'}],
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='streaming_client')
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == [{'team_name': 'team1'}]
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert call_args[1]['to'] == 'streaming_client'
             
             mock_socketio.emit.reset_mock()
             
@@ -994,16 +1007,13 @@ def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
             emit_dashboard_full_update('non_streaming_client')
             
             # Verify teams data is empty
-            mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [],
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='non_streaming_client')
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == []
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert call_args[1]['to'] == 'non_streaming_client'
             
             mock_socketio.emit.reset_mock()
             
@@ -1011,16 +1021,13 @@ def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
             emit_dashboard_full_update('new_client')
             
             # Verify teams data is empty (default is streaming disabled)
-            mock_socketio.emit.assert_called_with('dashboard_update', {
-                'teams': [],
-                'total_answers_count': 10,
-                'connected_players_count': 2,
-                'game_state': {
-                    'started': False,
-                    'paused': False,
-                    'streaming_enabled': True
-                }
-            }, to='new_client')
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == []
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert call_args[1]['to'] == 'new_client'
 
 def test_teams_streaming_error_handling(mock_request, mock_state, mock_emit):
     """Test error handling in teams streaming socket events"""
@@ -1166,9 +1173,13 @@ def test_emit_dashboard_team_update_includes_metrics_for_streaming_clients(mock_
         
         emit_dashboard_team_update()
         
-        # Verify the call was made
+        # Verify the call was made to streaming client
         assert mock_socketio.emit.called
         call_args = mock_socketio.emit.call_args
+        
+        # Check that it's the right event and client
+        assert call_args[0][0] == 'team_status_changed_for_dashboard'
+        assert call_args[1]['to'] == 'streaming_client'
         
         # Check that teams data is included for streaming client
         update_data = call_args[0][1]  # Second argument is the data

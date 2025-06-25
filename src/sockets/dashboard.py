@@ -469,9 +469,6 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
             team_data['status'] = 'waiting_pair'
         elif is_active:
             team_data['status'] = 'active'
-        elif len(players) == 1:
-            # Team with one player should be waiting_pair even if not marked as active in DB
-            team_data['status'] = 'waiting_pair'
         else:
             team_data['status'] = 'inactive'
             
