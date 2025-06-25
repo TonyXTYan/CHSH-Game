@@ -434,6 +434,7 @@ def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio
             assert callback_data['total_answers_count'] == 10
             assert callback_data['connected_players_count'] == 2
             assert callback_data['game_state']['started'] == False
+            # Streaming state should be enabled for single client
             assert callback_data['game_state']['streaming_enabled'] == True
 
 def test_on_start_game(mock_request, mock_state, mock_socketio):
@@ -557,7 +558,9 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
                 'game_state': {
                     'started': False,
                     'paused': False,
-                    'streaming_enabled': True
+                    'streaming_enabled': True,
+                    'streaming_disabled_reason': None,
+                    'multiple_dashboards': False
                 }
             }, to='specific_client')
             
@@ -571,7 +574,9 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
                 'game_state': {
                     'started': False,
                     'paused': False,
-                    'streaming_enabled': True
+                    'streaming_enabled': True,
+                    'streaming_disabled_reason': None,
+                    'multiple_dashboards': False
                 }
             }, to='test_dashboard_sid')
 
@@ -705,3 +710,73 @@ def test_download_csv_endpoint_error_case(test_client, mock_db_session):
     resp = test_client.get('/download')
     assert resp.status_code in (500, 400, 200)  # Accept any error or fallback
     dashboard_module.download_csv = orig
+
+def test_multiple_dashboard_streaming_disabled():
+    """Test that streaming is auto-disabled when multiple dashboard clients connect"""
+    from src.sockets.dashboard import dashboard_client_streaming, should_auto_disable_streaming, get_effective_streaming_state, update_global_streaming_state
+    from src.state import state
+    
+    # Clear any existing state
+    state.dashboard_clients.clear()
+    dashboard_client_streaming.clear()
+    state.answer_stream_enabled = True
+    
+    # Single client - streaming should work normally
+    state.dashboard_clients.add('client1')
+    dashboard_client_streaming['client1'] = True
+    update_global_streaming_state()
+    assert not should_auto_disable_streaming()
+    assert get_effective_streaming_state() == True
+    
+    # Add second client - streaming should be auto-disabled
+    state.dashboard_clients.add('client2')
+    dashboard_client_streaming['client2'] = False  # Auto-disabled for new client
+    update_global_streaming_state()
+    assert should_auto_disable_streaming()
+    assert get_effective_streaming_state() == False  # Should be False even though client1 wants it
+    
+    # Both clients enable streaming - should work
+    dashboard_client_streaming['client1'] = True
+    dashboard_client_streaming['client2'] = True
+    update_global_streaming_state()
+    assert get_effective_streaming_state() == True
+    
+    # One client disables - streaming should be disabled
+    dashboard_client_streaming['client2'] = False
+    update_global_streaming_state()
+    assert get_effective_streaming_state() == False
+
+def test_toggle_streaming_socket_event(mock_request, mock_state, mock_socketio):
+    """Test the toggle_streaming socket event"""
+    from src.sockets.dashboard import on_toggle_streaming, dashboard_client_streaming
+    
+    # Setup a dashboard client
+    mock_state.dashboard_clients = {'test_dashboard_sid'}
+    dashboard_client_streaming.clear()
+    dashboard_client_streaming['test_dashboard_sid'] = False
+    
+    with patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_update:
+        # Test toggle without data (should toggle current state)
+        on_toggle_streaming()
+        
+        # Should have toggled to True
+        assert dashboard_client_streaming['test_dashboard_sid'] == True
+        mock_update.assert_called_once()
+        
+        # Test toggle with explicit data
+        mock_update.reset_mock()
+        on_toggle_streaming({'enabled': False})
+        
+        # Should be set to False
+        assert dashboard_client_streaming['test_dashboard_sid'] == False
+        mock_update.assert_called_once()
+
+def test_toggle_streaming_unauthorized(mock_request, mock_state, mock_emit):
+    """Test toggle_streaming with unauthorized client"""
+    from src.sockets.dashboard import on_toggle_streaming
+    
+    # Client not in dashboard_clients
+    mock_state.dashboard_clients = set()
+    
+    on_toggle_streaming()
+    mock_emit.assert_called_with('error', {'message': 'Unauthorized: Not a dashboard client'})

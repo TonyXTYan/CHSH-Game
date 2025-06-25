@@ -403,6 +403,13 @@ socket.on("dashboard_update", (data) => {
     if (data.game_state && data.game_state.streaming_enabled !== undefined) {
         answerStreamEnabled = data.game_state.streaming_enabled;
         updateStreamingUI();
+        
+        // Update UI based on multiple dashboard status
+        if (data.game_state.multiple_dashboards && data.game_state.streaming_disabled_reason === 'multiple_dashboards') {
+            showMultipleDashboardNotice();
+        } else {
+            hideMultipleDashboardNotice();
+        }
     }
 
     // Refresh team details popup if open
@@ -762,8 +769,33 @@ function updateStreamingUI() {
 }
 
 function toggleAnswerStream() {
-    answerStreamEnabled = !answerStreamEnabled;
-    updateStreamingUI();
+    // Send toggle request to server instead of changing local state directly
+    socket.emit('toggle_streaming');
+}
+
+function showMultipleDashboardNotice() {
+    // Show a notice that streaming is disabled due to multiple dashboards
+    let notice = document.getElementById('multiple-dashboard-notice');
+    if (!notice) {
+        notice = document.createElement('div');
+        notice.id = 'multiple-dashboard-notice';
+        notice.className = 'multiple-dashboard-notice';
+        notice.innerHTML = 'Answer streaming is disabled due to multiple dashboard connections. Click streaming button to override.';
+        
+        // Insert the notice near the streaming toggle
+        const streamingHeader = document.getElementById('live-answer-log-header');
+        if (streamingHeader) {
+            streamingHeader.parentNode.insertBefore(notice, streamingHeader);
+        }
+    }
+    notice.style.display = 'block';
+}
+
+function hideMultipleDashboardNotice() {
+    const notice = document.getElementById('multiple-dashboard-notice');
+    if (notice) {
+        notice.style.display = 'none';
+    }
 }
 
 function togglePause() {

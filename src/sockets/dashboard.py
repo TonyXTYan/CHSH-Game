@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # Store last activity time for each dashboard client
 dashboard_last_activity: Dict[str, float] = {}
 
+# Store per-client streaming preferences
+dashboard_client_streaming: Dict[str, bool] = {}
+
 CACHE_SIZE = 1024  # Adjust cache size as needed
 REFRESH_DELAY = 1 # seconds
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
@@ -538,21 +541,25 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
         with app.app_context():
             total_answers = Answers.query.count()
 
-        update_data = {
+        effective_streaming = get_effective_streaming_state()
+        base_update_data = {
             'teams': get_all_teams(),
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
             'game_state': {
                 'started': state.game_started,
                 'paused': state.game_paused,
-                'streaming_enabled': state.answer_stream_enabled
+                'streaming_enabled': effective_streaming,
+                'streaming_disabled_reason': 'multiple_dashboards' if should_auto_disable_streaming() and not effective_streaming else None,
+                'multiple_dashboards': should_auto_disable_streaming()
             }
         }
+        
         if client_sid:
-            socketio.emit('dashboard_update', update_data, to=client_sid)  # type: ignore
+            socketio.emit('dashboard_update', base_update_data, to=client_sid)  # type: ignore
         else:
             for dash_sid in state.dashboard_clients:
-                socketio.emit('dashboard_update', update_data, to=dash_sid)  # type: ignore
+                socketio.emit('dashboard_update', base_update_data, to=dash_sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
 
@@ -561,24 +568,45 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
     try:
         sid = request.sid  # type: ignore
         
+        # Check if this is a new client
+        is_new_client = sid not in state.dashboard_clients
+        
         # Add to dashboard clients
         state.dashboard_clients.add(sid)
         dashboard_last_activity[sid] = time()
-        logger.info(f"Dashboard client connected: {sid}")
         
-        # Whenever a dashboard client joins, emit updated status to all dashboards
-        emit_dashboard_full_update()
+        # Initialize streaming preference for new clients
+        if is_new_client:
+            # Auto-disable streaming if multiple clients will be connected
+            if should_auto_disable_streaming():
+                dashboard_client_streaming[sid] = False
+                logger.info(f"Dashboard client {sid} connected - auto-disabled streaming (multiple clients)")
+            else:
+                # Single client - inherit current global state
+                dashboard_client_streaming[sid] = state.answer_stream_enabled
+                logger.info(f"Dashboard client {sid} connected - inherited streaming state: {state.answer_stream_enabled}")
+            
+            # Update global streaming state based on new client count
+            update_global_streaming_state()
+        
+        # Emit updated status to all dashboards if this is a new client
+        if is_new_client:
+            emit_dashboard_full_update()
         
         # Prepare update data
         with app.app_context():
             total_answers = Answers.query.count()
+        
+        # Use effective streaming state for this specific client response
+        effective_streaming = get_effective_streaming_state()
         update_data = {
             'teams': get_all_teams(),
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
             'game_state': {
                 'started': state.game_started,
-                'streaming_enabled': state.answer_stream_enabled
+                'streaming_enabled': effective_streaming,
+                'streaming_disabled_reason': 'multiple_dashboards' if should_auto_disable_streaming() and not effective_streaming else None
             }
         }
         
@@ -617,6 +645,34 @@ def on_start_game(data: Optional[Dict[str, Any]] = None) -> None:
         logger.error(f"Error in on_start_game: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while starting the game'})  # type: ignore
 
+@socketio.on('toggle_streaming')
+def on_toggle_streaming(data: Optional[Dict[str, Any]] = None) -> None:
+    try:
+        sid = request.sid  # type: ignore
+        if sid not in state.dashboard_clients:
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
+            return
+
+        # Get the requested state, defaulting to toggle current state
+        if data and 'enabled' in data:
+            new_state = bool(data['enabled'])
+        else:
+            # Toggle current state for this client
+            new_state = not dashboard_client_streaming.get(sid, False)
+        
+        dashboard_client_streaming[sid] = new_state
+        logger.info(f"Dashboard client {sid} set streaming to {new_state}")
+        
+        # Update global streaming state
+        update_global_streaming_state()
+        
+        # Notify all dashboard clients of the new state
+        emit_dashboard_full_update()
+
+    except Exception as e:
+        logger.error(f"Error in on_toggle_streaming: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while toggling streaming'})  # type: ignore
+
 @socketio.on('pause_game')
 def on_pause_game() -> None:
     try:
@@ -649,6 +705,17 @@ def on_disconnect() -> None:
             state.dashboard_clients.remove(sid)
             if sid in dashboard_last_activity:
                 del dashboard_last_activity[sid]
+            if sid in dashboard_client_streaming:
+                del dashboard_client_streaming[sid]
+            
+            logger.info(f"Dashboard client {sid} disconnected - remaining clients: {len(state.dashboard_clients)}")
+            
+            # Update global streaming state after client disconnect
+            update_global_streaming_state()
+            
+            # Notify remaining dashboard clients of updated state
+            if state.dashboard_clients:
+                emit_dashboard_full_update()
     except Exception as e:
         logger.error(f"Error in on_disconnect: {str(e)}", exc_info=True)
 
@@ -796,3 +863,26 @@ def download_csv():
             status=500,
             mimetype='text/plain'
         )
+
+def should_auto_disable_streaming() -> bool:
+    """Check if streaming should be auto-disabled due to multiple dashboard clients."""
+    return len(state.dashboard_clients) > 1
+
+def get_effective_streaming_state() -> bool:
+    """Get the effective streaming state based on number of clients and preferences."""
+    if should_auto_disable_streaming():
+        # When multiple clients, only enable if explicitly requested by all clients
+        return len(dashboard_client_streaming) > 0 and all(dashboard_client_streaming.values())
+    else:
+        # Single client - use global state or client preference
+        return state.answer_stream_enabled
+
+def update_global_streaming_state() -> None:
+    """Update the global streaming state based on current client configuration."""
+    old_state = state.answer_stream_enabled
+    state.answer_stream_enabled = get_effective_streaming_state()
+    
+    # Log state changes for debugging
+    if old_state != state.answer_stream_enabled:
+        logger.info(f"Streaming state changed from {old_state} to {state.answer_stream_enabled} "
+                   f"(dashboard clients: {len(state.dashboard_clients)})")
