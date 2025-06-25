@@ -487,7 +487,10 @@ socket.on("team_status_changed_for_dashboard", (data) => {
     }
     
     // For team status changes, calculate metrics from teams data since this only goes to streaming clients
-    const activeTeams = data.teams ? data.teams.filter(team => team.is_active) : [];
+    // Use same definition as backend: active teams are those with is_active=true OR status='waiting_pair'
+    const activeTeams = data.teams ? data.teams.filter(team => 
+        team.is_active || team.status === 'waiting_pair'
+    ) : [];
     const activeTeamsCount = activeTeams.length;
     const readyPlayersCount = activeTeams.reduce((count, team) => {
         return count + (team.player1_sid ? 1 : 0) + (team.player2_sid ? 1 : 0);
