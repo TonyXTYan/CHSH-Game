@@ -100,8 +100,21 @@ socket.on("connect", async () => {
 function clearAllUITables() {
     activeTeamsTableBody.innerHTML = "";
     answerLogTableBody.innerHTML = "";
-    noActiveTeamsMsg.style.display = "block";
-    noAnswersLogMsg.style.display = "block";
+    
+    // Only show "no teams" message if teams streaming is enabled
+    if (teamsStreamEnabled) {
+        noActiveTeamsMsg.style.display = "block";
+    } else {
+        noActiveTeamsMsg.style.display = "none";
+    }
+    
+    // Only show "no answers" message if answer streaming is enabled
+    if (answerStreamEnabled) {
+        noAnswersLogMsg.style.display = "block";
+    } else {
+        noAnswersLogMsg.style.display = "none";
+    }
+    
     activeTeamsCountEl.textContent = "0";
     readyPlayersCountEl.textContent = "0";
     connectedPlayersCountEl.textContent = "0";
@@ -182,6 +195,10 @@ window.addEventListener('load', () => {
             gameControlText.textContent = "Game Control";
         }
     }
+    
+    // Initialize streaming UI states
+    updateStreamingUI();
+    updateTeamsStreamingUI();
 });
 
 let confirmingStop = false;
@@ -395,19 +412,25 @@ socket.on("dashboard_update", (data) => {
             document.getElementById("game-control-text").textContent = "Game Control";
         }
     }
-    updateActiveTeams(data.teams);
+    
+    // Only update teams if streaming is enabled
+    if (teamsStreamEnabled) {
+        updateActiveTeams(data.teams);
+        // Refresh team details popup if open
+        if (data.teams) {
+            refreshTeamDetailsIfOpen(data.teams);
+        }
+    }
+    
     updateAnswerLog(data.recent_answers); // Assuming backend sends recent answers on update
-    updateMetrics(data.active_teams, data.total_answers_count, data.connected_players_count);
+    
+    // Update metrics using dedicated fields from backend (not dependent on teams streaming)
+    updateMetrics(data.active_teams_count, data.ready_players_count, data.total_answers_count, data.connected_players_count);
     
     // Sync streaming state with server
     if (data.game_state && data.game_state.streaming_enabled !== undefined) {
         answerStreamEnabled = data.game_state.streaming_enabled;
         updateStreamingUI();
-    }
-
-    // Refresh team details popup if open
-    if (data.active_teams) {
-        refreshTeamDetailsIfOpen(data.active_teams);
     }
     
     // Update button state based on game state
@@ -453,28 +476,46 @@ socket.on("new_answer_for_dashboard", (data) => {
 socket.on("team_status_changed_for_dashboard", (data) => {
     console.log("Team status changed for dashboard:", data);
     lastReceivedTeams = data.teams;
-    updateActiveTeams(data.teams);
-    updateMetrics(data.teams, currentAnswersCount, data.connected_players_count);
     
-    // Refresh team details popup if open
-    if (data.teams) {
-        refreshTeamDetailsIfOpen(data.teams);
+    // Only update teams if streaming is enabled
+    if (teamsStreamEnabled) {
+        updateActiveTeams(data.teams);
+        // Refresh team details popup if open
+        if (data.teams) {
+            refreshTeamDetailsIfOpen(data.teams);
+        }
     }
+    
+    // Use metrics provided by backend when available, otherwise calculate from teams data
+    let activeTeamsCount, readyPlayersCount;
+    
+    if (typeof data.active_teams_count === 'number' && typeof data.ready_players_count === 'number') {
+        // Backend provides metrics directly - use them for accuracy
+        activeTeamsCount = data.active_teams_count;
+        readyPlayersCount = data.ready_players_count;
+    } else {
+        // Fallback: calculate metrics from teams data (for backwards compatibility)
+        // Use same definition as backend: active teams are those with is_active=true OR status='waiting_pair'
+        const activeTeams = data.teams ? data.teams.filter(team => 
+            team.is_active || team.status === 'waiting_pair'
+        ) : [];
+        activeTeamsCount = activeTeams.length;
+        readyPlayersCount = activeTeams.reduce((count, team) => {
+            return count + (team.player1_sid ? 1 : 0) + (team.player2_sid ? 1 : 0);
+        }, 0);
+    }
+    
+    updateMetrics(activeTeamsCount, readyPlayersCount, currentAnswersCount, data.connected_players_count);
 });
 
-function updateMetrics(teams, totalAnswers, connectedCount) {
-    if (teams) {
-        // Count active teams
-        const activeTeams = teams.filter(team => team.is_active);
-        activeTeamsCountEl.textContent = activeTeams.length;
-        
-        // Count ready players (only from active teams)
-        let readyPlayerCount = 0;
-        activeTeams.forEach(team => {
-            if(team.player1_sid) readyPlayerCount++;
-            if(team.player2_sid) readyPlayerCount++;
-        });
-        readyPlayersCountEl.textContent = readyPlayerCount;
+function updateMetrics(activeTeamsCount, readyPlayersCount, totalAnswers, connectedCount) {
+    // Update team metrics if provided
+    if (typeof activeTeamsCount === 'number') {
+        activeTeamsCountEl.textContent = activeTeamsCount;
+    }
+    
+    if (typeof readyPlayersCount === 'number') {
+        readyPlayersCountEl.textContent = readyPlayersCount;
     }
     
     // Update connected players count
@@ -492,12 +533,24 @@ function updateMetrics(teams, totalAnswers, connectedCount) {
 
 // Add event listener for show-inactive toggle
 document.getElementById('show-inactive').addEventListener('change', () => {
-    if (lastReceivedTeams) {
+    if (lastReceivedTeams && teamsStreamEnabled) {
+        updateActiveTeams(lastReceivedTeams);
+    }
+});
+
+// Add event listener for sort teams dropdown
+document.getElementById('sort-teams').addEventListener('change', () => {
+    if (lastReceivedTeams && teamsStreamEnabled) {
         updateActiveTeams(lastReceivedTeams);
     }
 });
 
 function updateActiveTeams(teams) {
+    // If teams streaming is disabled, don't update the UI
+    if (!teamsStreamEnabled) {
+        return;
+    }
+    
     if (!teams) {
         teams = [];
     }
@@ -738,16 +791,28 @@ function updateAnswerLog(answers) {
 }
 
 let answerStreamEnabled = false;
+let teamsStreamEnabled = false;
 const answerTable = document.getElementById('answer-log-table');
 const noAnswersMsg = document.getElementById('no-answers-log');
 const toggleBtn = document.getElementById('toggle-answers-btn');
 const toggleChevron = document.getElementById('toggle-chevron');
+
+const teamsTable = document.getElementById('active-teams-table');
+const noTeamsMsg = document.getElementById('no-active-teams');
+const teamsToggleBtn = document.getElementById('toggle-teams-btn');
+const teamsToggleChevron = document.getElementById('teams-toggle-chevron');
 
 // Initialize to OFF state
 toggleBtn.textContent = 'OFF';
 answerTable.style.display = 'none';
 noAnswersMsg.style.display = 'none';
 toggleChevron.textContent = '▶';
+
+// Initialize teams streaming to OFF state
+teamsToggleBtn.textContent = 'OFF';
+teamsTable.style.display = 'none';
+noTeamsMsg.style.display = 'none';
+teamsToggleChevron.textContent = '▶';
 
 function updateStreamingUI() {
     if (answerStreamEnabled) {
@@ -761,9 +826,47 @@ function updateStreamingUI() {
     }
 }
 
+function updateTeamsStreamingUI() {
+    if (teamsStreamEnabled) {
+        teamsToggleBtn.textContent = 'ON';
+        teamsTable.style.display = 'table';
+        teamsToggleChevron.textContent = '▼';
+        
+        // Show appropriate message based on teams data
+        if (lastReceivedTeams && lastReceivedTeams.length > 0) {
+            // Check if any teams will be displayed after filtering
+            const showInactive = document.getElementById('show-inactive').checked;
+            const filteredTeams = showInactive ? lastReceivedTeams : lastReceivedTeams.filter(team =>
+                team.is_active || team.status === 'waiting_pair'
+            );
+            noTeamsMsg.style.display = filteredTeams.length === 0 ? 'block' : 'none';
+        } else {
+            noTeamsMsg.style.display = 'block';
+        }
+    } else {
+        teamsToggleBtn.textContent = 'OFF';
+        teamsTable.style.display = 'none';
+        teamsToggleChevron.textContent = '▶';
+        noTeamsMsg.style.display = 'none';
+    }
+}
+
 function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
+}
+
+function toggleTeamsStream() {
+    teamsStreamEnabled = !teamsStreamEnabled;
+    updateTeamsStreamingUI();
+    
+    // Notify server about teams streaming preference
+    socket.emit('set_teams_streaming', { enabled: teamsStreamEnabled });
+    
+    // If enabling, request current teams data
+    if (teamsStreamEnabled) {
+        socket.emit('request_teams_update');
+    }
 }
 
 function togglePause() {

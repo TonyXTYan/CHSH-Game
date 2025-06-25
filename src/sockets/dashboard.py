@@ -25,6 +25,9 @@ logger = logging.getLogger(__name__)
 # Store last activity time for each dashboard client
 dashboard_last_activity: Dict[str, float] = {}
 
+# Store teams streaming preference for each dashboard client
+dashboard_teams_streaming: Dict[str, bool] = {}
+
 CACHE_SIZE = 1024  # Adjust cache size as needed
 REFRESH_DELAY = 1 # seconds
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
@@ -42,6 +45,28 @@ def on_keep_alive() -> None:
             emit('keep_alive_ack', to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_keep_alive: {str(e)}", exc_info=True)
+
+@socketio.on('set_teams_streaming')
+def on_set_teams_streaming(data: Dict[str, Any]) -> None:
+    try:
+        sid = request.sid  # type: ignore
+        if sid in state.dashboard_clients:
+            enabled = data.get('enabled', False)
+            dashboard_teams_streaming[sid] = enabled
+            logger.info(f"Dashboard client {sid} set teams streaming to: {enabled}")
+    except Exception as e:
+        logger.error(f"Error in on_set_teams_streaming: {str(e)}", exc_info=True)
+
+@socketio.on('request_teams_update')
+def on_request_teams_update() -> None:
+    try:
+        sid = request.sid  # type: ignore
+        if sid in state.dashboard_clients and dashboard_teams_streaming.get(sid, False):
+            # Send current teams data to this specific client
+            emit_dashboard_full_update(client_sid=sid)
+            logger.info(f"Sent teams update to dashboard client {sid}")
+    except Exception as e:
+        logger.error(f"Error in on_request_teams_update: {str(e)}", exc_info=True)
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_team_hashes(team_id: int) -> Tuple[str, str]:
@@ -506,7 +531,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
-    # global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _cached_teams_result
     
     try:
         compute_team_hashes.cache_clear()
@@ -514,44 +539,110 @@ def clear_team_caches() -> None:
         _calculate_team_statistics.cache_clear()
         _process_single_team.cache_clear()
         
-        # Don't clear throttle cache - respect REFRESH_DELAY for performance
-        # The fix is in the team status logic, not the caching
-        # _last_refresh_time = 0
-        # _cached_teams_result = None
+        # Clear throttle cache for critical team state changes like disconnections
+        _last_refresh_time = 0
+        _cached_teams_result = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update(force_refresh: bool = False) -> None:
     try:
+        # Always compute teams data and metrics for all dashboard clients
+        if not state.dashboard_clients:
+            return  # No dashboard clients at all
+            
+        # Get teams data using existing caching for performance
         serialized_teams = get_all_teams(force_refresh=force_refresh)
-        update_data = {
-            'teams': serialized_teams,
-            'connected_players_count': len(state.connected_players)
-        }
-        for sid in state.dashboard_clients:
-            socketio.emit('team_status_changed_for_dashboard', update_data, to=sid)  # type: ignore
+        
+        # Calculate metrics that all clients need (streaming and non-streaming)
+        active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+        active_teams_count = len(active_teams)
+        ready_players_count = sum(
+            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+            for team in active_teams
+        )
+        connected_players_count = len(state.connected_players)
+        
+        # Separate clients by streaming preference
+        streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
+        non_streaming_clients = [sid for sid in state.dashboard_clients if not dashboard_teams_streaming.get(sid, False)]
+        
+        # Send full teams data to streaming clients
+        if streaming_clients:
+            streaming_update_data = {
+                'teams': serialized_teams,
+                'connected_players_count': connected_players_count,
+                'active_teams_count': active_teams_count,
+                'ready_players_count': ready_players_count
+            }
+            
+            for sid in streaming_clients:
+                socketio.emit('team_status_changed_for_dashboard', streaming_update_data, to=sid)  # type: ignore
+        
+        # Send metrics-only updates to non-streaming clients
+        if non_streaming_clients:
+            metrics_update_data = {
+                'teams': [],  # Empty teams array for non-streaming clients
+                'connected_players_count': connected_players_count,
+                'active_teams_count': active_teams_count,
+                'ready_players_count': ready_players_count
+            }
+            
+            for sid in non_streaming_clients:
+                socketio.emit('team_status_changed_for_dashboard', metrics_update_data, to=sid)  # type: ignore
+                
     except Exception as e:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
-def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
+def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Optional[str] = None) -> None:
     try:
         with app.app_context():
             total_answers = Answers.query.count()
 
-        update_data = {
-            'teams': get_all_teams(),
+        # Always get teams data for metrics calculation
+        all_teams_for_metrics = get_all_teams()
+        
+        # Calculate metrics that should always be sent
+        # Count teams that are active or waiting for a pair as "active" for metrics
+        active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+        active_teams_count = len(active_teams)
+        ready_players_count = sum(
+            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+            for team in active_teams
+        )
+
+        base_update_data = {
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
+            'active_teams_count': active_teams_count,  # Always send metrics
+            'ready_players_count': ready_players_count,  # Always send metrics
             'game_state': {
                 'started': state.game_started,
                 'paused': state.game_paused,
                 'streaming_enabled': state.answer_stream_enabled
             }
         }
+
         if client_sid:
+            # For specific client, include teams only if they have streaming enabled
+            update_data = base_update_data.copy()
+            if dashboard_teams_streaming.get(client_sid, False):
+                update_data['teams'] = all_teams_for_metrics
+            else:
+                update_data['teams'] = []  # Send empty array if streaming disabled
             socketio.emit('dashboard_update', update_data, to=client_sid)  # type: ignore
         else:
+            # For all clients, send appropriate data based on their preferences
             for dash_sid in state.dashboard_clients:
+                # Skip excluded client to prevent duplicate updates
+                if exclude_sid and dash_sid == exclude_sid:
+                    continue
+                    
+                update_data = base_update_data.copy()
+                if dashboard_teams_streaming.get(dash_sid, False):
+                    update_data['teams'] = all_teams_for_metrics
+                else:
+                    update_data['teams'] = []  # Send empty array if streaming disabled
                 socketio.emit('dashboard_update', update_data, to=dash_sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in emit_dashboard_full_update: {str(e)}", exc_info=True)
@@ -561,21 +652,38 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
     try:
         sid = request.sid  # type: ignore
         
-        # Add to dashboard clients
+        # Add to dashboard clients with teams streaming disabled by default (only for new clients)
         state.dashboard_clients.add(sid)
         dashboard_last_activity[sid] = time()
+        if sid not in dashboard_teams_streaming:
+            dashboard_teams_streaming[sid] = False  # Teams streaming off by default only for new clients
         logger.info(f"Dashboard client connected: {sid}")
         
-        # Whenever a dashboard client joins, emit updated status to all dashboards
-        emit_dashboard_full_update()
+        # Notify OTHER dashboard clients about the new connection (exclude the joining client to prevent duplicates)
+        emit_dashboard_full_update(exclude_sid=sid)
         
-        # Prepare update data
+        # Prepare update data for this specific client, respecting their streaming preference
         with app.app_context():
             total_answers = Answers.query.count()
+            
+        # Always get teams data for metrics calculation
+        all_teams_for_metrics = get_all_teams()
+        
+        # Calculate metrics that should always be sent
+        # Count teams that are active or waiting for a pair as "active" for metrics
+        active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+        active_teams_count = len(active_teams)
+        ready_players_count = sum(
+            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+            for team in active_teams
+        )
+        
         update_data = {
-            'teams': get_all_teams(),
+            'teams': all_teams_for_metrics if dashboard_teams_streaming.get(sid, False) else [],  # Respect client's streaming preference
             'total_answers_count': total_answers,
             'connected_players_count': len(state.connected_players),
+            'active_teams_count': active_teams_count,  # Always send metrics
+            'ready_players_count': ready_players_count,  # Always send metrics
             'game_state': {
                 'started': state.game_started,
                 'streaming_enabled': state.answer_stream_enabled
@@ -586,7 +694,7 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
         if callback:
             callback(update_data)
         else:
-            # Otherwise emit as usual
+            # Send update to the joining client only once
             socketio.emit('dashboard_update', update_data, to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_dashboard_join: {str(e)}", exc_info=True)
@@ -649,6 +757,8 @@ def on_disconnect() -> None:
             state.dashboard_clients.remove(sid)
             if sid in dashboard_last_activity:
                 del dashboard_last_activity[sid]
+            if sid in dashboard_teams_streaming:
+                del dashboard_teams_streaming[sid]
     except Exception as e:
         logger.error(f"Error in on_disconnect: {str(e)}", exc_info=True)
 

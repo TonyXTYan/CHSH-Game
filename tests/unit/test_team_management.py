@@ -99,7 +99,7 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
     """Test successful team reactivation"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.join_room') as mock_join_room:
         
         # Initial state check
@@ -196,7 +196,7 @@ def test_get_team_members(app_context, active_team):
 def test_handle_connect(mock_request_context):
     """Test client connection handling"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.team_management.emit_dashboard_full_update') as mock_dashboard_update:
+         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_dashboard_update:
         from src.sockets.team_management import handle_connect
         
         # Test regular player connection
@@ -215,7 +215,7 @@ def test_create_team_success(mock_request_context):
     """Test successful team creation"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.join_room') as mock_join_room:
         
         from src.sockets.team_management import on_create_team
@@ -285,7 +285,7 @@ def test_join_team_success(mock_request_context, active_team):
     """Test successful team join"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.join_room') as mock_join_room, \
          patch('src.sockets.team_management.start_new_round_for_pair') as mock_start_round:
         
@@ -380,7 +380,7 @@ def test_handle_disconnect_team_no_players_left(mock_request_context, active_tea
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.db.session') as mock_session, \
          patch('src.sockets.team_management.Teams') as mock_Teams, \
-         patch('src.sockets.team_management.clear_team_caches') as mock_clear_caches:
+         patch('src.sockets.dashboard.clear_team_caches') as mock_clear_caches:
         # Mock DB team
         db_team = MagicMock()
         mock_Teams.query.filter_by.return_value.first.return_value = db_team
@@ -400,7 +400,7 @@ def test_handle_disconnect_team_member(mock_request_context, active_team):
     
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.leave_room') as mock_leave_room:
         
         from src.sockets.team_management import handle_disconnect
@@ -426,7 +426,7 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
     
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.leave_room') as mock_leave_room:
         
         from src.sockets.team_management import handle_disconnect
@@ -470,7 +470,7 @@ def test_leave_team_success(mock_request_context, active_team):
     
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.leave_room') as mock_leave_room:
         
         from src.sockets.team_management import on_leave_team
@@ -510,7 +510,7 @@ def test_leave_full_team(mock_request_context, full_team):
     
     with patch('src.sockets.team_management.emit') as mock_emit, \
          patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
-         patch('src.sockets.team_management.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
          patch('src.sockets.team_management.leave_room') as mock_leave_room:
         
         from src.sockets.team_management import on_leave_team
