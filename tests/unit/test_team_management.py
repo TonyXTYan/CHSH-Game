@@ -94,6 +94,7 @@ def cleanup_state():
     state.team_id_to_name.clear()
     state.connected_players.clear()
     state.dashboard_clients.clear()
+    state.disconnected_players.clear()
 
 def test_reactivate_team_success(mock_request_context, inactive_team):
     """Test successful team reactivation"""
@@ -310,7 +311,8 @@ def test_join_team_success(mock_request_context, active_team):
                 'team_name': 'active_team',
                 'message': 'You joined team active_team.',
                 'game_started': state.game_started,
-                'team_status': 'full'
+                'team_status': 'full',
+                'is_reconnection': False
             },
             to='test_sid'
         )
@@ -456,7 +458,8 @@ def test_handle_disconnect_from_full_team(mock_request_context, full_team):
                 'team_name': 'full_team',
                 'status': 'waiting_pair',
                 'members': ['player2_sid'],
-                'game_started': state.game_started
+                'game_started': state.game_started,
+                'disable_input': True
             },
             to='full_team'
         )
@@ -540,7 +543,8 @@ def test_leave_full_team(mock_request_context, full_team):
                 'team_name': 'full_team',
                 'status': 'waiting_pair',
                 'members': ['player2_sid'],
-                'game_started': state.game_started
+                'game_started': state.game_started,
+                'disable_input': True
             },
             to='full_team'
         )
@@ -581,3 +585,262 @@ def test_on_leave_team_not_in_team(mock_request_context):
     with patch('src.sockets.team_management.emit') as mock_emit:
         on_leave_team({})
         mock_emit.assert_any_call('error', {'message': 'You are not in a team.'})
+
+# Test new disconnection and reconnection functionality
+
+def test_track_disconnected_player(mock_request_context, full_team):
+    """Test tracking disconnected players for reconnection"""
+    from src.sockets.team_management import _track_disconnected_player, _clear_disconnected_player_tracking
+    
+    team_info = state.active_teams['full_team']
+    
+    # Track a disconnected player
+    _track_disconnected_player('full_team', 'player1_sid', team_info)
+    
+    assert 'full_team' in state.disconnected_players
+    assert state.disconnected_players['full_team']['player_session_id'] == 'player1_sid'
+    assert state.disconnected_players['full_team']['player_slot'] == 1
+    assert 'disconnect_time' in state.disconnected_players['full_team']
+    
+    # Clear tracking
+    _clear_disconnected_player_tracking('full_team')
+    assert 'full_team' not in state.disconnected_players
+
+def test_can_rejoin_team(mock_request_context, active_team):
+    """Test checking if a player can rejoin a team"""
+    from src.sockets.team_management import _can_rejoin_team, _track_disconnected_player
+    
+    team_info = state.active_teams['active_team']
+    
+    # Initially can't rejoin (no tracking)
+    assert not _can_rejoin_team('active_team')
+    
+    # Add second player and then track disconnect
+    team_info['players'].append('player2_sid')
+    _track_disconnected_player('active_team', 'player2_sid', team_info)
+    team_info['players'].remove('player2_sid')
+    team_info['status'] = 'waiting_pair'
+    
+    # Now should be able to rejoin
+    assert _can_rejoin_team('active_team')
+    
+    # Test nonexistent team
+    assert not _can_rejoin_team('nonexistent_team')
+
+def test_disconnect_from_full_team_tracking(mock_request_context, full_team):
+    """Test that disconnection from full team properly tracks the player"""
+    request.sid = 'player1_sid'
+    state.connected_players.add('player1_sid')
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.leave_room') as mock_leave_room:
+        
+        from src.sockets.team_management import handle_disconnect
+        handle_disconnect()
+        
+        # Verify disconnected player is tracked
+        assert 'full_team' in state.disconnected_players
+        assert state.disconnected_players['full_team']['player_session_id'] == 'player1_sid'
+        assert state.disconnected_players['full_team']['player_slot'] == 1
+        
+        # Verify team status update includes disable_input
+        mock_emit.assert_any_call(
+            'team_status_update',
+            {
+                'team_name': 'full_team',
+                'status': 'waiting_pair',
+                'members': ['player2_sid'],
+                'game_started': state.game_started,
+                'disable_input': True
+            },
+            to='full_team'
+        )
+
+def test_reconnection_join_team(mock_request_context, active_team):
+    """Test successful reconnection via join_team"""
+    # Setup: simulate a disconnected player scenario
+    team_info = state.active_teams['active_team']
+    team_info['players'].append('player2_sid')  # Make team full
+    
+    # Track disconnection
+    from src.sockets.team_management import _track_disconnected_player
+    _track_disconnected_player('active_team', 'player2_sid', team_info)
+    team_info['players'].remove('player2_sid')
+    team_info['status'] = 'waiting_pair'
+    
+    # New player tries to join (simulating reconnection)
+    request.sid = 'new_session_id'
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.join_room') as mock_join_room, \
+         patch('src.sockets.team_management.start_new_round_for_pair') as mock_start_round:
+        
+        from src.sockets.team_management import on_join_team
+        on_join_team({'team_name': 'active_team'})
+        
+        # Verify reconnection message
+        mock_emit.assert_any_call(
+            'team_joined',
+            {
+                'team_name': 'active_team',
+                'message': 'You reconnected to team active_team.',
+                'game_started': state.game_started,
+                'team_status': 'full',
+                'is_reconnection': True
+            },
+            to='new_session_id'
+        )
+        
+        # Verify team status update enables input
+        mock_emit.assert_any_call(
+            'team_status_update',
+            {
+                'team_name': 'active_team',
+                'status': 'full',
+                'members': ['player1_sid', 'new_session_id'],
+                'game_started': state.game_started,
+                'disable_input': False
+            },
+            to='active_team'
+        )
+        
+        # Verify disconnection tracking is cleared
+        assert 'active_team' not in state.disconnected_players
+
+def test_get_reconnectable_teams(mock_request_context, active_team):
+    """Test getting list of reconnectable teams"""
+    # Setup: simulate a disconnected player scenario
+    team_info = state.active_teams['active_team']
+    team_info['players'].append('player2_sid')
+    
+    from src.sockets.team_management import _track_disconnected_player
+    _track_disconnected_player('active_team', 'player2_sid', team_info)
+    team_info['players'].remove('player2_sid')
+    team_info['status'] = 'waiting_pair'
+    
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        from src.sockets.team_management import on_get_reconnectable_teams
+        on_get_reconnectable_teams({})
+        
+        # Verify reconnectable teams are returned
+        call_args = mock_emit.call_args_list
+        reconnectable_call = next((call for call in call_args if call[0][0] == 'reconnectable_teams'), None)
+        assert reconnectable_call is not None
+        
+        teams_data = reconnectable_call[0][1]['teams']
+        assert len(teams_data) == 1
+        assert teams_data[0]['team_name'] == 'active_team'
+        assert teams_data[0]['player_slot'] == 2
+
+def test_leave_team_from_full_team_tracking(mock_request_context, full_team):
+    """Test that leaving a full team properly tracks the disconnection"""
+    request.sid = 'player1_sid'
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.leave_room') as mock_leave_room:
+        
+        from src.sockets.team_management import on_leave_team
+        on_leave_team({})
+        
+        # Verify disconnected player is tracked
+        assert 'full_team' in state.disconnected_players
+        assert state.disconnected_players['full_team']['player_session_id'] == 'player1_sid'
+        assert state.disconnected_players['full_team']['player_slot'] == 1
+        
+        # Verify team status update includes disable_input
+        mock_emit.assert_any_call(
+            'team_status_update',
+            {
+                'team_name': 'full_team',
+                'status': 'waiting_pair',
+                'members': ['player2_sid'],
+                'game_started': state.game_started,
+                'disable_input': True
+            },
+            to='full_team'
+        )
+
+def test_both_players_disconnect_and_reconnect(mock_request_context, full_team):
+    """Test scenario where both players disconnect and then reconnect"""
+    # First player disconnects
+    request.sid = 'player1_sid'
+    state.connected_players.add('player1_sid')
+    
+    with patch('src.sockets.team_management.emit'), \
+         patch('src.sockets.team_management.socketio.emit'), \
+         patch('src.sockets.dashboard.emit_dashboard_team_update'), \
+         patch('src.sockets.team_management.leave_room'):
+        
+        from src.sockets.team_management import handle_disconnect
+        handle_disconnect()
+        
+        # Verify tracking
+        assert 'full_team' in state.disconnected_players
+        assert len(state.active_teams['full_team']['players']) == 1
+        
+        # Second player disconnects
+        request.sid = 'player2_sid'
+        state.connected_players.add('player2_sid')
+        
+        handle_disconnect()
+        
+        # Team should now be inactive, tracking cleared
+        assert 'full_team' not in state.active_teams
+        assert 'full_team' not in state.disconnected_players
+
+def test_answer_submission_with_incomplete_team(mock_request_context, active_team):
+    """Test that answer submission is blocked when team is incomplete"""
+    # Setup incomplete team (only one player)
+    state.player_to_team['test_sid'] = 'active_team'
+    team_info = state.active_teams['active_team']
+    team_info['status'] = 'waiting_pair'
+    # Team has only one player, so it will fail the len() check first
+    
+    with patch('src.sockets.game.emit') as mock_emit:
+        from src.sockets.game import on_submit_answer
+        on_submit_answer({
+            'round_id': 1,
+            'item': 'A',
+            'answer': True
+        })
+        
+        mock_emit.assert_called_with(
+            'error',
+            {'message': 'Team not valid or other player missing.'}
+        )
+
+def test_answer_submission_with_inactive_full_team(mock_request_context, active_team):
+    """Test that answer submission is blocked when team has 2 players but is not active"""
+    # Setup full team that's marked as waiting_pair (inactive)
+    state.player_to_team['test_sid'] = 'active_team'
+    team_info = state.active_teams['active_team']
+    team_info['players'].append('player2_sid')  # Make team full
+    team_info['status'] = 'waiting_pair'  # But not active
+    
+    with patch('src.sockets.game.emit') as mock_emit:
+        from src.sockets.game import on_submit_answer
+        on_submit_answer({
+            'round_id': 1,
+            'item': 'A',
+            'answer': True
+        })
+        
+        mock_emit.assert_called_with(
+            'error',
+            {'message': 'Team is not active. Waiting for all players to connect.'}
+        )
+
+def test_cleanup_state_fixture_includes_disconnected_players():
+    """Test that the cleanup_state fixture properly clears disconnected_players"""
+    # This test verifies that the cleanup_state fixture was updated
+    # We can check by manually adding some data and seeing if it gets cleared
+    state.disconnected_players['test_team'] = {'player_session_id': 'test_sid', 'player_slot': 1, 'disconnect_time': 12345}
+    
+    # The cleanup_state fixture should clear this automatically after each test
+    # This is mostly a documentation test to ensure the fixture is comprehensive

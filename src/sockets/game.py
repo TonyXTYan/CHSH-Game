@@ -32,6 +32,11 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         if not team_info or len(team_info['players']) != 2:
             emit('error', {'message': 'Team not valid or other player missing.'})  # type: ignore
             return
+        
+        # Check if team is in proper active state (both players connected)
+        if team_info.get('status') != 'active':
+            emit('error', {'message': 'Team is not active. Waiting for all players to connect.'})  # type: ignore
+            return
 
         round_id = data.get('round_id')
         assigned_item_str = data.get('item')

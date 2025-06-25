@@ -89,7 +89,8 @@ def test_duplicate_answer_submission(mock_request_context):
             'players': ['test_sid', 'other_player_sid'],
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'active'
         }
         
         # Mock database round query
@@ -135,7 +136,8 @@ def test_round_completion_when_both_players_answer(mock_request_context):
             'players': ['test_sid', 'other_player_sid'],
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'active'
         }
         
         # Mock database round query
@@ -196,7 +198,8 @@ def test_dashboard_notifications_on_answer(mock_request_context):
             'players': ['test_sid', 'other_player_sid'],
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'active'
         }
         
         # Mock database round query
@@ -265,7 +268,8 @@ def test_submit_answer_round_not_found(mock_request_context):
             'players': ['test_sid', 'other_player_sid'],
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'active'
         }
         # Mock database round query returns None
         mock_rounds.query.get.return_value = None
@@ -294,7 +298,8 @@ def test_submit_answer_invalid_item(mock_request_context):
             'players': ['test_sid', 'other_player_sid'],
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'active'
         }
         # Mock database round query returns a valid round
         mock_round = MagicMock()
@@ -324,7 +329,8 @@ def test_submit_answer_incomplete_data(mock_request_context):
             'players': ['test_sid', 'other_player_sid'],
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
-            'answered_current_round': {}
+            'answered_current_round': {},
+            'status': 'active'
         }
         # Mock database round query returns a valid round
         mock_round = MagicMock()

@@ -7,10 +7,47 @@ from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.game_logic import start_new_round_for_pair
 import logging
+import time
 from typing import Dict, Any, List, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+def _get_player_slot_in_team(team_info: Dict[str, Any], sid: str) -> Optional[int]:
+    """Get which player slot (1 or 2) a session ID occupies in a team"""
+    try:
+        player_index = team_info['players'].index(sid)
+        return player_index + 1
+    except (ValueError, KeyError):
+        return None
+
+def _track_disconnected_player(team_name: str, sid: str, team_info: Dict[str, Any]) -> None:
+    """Track a disconnected player for potential reconnection"""
+    player_slot = _get_player_slot_in_team(team_info, sid)
+    if player_slot:
+        state.disconnected_players[team_name] = {
+            'player_session_id': sid,
+            'player_slot': player_slot,
+            'disconnect_time': time.time()
+        }
+        logger.info(f"Tracking disconnected player {sid} from team {team_name} (slot {player_slot})")
+
+def _clear_disconnected_player_tracking(team_name: str) -> None:
+    """Clear tracking for a disconnected player"""
+    if team_name in state.disconnected_players:
+        del state.disconnected_players[team_name]
+
+def _can_rejoin_team(team_name: str) -> bool:
+    """Check if a player can rejoin a team based on disconnection tracking"""
+    if team_name not in state.disconnected_players:
+        return False
+    
+    team_info = state.active_teams.get(team_name)
+    if not team_info:
+        return False
+    
+    # Team must be waiting for a player and have exactly one player
+    return len(team_info['players']) == 1 and team_info.get('status') == 'waiting_pair'
 
 def _import_dashboard_functions():
     """Import dashboard functions to avoid circular import"""
@@ -102,6 +139,10 @@ def handle_disconnect() -> None:
 
                     # Remove player from team
                     if sid in team_info['players']:
+                        # Track disconnected player for potential reconnection
+                        if was_full_team:
+                            _track_disconnected_player(team_name, sid, team_info)
+                        
                         team_info['players'].remove(sid)
                         
                         # Update the database
@@ -117,15 +158,17 @@ def handle_disconnect() -> None:
                             team_info['status'] = 'waiting_pair'
                             
                             emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
-                            # Keep team active with remaining player
+                            # Keep team active with remaining player, but disable response input
                             emit('team_status_update', {
                                 'team_name': team_name,
                                 'status': 'waiting_pair',
                                 'members': remaining_players,
-                                'game_started': state.game_started
+                                'game_started': state.game_started,
+                                'disable_input': True  # Disable response input when team is incomplete
                             }, to=team_name)  # type: ignore
                         else:
-                            # If no players left, mark team as inactive
+                            # If no players left, mark team as inactive and clear tracking
+                            _clear_disconnected_player_tracking(team_name)
                             existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
                             if existing_inactive:
                                 db_team.team_name = f"{team_name}_{db_team.team_id}"
@@ -231,6 +274,13 @@ def on_join_team(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'You are already in this team.'})  # type: ignore
             return
 
+        # Check if this is a reconnection scenario
+        is_reconnection = _can_rejoin_team(team_name)
+        if is_reconnection:
+            logger.info(f"Player {sid} reconnecting to team {team_name}")
+            # Clear the disconnection tracking since player is reconnecting
+            _clear_disconnected_player_tracking(team_name)
+
         team_info['players'].append(sid)
         state.player_to_team[sid] = team_name
         join_room(team_name, sid=sid)  # type: ignore
@@ -257,11 +307,13 @@ def on_join_team(data: Dict[str, Any]) -> None:
             team_info['status'] = 'waiting_pair' # Internal state status
 
         # Notify the player who just joined
+        join_message = f'You reconnected to team {team_name}.' if is_reconnection else f'You joined team {team_name}.'
         emit('team_joined', {
             'team_name': team_name,
-            'message': f'You joined team {team_name}.',
+            'message': join_message,
             'game_started': state.game_started,
-            'team_status': current_team_status_for_clients # Let P2 know if team is full now
+            'team_status': current_team_status_for_clients,
+            'is_reconnection': is_reconnection
         }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
@@ -270,7 +322,8 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'team_name': team_name,
             'status': current_team_status_for_clients,
             'members': get_team_members(team_name),
-            'game_started': state.game_started
+            'game_started': state.game_started,
+            'disable_input': False if team_is_now_full else True  # Enable input only when team is full
         }, to=team_name)  # type: ignore
         
         # Update all clients about the list of available teams
@@ -364,6 +417,31 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
         logger.error(f"Error in on_reactivate_team: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while reactivating the team'})  # type: ignore
 
+@socketio.on('get_reconnectable_teams')
+def on_get_reconnectable_teams(data: Dict[str, Any]) -> None:
+    """Get list of teams that a player can reconnect to"""
+    try:
+        sid = request.sid  # type: ignore
+        reconnectable_teams = []
+        
+        # Find teams that are waiting for a player and have a disconnected player tracked
+        for team_name, team_info in state.active_teams.items():
+            if (_can_rejoin_team(team_name) and 
+                team_name in state.disconnected_players):
+                disconnected_info = state.disconnected_players[team_name]
+                reconnectable_teams.append({
+                    'team_name': team_name,
+                    'team_id': team_info['team_id'],
+                    'disconnect_time': disconnected_info['disconnect_time'],
+                    'player_slot': disconnected_info['player_slot']
+                })
+        
+        emit('reconnectable_teams', {'teams': reconnectable_teams})  # type: ignore
+        
+    except Exception as e:
+        logger.error(f"Error in on_get_reconnectable_teams: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while getting reconnectable teams'})  # type: ignore
+
 @socketio.on('leave_team')
 def on_leave_team(data: Dict[str, Any]) -> None:
     try:
@@ -382,6 +460,11 @@ def on_leave_team(data: Dict[str, Any]) -> None:
         # Using Session.get() instead of Query.get()
         db_team = db.session.get(Teams, team_info['team_id'])
         if sid in team_info['players']:
+            # Track disconnected player if this was a full team
+            was_full_team = len(team_info['players']) == 2
+            if was_full_team:
+                _track_disconnected_player(team_name, sid, team_info)
+            
             team_info['players'].remove(sid)
             
             if db_team:
@@ -398,10 +481,12 @@ def on_leave_team(data: Dict[str, Any]) -> None:
                     'team_name': team_name,
                     'status': 'waiting_pair', 
                     'members': get_team_members(team_name),
-                    'game_started': state.game_started
+                    'game_started': state.game_started,
+                    'disable_input': True  # Disable input when team becomes incomplete
                 }, to=team_name)  # type: ignore
             else:
-                # No players left, team becomes inactive
+                # No players left, team becomes inactive and clear tracking
+                _clear_disconnected_player_tracking(team_name)
                 if team_name in state.active_teams:
                     del state.active_teams[team_name]
                 if team_info['team_id'] in state.team_id_to_name:
