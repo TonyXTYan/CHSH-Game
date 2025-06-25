@@ -48,14 +48,18 @@ def test_client():
 
 @pytest.fixture
 def mock_request():
-    # Patch request at the module level where it's imported
-    with patch('src.sockets.dashboard.request') as mock_req:
-        mock_req.sid = 'test_dashboard_sid'
-        
+    # Create a mock request object without patching the actual Flask request
+    mock_req = MagicMock()
+    mock_req.sid = 'test_dashboard_sid'
+    
+    # Patch the Flask request object in a way that avoids context issues
+    with patch('src.sockets.dashboard.request', mock_req):
         # Also patch the app context manager
         with patch('src.sockets.dashboard.app') as mock_app:
-            mock_app.app_context.return_value.__enter__ = MagicMock(return_value=None)
-            mock_app.app_context.return_value.__exit__ = MagicMock(return_value=None)
+            mock_context = MagicMock()
+            mock_context.__enter__ = MagicMock(return_value=None)
+            mock_context.__exit__ = MagicMock(return_value=None)
+            mock_app.app_context.return_value = mock_context
             
             # Patch time function to return consistent value
             with patch('src.sockets.dashboard.time') as mock_time:
@@ -68,25 +72,42 @@ def mock_socketio():
     with patch('src.sockets.dashboard.socketio') as mock_io:
         yield mock_io
 
+class MockSet:
+    """Mock set class that allows method patching"""
+    def __init__(self, initial_data=None):
+        self._data = set(initial_data) if initial_data else set()
+    
+    def add(self, item):
+        self._data.add(item)
+    
+    def discard(self, item):
+        self._data.discard(item)
+    
+    def remove(self, item):
+        self._data.remove(item)
+    
+    def __contains__(self, item):
+        return item in self._data
+    
+    def __iter__(self):
+        return iter(self._data)
+    
+    def __len__(self):
+        return len(self._data)
+    
+    def __bool__(self):
+        return bool(self._data)
+
 @pytest.fixture
 def mock_state():
     with patch('src.sockets.dashboard.state') as mock_state:
-        # Use a real set so add/remove operations work
-        mock_state.dashboard_clients = {'test_dashboard_sid'}
+        # Use MockSet for dashboard_clients so add/remove operations work
+        mock_state.dashboard_clients = MockSet(['test_dashboard_sid'])
         mock_state.active_teams = {'team1': {'players': ['p1', 'p2']}}
         mock_state.game_paused = False
         mock_state.game_started = False
-        mock_state.connected_players = {'player1', 'player2'}
+        mock_state.connected_players = MockSet(['player1', 'player2'])
         mock_state.answer_stream_enabled = True
-        
-        # Make sure operations on dashboard_clients work
-        def add_client(sid):
-            mock_state.dashboard_clients.add(sid)
-        def remove_client(sid):
-            mock_state.dashboard_clients.discard(sid)
-            
-        mock_state.dashboard_clients.add = add_client
-        mock_state.dashboard_clients.discard = remove_client
         
         yield mock_state
 
@@ -126,10 +147,55 @@ def mock_team():
     return team
 
 def test_pause_game_toggles_state(mock_request, mock_state, mock_socketio, mock_emit):
-    pytest.skip("Skipping complex game state test - requires complex Flask context")
+    """Test that pause_game properly toggles game state and notifies clients"""
+    from src.sockets.dashboard import on_pause_game
+    
+    # Initial state is unpaused
+    mock_state.game_paused = False
+    assert not mock_state.game_paused
+
+    # Call pause_game
+    on_pause_game()
+
+    # Verify state was toggled
+    assert mock_state.game_paused
+
+    # Verify teams were notified
+    mock_socketio.emit.assert_any_call('game_state_update', 
+                                    {'paused': True}, 
+                                    to='team1')
+
+    # Call pause_game again
+    on_pause_game()
+
+    # Verify state was toggled back
+    assert not mock_state.game_paused
+
+    # Verify teams were notified of unpause
+    mock_socketio.emit.assert_any_call('game_state_update', 
+                                    {'paused': False}, 
+                                    to='team1')
 
 def test_pause_game_unauthorized(mock_request, mock_state, mock_socketio, mock_emit):
-    pytest.skip("Skipping complex game state test - requires complex Flask context")
+    """Test that unauthorized clients cannot pause the game"""
+    from src.sockets.dashboard import on_pause_game
+    
+    # Remove dashboard client status
+    mock_state.dashboard_clients = MockSet()
+    mock_state.game_paused = False
+    
+    # Try to pause game
+    on_pause_game()
+
+    # Verify state remained unchanged
+    assert not mock_state.game_paused
+
+    # Verify error was emitted
+    mock_emit.assert_called_once_with('error', 
+                                   {'message': 'Unauthorized: Not a dashboard client'})
+
+    # Verify no team notifications were sent
+    mock_socketio.emit.assert_not_called()
 
 def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
     """Test correlation matrix computation with no answers"""
@@ -316,13 +382,62 @@ def test_dashboard_api_endpoint_error(test_client, mock_db_session):
     pytest.skip("Skipping HTTP endpoint test - requires complex Flask app setup")
 
 def test_on_keep_alive(mock_request, mock_state):
-    pytest.skip("Skipping socket event test - requires complex Flask context")
+    """Test keep-alive functionality"""
+    from src.sockets.dashboard import on_keep_alive, dashboard_last_activity
+    
+    # Clear the dictionary first
+    dashboard_last_activity.clear()
+    
+    with patch('src.sockets.dashboard.emit') as mock_emit:
+        on_keep_alive()
+        
+        # Verify acknowledgment was sent
+        mock_emit.assert_called_once_with('keep_alive_ack', to='test_dashboard_sid')
+        
+        # Verify timestamp was updated (mock_time from mock_request fixture returns 12345.0)
+        assert dashboard_last_activity['test_dashboard_sid'] == 12345.0
 
 def test_on_disconnect(mock_request, mock_state):
-    pytest.skip("Skipping socket event test - requires complex Flask context")
+    """Test disconnect handler"""
+    from src.sockets.dashboard import on_disconnect, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Setup initial state
+    dashboard_last_activity['test_dashboard_sid'] = 12345
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
+    on_disconnect()
+    
+    # Verify client was removed from all tracking
+    assert 'test_dashboard_sid' not in mock_state.dashboard_clients
+    assert 'test_dashboard_sid' not in dashboard_last_activity
+    assert 'test_dashboard_sid' not in dashboard_teams_streaming
 
 def test_emit_dashboard_team_update(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test dashboard team update emission"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # Clear streaming preferences and ensure clean state
+    dashboard_teams_streaming.clear()
+    mock_state.dashboard_clients = MockSet()  # No clients initially
+    
+    # Test with no clients having teams streaming enabled - should not emit
+    emit_dashboard_team_update()
+    mock_socketio.emit.assert_not_called()
+    
+    # Reset mock and add client with streaming enabled
+    mock_socketio.emit.reset_mock()
+    mock_state.dashboard_clients = MockSet(['test_dashboard_sid'])
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = [{'team_name': 'team1'}]
+        
+        emit_dashboard_team_update()
+        
+        mock_socketio.emit.assert_called_with('team_status_changed_for_dashboard', {
+            'teams': [{'team_name': 'team1'}],
+            'connected_players_count': 2
+        }, to='test_dashboard_sid')
 
 def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
     """Test error handling in socket event handlers"""
@@ -332,9 +447,33 @@ def test_error_handling_in_socket_events(mock_request, mock_state, mock_emit):
 
 def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio):
     """Test dashboard join with callback function"""
-    # Skip this test due to complex import issues in test environment
-    # The bug fixes have been verified manually
-    pytest.skip("Skipping due to test environment complexity - functionality verified manually")
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Ensure clean state for new client test
+    dashboard_teams_streaming.clear()
+    
+    mock_callback = MagicMock()
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = [{'team_name': 'team1'}]
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 10
+            
+            # Call on_dashboard_join with callback
+            on_dashboard_join(callback=mock_callback)
+            
+            # Verify callback was called with correct data
+            mock_callback.assert_called_once()
+            callback_data = mock_callback.call_args[0][0]
+            assert 'teams' in callback_data
+            assert callback_data['teams'] == []  # Empty since teams streaming is off by default
+            assert callback_data['total_answers_count'] == 10
+            assert callback_data['connected_players_count'] == 2
+            assert 'active_teams_count' in callback_data
+            assert 'ready_players_count' in callback_data
+            assert callback_data['game_state']['started'] == False
+            assert callback_data['game_state']['streaming_enabled'] == True
 
 def test_on_start_game(mock_request, mock_state, mock_socketio):
     """Test game start functionality"""
@@ -349,10 +488,116 @@ def test_on_restart_game(mock_request, mock_state, mock_socketio, mock_db_sessio
     pytest.skip("Skipping complex game state test - covered by integration tests")
 
 def test_get_all_teams(mock_state, mock_db_session):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test getting serialized team data"""
+    from src.sockets.dashboard import get_all_teams
+    
+    mock_team = MagicMock()
+    mock_team.team_id = 1
+    mock_team.team_name = "Test Team"
+    mock_team.is_active = True
+    mock_team.created_at = datetime.now(UTC)
+    
+    # Reset state to ensure clean test
+    mock_state.active_teams = {}
+    
+    # Mock time to ensure fresh data computation
+    with patch('src.sockets.dashboard.time') as mock_time:
+        mock_time.return_value = 0  # Force fresh computation
+        
+        with patch('src.sockets.dashboard.Teams') as mock_teams:
+            mock_teams.query.all.return_value = [mock_team]
+            
+            # Set up compute_correlation_matrix mock return values
+            corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
+            item_values = ['A', 'B', 'X', 'Y']
+            
+            with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
+                mock_compute.return_value = (
+                    corr_matrix, item_values, 0.0, {}, {}, {}, {}
+                )
+                
+                with patch('src.sockets.dashboard.compute_team_hashes') as mock_hashes:
+                    mock_hashes.return_value = ('hash1', 'hash2')
+                    
+                    with patch('src.sockets.dashboard._calculate_team_statistics') as mock_stats:
+                        mock_stats.return_value = {
+                            'trace_average_statistic': 0.0,
+                            'trace_average_statistic_uncertainty': None,
+                            'chsh_value_statistic': 0.0,
+                            'chsh_value_statistic_uncertainty': None,
+                            'cross_term_combination_statistic': 0.0,
+                            'cross_term_combination_statistic_uncertainty': None,
+                            'same_item_balance': 0.0,
+                            'same_item_balance_uncertainty': None
+                        }
+                        
+                        result = get_all_teams()
+                        
+                        assert len(result) == 1
+                        team_data = result[0]
+                        assert team_data['team_name'] == "Test Team"
+                        assert team_data['team_id'] == 1
+                        assert team_data['is_active'] == True
+                        assert team_data['history_hash1'] == 'hash1'
+                        assert team_data['history_hash2'] == 'hash2'
+                        assert 'correlation_matrix' in team_data
+                        assert 'correlation_stats' in team_data
 
 def test_emit_dashboard_full_update(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test full dashboard update emission"""
+    from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = [{'team_name': 'team1'}]
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 10
+            
+            # Test update for specific client without teams streaming
+            emit_dashboard_full_update('specific_client')
+            
+            # Check that emit was called
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            assert call_args[0][0] == 'dashboard_update'  # Event name
+            update_data = call_args[0][1]  # Data
+            assert call_args[1]['to'] == 'specific_client'  # Target
+            
+            # Verify expected fields
+            assert update_data['teams'] == []  # Empty since streaming disabled
+            assert update_data['total_answers_count'] == 10
+            assert update_data['connected_players_count'] == 2
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert update_data['game_state']['started'] == False
+            assert update_data['game_state']['paused'] == False
+            assert update_data['game_state']['streaming_enabled'] == True
+            
+            # Test update for specific client with teams streaming enabled
+            dashboard_teams_streaming['specific_client'] = True
+            mock_socketio.emit.reset_mock()
+            emit_dashboard_full_update('specific_client')
+            
+            # Check the call
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == [{'team_name': 'team1'}]  # Has teams since streaming enabled
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            
+            # Test update for all dashboard clients (with teams streaming disabled by default)
+            dashboard_teams_streaming.clear()  # Reset to default state
+            mock_socketio.emit.reset_mock()
+            emit_dashboard_full_update()
+            
+            # Check the call
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == []  # Empty since streaming disabled
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
 
 def test_download_csv_endpoint(test_client, mock_db_session):
     """Test the /download CSV endpoint"""
@@ -370,10 +615,16 @@ def test_download_csv_endpoint_empty_data(test_client, mock_db_session):
     pytest.skip("Skipping HTTP endpoint test - requires complex Flask app setup")
 
 def test_emit_dashboard_team_update_runs(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test that emit_dashboard_team_update function runs without crashing"""
+    from src.sockets.dashboard import emit_dashboard_team_update
+    # Should not raise
+    emit_dashboard_team_update(force_refresh=True)
 
 def test_emit_dashboard_full_update_runs(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test that emit_dashboard_full_update function runs without crashing"""
+    from src.sockets.dashboard import emit_dashboard_full_update
+    # Should not raise
+    emit_dashboard_full_update(client_sid=None)
 
 def test_clear_team_caches_runs():
     from src.sockets.dashboard import clear_team_caches
@@ -381,19 +632,61 @@ def test_clear_team_caches_runs():
     clear_team_caches()
 
 def test_teams_streaming_socket_events(mock_request, mock_state, mock_socketio):
-    pytest.skip("Skipping socket event test - requires complex Flask context")
+    """Test teams streaming socket event handlers"""
+    from src.sockets.dashboard import on_set_teams_streaming, on_request_teams_update, dashboard_teams_streaming
+    
+    # Clear the dictionary first and ensure client is in dashboard_clients
+    dashboard_teams_streaming.clear()
+    
+    # Test set_teams_streaming
+    on_set_teams_streaming({'enabled': True})
+    assert dashboard_teams_streaming['test_dashboard_sid'] == True
+    
+    on_set_teams_streaming({'enabled': False})
+    assert dashboard_teams_streaming['test_dashboard_sid'] == False
+    
+    # Test request_teams_update with streaming disabled - should not emit
+    on_request_teams_update()
+    mock_socketio.emit.assert_not_called()
+    
+    # Test request_teams_update with streaming enabled
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    with patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+        on_request_teams_update()
+        mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
 
 def test_on_dashboard_join_error_handling(mock_request, mock_state, mock_emit):
-    # Skip this test due to complex error handling requirements
-    pytest.skip("Skipping error handling test - covered by integration tests")
+    """Test error handling in dashboard join"""
+    from src.sockets.dashboard import on_dashboard_join
+    
+    # Test error by passing bad callback (not callable)
+    try:
+        on_dashboard_join(data=None, callback='not_callable')
+    except Exception:
+        # Should handle the error gracefully
+        pass
 
 def test_on_start_game_error_handling(mock_request, mock_state, mock_emit):
-    # Skip this test due to complex error handling requirements  
-    pytest.skip("Skipping error handling test - covered by integration tests")
+    """Test error handling in start game"""
+    from src.sockets.dashboard import on_start_game
+    
+    # Simulate error by removing dashboard client
+    mock_state.dashboard_clients = MockSet()
+    
+    # Should not crash
+    on_start_game(data=None)
 
 def test_on_restart_game_error_handling(mock_request, mock_state, mock_emit):
-    # Skip this test due to complex error handling requirements
-    pytest.skip("Skipping error handling test - covered by integration tests")
+    """Test error handling in restart game"""
+    from src.sockets.dashboard import on_restart_game
+    
+    # Simulate error by removing dashboard client
+    mock_state.dashboard_clients = MockSet()
+    
+    on_restart_game()
+    
+    # Should emit error for unauthorized client
+    mock_emit.assert_called_with('error', {'message': 'Unauthorized: Not a dashboard client'})
 
 def test_dashboard_api_endpoint_error_case(test_client, mock_db_session):
     # Skip this test due to complex Flask app mocking requirements
@@ -434,50 +727,351 @@ def test_teams_streaming_multiple_clients():
     assert dashboard_teams_streaming['client2'] == False  
     assert dashboard_teams_streaming['client3'] == True
 
-# Skip complex socket event tests that require Flask request context
-# These tests verify socket event handlers but require complex mocking
-
 def test_set_teams_streaming_enable(mock_request, mock_state):
-    pytest.skip("Skipping socket event test - requires complex Flask request context")
+    """Test enabling teams streaming via socket event"""
+    from src.sockets.dashboard import on_set_teams_streaming, dashboard_teams_streaming
+    
+    # Start with streaming disabled
+    dashboard_teams_streaming['test_dashboard_sid'] = False
+    
+    # Enable streaming
+    on_set_teams_streaming({'enabled': True})
+    
+    # Verify streaming is now enabled
+    assert dashboard_teams_streaming['test_dashboard_sid'] == True
 
 def test_set_teams_streaming_disable(mock_request, mock_state):
-    pytest.skip("Skipping socket event test - requires complex Flask request context")
+    """Test disabling teams streaming via socket event"""
+    from src.sockets.dashboard import on_set_teams_streaming, dashboard_teams_streaming
+    
+    # Start with streaming enabled
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
+    # Disable streaming
+    on_set_teams_streaming({'enabled': False})
+    
+    # Verify streaming is now disabled
+    assert dashboard_teams_streaming['test_dashboard_sid'] == False
 
 def test_set_teams_streaming_invalid_data(mock_request, mock_state):
-    pytest.skip("Skipping socket event test - requires complex Flask request context")
+    """Test set_teams_streaming with invalid data"""
+    from src.sockets.dashboard import on_set_teams_streaming, dashboard_teams_streaming
+    
+    # Start with default state
+    dashboard_teams_streaming['test_dashboard_sid'] = False
+    
+    # Send invalid data (no 'enabled' key)
+    on_set_teams_streaming({'invalid': 'data'})
+    
+    # Verify streaming remains unchanged
+    assert dashboard_teams_streaming['test_dashboard_sid'] == False
+    
+    # Send None data
+    on_set_teams_streaming(None)
+    
+    # Verify streaming remains unchanged
+    assert dashboard_teams_streaming['test_dashboard_sid'] == False
 
 def test_request_teams_update_when_streaming_enabled(mock_request, mock_state):
-    pytest.skip("Skipping socket event test - requires complex Flask request context")
+    """Test request_teams_update works when streaming is enabled"""
+    from src.sockets.dashboard import on_request_teams_update, dashboard_teams_streaming
+    
+    # Enable streaming
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
+    with patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+        on_request_teams_update()
+        
+        # Verify full update was called for this client
+        mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
 
 def test_request_teams_update_when_streaming_disabled(mock_request, mock_state, mock_socketio):
-    pytest.skip("Skipping socket event test - requires complex Flask request context")
-
-# Skip remaining complex tests that require state mocking
-# These functions are covered by integration tests and the core logic is verified above
+    """Test request_teams_update does nothing when streaming is disabled"""
+    from src.sockets.dashboard import on_request_teams_update, dashboard_teams_streaming
+    
+    # Disable streaming
+    dashboard_teams_streaming['test_dashboard_sid'] = False
+    
+    with patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+        on_request_teams_update()
+        
+        # Verify no update was sent
+        mock_full_update.assert_not_called()
+        mock_socketio.emit.assert_not_called()
 
 def test_emit_dashboard_team_update_selective_sending(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test that team updates are only sent to clients with streaming enabled"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # Setup multiple clients with different streaming preferences
+    mock_state.dashboard_clients = MockSet(['client1', 'client2', 'client3'])
+    dashboard_teams_streaming['client1'] = True   # Streaming enabled
+    dashboard_teams_streaming['client2'] = False  # Streaming disabled
+    dashboard_teams_streaming['client3'] = True   # Streaming enabled
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = [{'team_name': 'team1'}]
+        
+        emit_dashboard_team_update()
+        
+        # Verify team update was sent only to clients with streaming enabled
+        expected_calls = [
+            call('team_status_changed_for_dashboard', {
+                'teams': [{'team_name': 'team1'}],
+                'connected_players_count': 2
+            }, to='client1'),
+            call('team_status_changed_for_dashboard', {
+                'teams': [{'team_name': 'team1'}],
+                'connected_players_count': 2
+            }, to='client3')
+        ]
+        
+        # Check that we have the expected calls (order doesn't matter since we're iterating over a set)
+        assert len(mock_socketio.emit.call_args_list) == 2
+        for expected_call in expected_calls:
+            assert expected_call in mock_socketio.emit.call_args_list
 
 def test_emit_dashboard_team_update_no_streaming_clients(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test that no team updates are sent when no clients have streaming enabled"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # Setup clients with streaming disabled
+    mock_state.dashboard_clients = MockSet(['client1', 'client2'])
+    dashboard_teams_streaming['client1'] = False
+    dashboard_teams_streaming['client2'] = False
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        emit_dashboard_team_update()
+        
+        # Verify no emissions occurred
+        mock_socketio.emit.assert_not_called()
+        # Verify get_all_teams was not called (performance optimization)
+        mock_get_teams.assert_not_called()
 
 def test_disconnect_cleans_up_teams_streaming(mock_request, mock_state):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test that disconnect handler cleans up teams streaming preferences"""
+    from src.sockets.dashboard import on_disconnect, dashboard_teams_streaming, dashboard_last_activity
+    
+    # Setup client state
+    dashboard_last_activity['test_dashboard_sid'] = 12345
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
+    # Disconnect
+    on_disconnect()
+    
+    # Verify all client data was cleaned up
+    assert 'test_dashboard_sid' not in mock_state.dashboard_clients
+    assert 'test_dashboard_sid' not in dashboard_last_activity
+    assert 'test_dashboard_sid' not in dashboard_teams_streaming
 
 def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - covered by integration tests")
+    """Test teams streaming behavior with clients in various states"""
+    from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
+    
+    # Setup clients in various states
+    dashboard_teams_streaming['streaming_client'] = True
+    dashboard_teams_streaming['non_streaming_client'] = False
+    # 'new_client' not in dictionary (should get default behavior)
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = [{'team_name': 'team1'}]
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 10
+            
+            # Test update for streaming client
+            emit_dashboard_full_update('streaming_client')
+            
+            # Verify teams data is included
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == [{'team_name': 'team1'}]
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert call_args[1]['to'] == 'streaming_client'
+            
+            mock_socketio.emit.reset_mock()
+            
+            # Test update for non-streaming client
+            emit_dashboard_full_update('non_streaming_client')
+            
+            # Verify teams data is empty
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == []
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert call_args[1]['to'] == 'non_streaming_client'
+            
+            mock_socketio.emit.reset_mock()
+            
+            # Test update for new client (not in streaming dict)
+            emit_dashboard_full_update('new_client')
+            
+            # Verify teams data is empty (default is streaming disabled)
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            update_data = call_args[0][1]
+            assert update_data['teams'] == []
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert call_args[1]['to'] == 'new_client'
 
 def test_teams_streaming_error_handling(mock_request, mock_state, mock_emit):
-    pytest.skip("Skipping complex error handling test - covered by integration tests")
+    """Test error handling in teams streaming socket events"""
+    from src.sockets.dashboard import on_set_teams_streaming, on_request_teams_update
+    
+    # Test set_teams_streaming with malformed data
+    with patch('src.sockets.dashboard.dashboard_teams_streaming', side_effect=Exception("Dictionary error")):
+        on_set_teams_streaming({'enabled': True})
+        # Should not crash, error should be handled gracefully
+    
+    # Test request_teams_update with error in emit_dashboard_full_update
+    with patch('src.sockets.dashboard.emit_dashboard_full_update', side_effect=Exception("Emit error")):
+        on_request_teams_update()
+        # Should not crash, error should be handled gracefully
 
 def test_metrics_sent_regardless_of_teams_streaming_state(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - core logic verified by simpler tests")
+    """Test that team metrics are always sent even when teams streaming is disabled (Bug 1 fix)"""
+    from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
+    
+    # Setup client with teams streaming disabled
+    dashboard_teams_streaming['test_client'] = False
+    
+    # Mock teams data
+    mock_teams = [
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2'},
+        {'team_id': 2, 'team_name': 'Team2', 'is_active': True, 'player1_sid': 'p3', 'player2_sid': None},
+        {'team_id': 3, 'team_name': 'Team3', 'is_active': False, 'player1_sid': None, 'player2_sid': None}
+    ]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 10
+            
+            emit_dashboard_full_update('test_client')
+            
+            # Verify the call was made
+            assert mock_socketio.emit.called
+            call_args = mock_socketio.emit.call_args
+            
+            # Check that metrics are included even though teams streaming is disabled
+            update_data = call_args[0][1]  # Second argument is the data
+            
+            # Should have metrics
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert update_data['active_teams_count'] == 2  # Two active teams
+            assert update_data['ready_players_count'] == 3  # 2 + 1 players from active teams
+            
+            # Should have empty teams array since streaming is disabled
+            assert update_data['teams'] == []
+            
+            # Should have other expected fields
+            assert update_data['total_answers_count'] == 10
+            assert update_data['connected_players_count'] == 2
 
 def test_dashboard_join_respects_client_streaming_preference(mock_request, mock_state, mock_socketio):
-    pytest.skip("Skipping complex callback test - functionality verified through other tests")
+    """Test that dashboard join callback respects existing client streaming preferences (Bug 2 fix)"""
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Setup client with teams streaming enabled
+    dashboard_teams_streaming['test_dashboard_sid'] = True
+    
+    # Mock teams data
+    mock_teams = [
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True}
+    ]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Test with callback function
+            mock_callback = MagicMock()
+            on_dashboard_join(callback=mock_callback)
+            
+            # Verify callback was called
+            mock_callback.assert_called_once()
+            callback_data = mock_callback.call_args[0][0]
+            
+            # Since client has streaming enabled, should receive teams data
+            assert 'teams' in callback_data
+            assert callback_data['teams'] == mock_teams  # Should have teams data, not empty array
+            
+            # Should also have metrics
+            assert 'active_teams_count' in callback_data
+            assert 'ready_players_count' in callback_data
 
 def test_dashboard_join_new_client_gets_default_streaming_disabled(mock_request, mock_state, mock_socketio):
-    pytest.skip("Skipping complex callback test - functionality verified through other tests")
+    """Test that new dashboard clients get teams streaming disabled by default"""
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Ensure client is not in streaming dictionary (new client)
+    if 'test_dashboard_sid' in dashboard_teams_streaming:
+        del dashboard_teams_streaming['test_dashboard_sid']
+    
+    # Mock teams data
+    mock_teams = [
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True}
+    ]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Test with callback function
+            mock_callback = MagicMock()
+            on_dashboard_join(callback=mock_callback)
+            
+            # Verify client was added with streaming disabled
+            assert dashboard_teams_streaming['test_dashboard_sid'] == False
+            
+            # Verify callback data has empty teams array
+            mock_callback.assert_called_once()
+            callback_data = mock_callback.call_args[0][0]
+            assert callback_data['teams'] == []  # Empty since streaming disabled by default
+            
+            # Should still have metrics
+            assert 'active_teams_count' in callback_data
+            assert 'ready_players_count' in callback_data
 
 def test_emit_dashboard_team_update_includes_metrics_for_streaming_clients(mock_state, mock_socketio):
-    pytest.skip("Skipping complex state test - functionality verified through simpler tests")
+    """Test that team status updates include proper data for streaming clients"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # Setup client with teams streaming enabled
+    mock_state.dashboard_clients = MockSet(['streaming_client'])
+    dashboard_teams_streaming['streaming_client'] = True
+    
+    # Mock teams data
+    mock_teams = [
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2'}
+    ]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        emit_dashboard_team_update()
+        
+        # Verify the call was made to streaming client
+        assert mock_socketio.emit.called
+        call_args = mock_socketio.emit.call_args
+        
+        # Check that it's the right event and client
+        assert call_args[0][0] == 'team_status_changed_for_dashboard'
+        assert call_args[1]['to'] == 'streaming_client'
+        
+        # Check that teams data is included for streaming client
+        update_data = call_args[0][1]  # Second argument is the data
+        assert 'teams' in update_data
+        assert update_data['teams'] == mock_teams
+        assert 'connected_players_count' in update_data
