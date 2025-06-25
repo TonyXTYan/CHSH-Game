@@ -414,3 +414,84 @@ button:disabled {
     transition: all 0.3s ease;
     overflow: hidden;
 }
+
+/* Rejoin team section styles */
+.rejoin-section {
+    margin-bottom: 2rem;
+    padding: 1rem;
+    background-color: #e8f5e9;
+    border: 2px solid #4caf50;
+    border-radius: 8px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+
+.rejoin-container h3 {
+    margin-top: 0;
+    margin-bottom: 1rem;
+    color: #2e7d32;
+    text-align: center;
+    font-size: 1.3rem;
+}
+
+.rejoin-container p {
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: #2e7d32;
+    font-size: 1rem;
+}
+
+.rejoin-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+}
+
+.rejoin-btn {
+    background-color: #4caf50;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.rejoin-btn:hover {
+    background-color: #388e3c;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+.new-session-btn {
+    background-color: #6c757d;
+    color: white;
+    border: none;
+    padding: 0.75rem 1.5rem;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.new-session-btn:hover {
+    background-color: #545b62;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+}
+
+@media (max-width: 480px) {
+    .rejoin-buttons {
+        flex-direction: column;
+        align-items: stretch;
+    }
+    
+    .rejoin-btn,
+    .new-session-btn {
+        width: 100%;
+        margin-bottom: 0.5rem;
+    }
+}

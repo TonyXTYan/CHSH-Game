@@ -296,6 +296,130 @@ def on_join_team(data: Dict[str, Any]) -> None:
         logger.error(f"Error in on_join_team: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while joining the team'})  # type: ignore
 
+@socketio.on('rejoin_team')
+def on_rejoin_team(data: Dict[str, Any]) -> None:
+    """Handle player attempting to rejoin their previous team."""
+    try:
+        team_name = data.get('team_name')
+        team_id = data.get('team_id')
+        sid = request.sid  # type: ignore
+        
+        if not team_name or not team_id:
+            emit('rejoin_team_response', {
+                'success': False,
+                'message': 'Invalid team information.'
+            })  # type: ignore
+            return
+        
+        # Check if team exists and is active
+        if team_name in state.active_teams:
+            team_info = state.active_teams[team_name]
+            
+            # Verify team_id matches
+            if team_info['team_id'] != team_id:
+                emit('rejoin_team_response', {
+                    'success': False,
+                    'message': 'Team information does not match.'
+                })  # type: ignore
+                return
+            
+            # Check if team has space (only one player currently)
+            if len(team_info['players']) >= 2:
+                emit('rejoin_team_response', {
+                    'success': False,
+                    'message': 'Team is already full.'
+                })  # type: ignore
+                return
+            
+            # Check if player is already in this team
+            if sid in team_info['players']:
+                emit('rejoin_team_response', {
+                    'success': False,
+                    'message': 'You are already in this team.'
+                })  # type: ignore
+                return
+            
+            # Add player to team (same logic as join_team)
+            team_info['players'].append(sid)
+            state.player_to_team[sid] = team_name
+            join_room(team_name, sid=sid)  # type: ignore
+            
+            # Update database
+            db_team = db.session.get(Teams, team_info['team_id'])
+            if db_team:
+                if not db_team.player1_session_id:
+                    db_team.player1_session_id = sid
+                elif not db_team.player2_session_id:
+                    db_team.player2_session_id = sid
+                db_team.is_active = True
+                db.session.commit()
+                # Clear caches after team state change
+                _, _, clear_team_caches = _import_dashboard_functions()
+                clear_team_caches()
+
+            team_is_now_full = len(team_info['players']) == 2
+            current_team_status_for_clients = 'full' if team_is_now_full else 'waiting_pair'
+            
+            if team_is_now_full:
+                team_info['status'] = 'active'
+            else:
+                team_info['status'] = 'waiting_pair'
+
+            # Send success response
+            emit('rejoin_team_response', {
+                'success': True,
+                'team_name': team_name,
+                'team_id': team_id,
+                'message': f'Successfully rejoined team {team_name}.',
+                'game_started': state.game_started,
+                'team_status': current_team_status_for_clients
+            })  # type: ignore
+            
+            # Notify all team members about status
+            emit('team_status_update', {
+                'team_name': team_name,
+                'status': current_team_status_for_clients,
+                'members': get_team_members(team_name),
+                'game_started': state.game_started
+            }, to=team_name)  # type: ignore
+            
+            # Update all clients about available teams
+            socketio.emit('teams_updated', {
+                'teams': get_available_teams_list(),
+                'game_started': state.game_started
+            })  # type: ignore
+            
+            # Update dashboard
+            emit_dashboard_team_update, _, _ = _import_dashboard_functions()
+            emit_dashboard_team_update(force_refresh=team_is_now_full)
+            
+            # If game started and team is full, start new round
+            if state.game_started and team_is_now_full:
+                start_new_round_for_pair(team_name)
+                
+        else:
+            # Team not active, check if it's an inactive team that can be reactivated
+            with app.app_context():
+                team = Teams.query.filter_by(team_id=team_id, team_name=team_name, is_active=False).first()
+                if team:
+                    # Offer to reactivate the team instead
+                    emit('rejoin_team_response', {
+                        'success': False,
+                        'message': f'Team "{team_name}" is inactive. Please use the reactivate option to restore it.'
+                    })  # type: ignore
+                else:
+                    emit('rejoin_team_response', {
+                        'success': False,
+                        'message': 'Team no longer exists or cannot be found.'
+                    })  # type: ignore
+        
+    except Exception as e:
+        logger.error(f"Error in on_rejoin_team: {str(e)}", exc_info=True)
+        emit('rejoin_team_response', {
+            'success': False,
+            'message': 'An error occurred while trying to rejoin the team.'
+        })  # type: ignore
+
 @socketio.on('reactivate_team')
 def on_reactivate_team(data: Dict[str, Any]) -> None:
     try:

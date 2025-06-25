@@ -73,6 +73,89 @@ function resetToInitialView() {
     showStatus('Disconnected, try refreshing the page.', 'info');
 }
 
+// Save team session data for reconnection
+function saveTeamSessionData(teamName, teamId, isCreatorVal) {
+    const sessionData = {
+        teamName: teamName,
+        teamId: teamId,
+        isCreator: isCreatorVal,
+        timestamp: Date.now()
+    };
+    localStorage.setItem('quizSessionData', JSON.stringify(sessionData));
+}
+
+// Get saved team session data
+function getSavedTeamSessionData() {
+    try {
+        const data = localStorage.getItem('quizSessionData');
+        if (!data) return null;
+        
+        const sessionData = JSON.parse(data);
+        // Check if data is less than 1 hour old
+        if (Date.now() - sessionData.timestamp > 3600000) {
+            localStorage.removeItem('quizSessionData');
+            return null;
+        }
+        return sessionData;
+    } catch (e) {
+        localStorage.removeItem('quizSessionData');
+        return null;
+    }
+}
+
+// Show rejoin team option if available
+function showRejoinOption() {
+    const savedData = getSavedTeamSessionData();
+    if (!savedData) return;
+
+    const rejoinDiv = document.createElement('div');
+    rejoinDiv.id = 'rejoinSection';
+    rejoinDiv.className = 'rejoin-section';
+    rejoinDiv.innerHTML = `
+        <div class="rejoin-container">
+            <h3>Previous Team Found</h3>
+            <p>You were previously in team "<strong>${savedData.teamName}</strong>"</p>
+            <div class="rejoin-buttons">
+                <button id="rejoinBtn" class="rejoin-btn">Rejoin Team</button>
+                <button id="newSessionBtn" class="new-session-btn">Start New Session</button>
+            </div>
+        </div>
+    `;
+
+    // Insert before team section
+    const teamSection = document.getElementById('teamSection');
+    if (teamSection && !document.getElementById('rejoinSection')) {
+        teamSection.parentNode.insertBefore(rejoinDiv, teamSection);
+        
+        // Add event listeners
+        document.getElementById('rejoinBtn').addEventListener('click', () => {
+            attemptRejoinTeam(savedData);
+        });
+        
+        document.getElementById('newSessionBtn').addEventListener('click', () => {
+            localStorage.removeItem('quizSessionData');
+            hideRejoinOption();
+        });
+    }
+}
+
+// Hide rejoin option
+function hideRejoinOption() {
+    const rejoinSection = document.getElementById('rejoinSection');
+    if (rejoinSection) {
+        rejoinSection.remove();
+    }
+}
+
+// Attempt to rejoin previous team
+function attemptRejoinTeam(savedData) {
+    showStatus('Attempting to rejoin previous team...', 'info');
+    socket.emit('rejoin_team', { 
+        team_name: savedData.teamName,
+        team_id: savedData.teamId 
+    });
+}
+
 // Update UI based on game state
 function updateGameState(newGameStarted = null, isReset = false) {
     if (newGameStarted !== null) {
@@ -357,9 +440,13 @@ const callbacks = {
         gameStarted = data.game_started;
         currentTeamStatus = 'created'; // Set initial team status
         
+        // Save session data for reconnection
+        saveTeamSessionData(data.team_name, data.team_id, true);
+        
         // Hide both create and join team sections when creating a new team
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
+        hideRejoinOption(); // Hide rejoin option after successful team action
         
         // Update header with team name
         gameHeader.textContent = `Team: ${data.team_name}`;
@@ -374,6 +461,9 @@ const callbacks = {
         gameStarted = data.game_started;
         teamId = data.team_id; // Assuming team_id is sent, if not, it might be part of team_status_update
 
+        // Save session data for reconnection
+        saveTeamSessionData(data.team_name, data.team_id, false);
+
         gameHeader.textContent = `Team: ${data.team_name}`;
         showStatus(data.message, 'success');
         
@@ -382,6 +472,7 @@ const callbacks = {
         // but we can hide the join/create sections.
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
+        hideRejoinOption(); // Hide rejoin option after successful team action
         
         // If the team_status is part of this event, we can use it
         if (data.team_status) {
@@ -466,6 +557,28 @@ const callbacks = {
         gameHeader.textContent = 'CHSH Game';
         showStatus(data.message, 'success');
         updateGameState();
+    },
+
+    onRejoinTeamResponse: (data) => {
+        if (data.success) {
+            // Use the same logic as team joined
+            callbacks.onTeamJoined(data);
+            showStatus(data.message || 'Successfully rejoined your team!', 'success');
+        } else {
+            // Clear invalid session data and show error
+            localStorage.removeItem('quizSessionData');
+            hideRejoinOption();
+            showStatus(data.message || 'Could not rejoin team. Please create or join a new team.', 'error');
+        }
+    },
+
+    onConnectionEstablished: (data) => {
+        console.log('Connection established with game state:', data);
+        callbacks.updateGameState(data.game_started);
+        callbacks.updateTeamsList(data.available_teams);
+        
+        // Show rejoin option if available
+        setTimeout(() => showRejoinOption(), 500); // Small delay to ensure UI is ready
     }
 };
 

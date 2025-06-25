@@ -1115,6 +1115,140 @@ class TestPlayerInteraction:
         assert found, "Dashboard did not see correct state when connecting mid-game"
         dashboard_client.disconnect()
 
+    @pytest.mark.integration 
+    def test_player_rejoin_after_disconnect(self, app_context, socket_client, second_client):
+        """Test that a player can rejoin their team after disconnecting."""
+        # Create team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'RejoinTest'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Second player joins
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'RejoinTest'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # First player disconnects
+        self.simulate_disconnect(socket_client)
+        eventlet.sleep(0.2)
+
+        # New client tries to rejoin with correct team info
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('rejoin_team', {'team_name': 'RejoinTest', 'team_id': team_id})
+        rejoin_response = self.wait_for_event(new_client, 'rejoin_team_response')
+        
+        # Verify successful rejoin
+        response_data = rejoin_response.get('args', [{}])[0]
+        assert response_data.get('success') is True
+        assert response_data.get('team_name') == 'RejoinTest'
+        assert response_data.get('team_id') == team_id
+        
+        new_client.disconnect()
+        second_client.disconnect()
+
+    @pytest.mark.integration
+    def test_player_rejoin_with_wrong_team_id(self, app_context, socket_client, second_client):
+        """Test that rejoin fails with wrong team ID."""
+        # Create team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'WrongIdTest'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Player tries to rejoin with wrong team_id
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('rejoin_team', {'team_name': 'WrongIdTest', 'team_id': 99999})
+        rejoin_response = self.wait_for_event(new_client, 'rejoin_team_response')
+        
+        # Verify failure
+        response_data = rejoin_response.get('args', [{}])[0]
+        assert response_data.get('success') is False
+        assert 'does not match' in response_data.get('message', '')
+        
+        new_client.disconnect()
+        socket_client.disconnect()
+
+    @pytest.mark.integration
+    def test_reconnect_workflow_preserves_responses(self, app_context, socket_client, second_client):
+        """Test full disconnect/reconnect workflow preserves team responses in database."""
+        # Create team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'ResponsePreserveTest'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+
+        # Second player joins
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'ResponsePreserveTest'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # Both players disconnect
+        self.simulate_disconnect(socket_client)
+        self.simulate_disconnect(second_client)
+        eventlet.sleep(0.2)
+
+        # Verify team exists in database but is inactive
+        from src.models.quiz_models import Teams
+        with app.app_context():
+            team = Teams.query.filter_by(team_id=team_id).first()
+            assert team is not None
+            assert team.is_active is False
+            # Team name and data should be preserved
+
+        # Player reactivates team
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('reactivate_team', {'team_name': 'ResponsePreserveTest'})
+        reactivate_response = self.wait_for_event(new_client, 'team_created')
+        
+        # Verify reactivation success
+        response_data = reactivate_response.get('args', [{}])[0]
+        assert response_data.get('team_name') == 'ResponsePreserveTest'
+        assert response_data.get('team_id') == team_id  # Same team_id preserved
+        
+        new_client.disconnect()
+
+    @pytest.mark.integration
+    def test_ui_disables_inputs_when_waiting_for_teammate(self, app_context, socket_client, second_client):
+        """Test that UI properly disables inputs when team status is waiting_pair."""
+        # Create team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'UIDisableTest'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+
+        # Second player joins
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'UIDisableTest'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+
+        # Second player disconnects - remaining player should get team_status_update
+        self.simulate_disconnect(second_client)
+        eventlet.sleep(0.2)
+        
+        # First player should receive team_status_update with 'waiting_pair'
+        msgs = socket_client.get_received()
+        status_update_found = False
+        for msg in msgs:
+            if msg.get('name') == 'team_status_update':
+                data = msg.get('args', [{}])[0]
+                if data.get('status') == 'waiting_pair':
+                    status_update_found = True
+                    break
+        
+        assert status_update_found, "Player did not receive waiting_pair status update after teammate disconnected"
+        
+        socket_client.disconnect()
+
     @pytest.mark.integration
     def test_player_tries_to_join_full_team(self, app_context, socket_client, second_client):
         """Third player tries to join a full team, gets error, dashboard unchanged."""

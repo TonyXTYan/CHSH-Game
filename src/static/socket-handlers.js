@@ -42,9 +42,14 @@ function initializeSocketHandlers(socket, callbacks) {
     });
 
     socket.on('connection_established', (data) => {
-        console.log('Connection established with game state:', data);
-        callbacks.updateGameState(data.game_started);
-        callbacks.updateTeamsList(data.available_teams);
+        if (callbacks.onConnectionEstablished) {
+            callbacks.onConnectionEstablished(data);
+        } else {
+            // Fallback for backward compatibility
+            console.log('Connection established with game state:', data);
+            callbacks.updateGameState(data.game_started);
+            callbacks.updateTeamsList(data.available_teams);
+        }
     });
 
     socket.on('error', (data) => {
@@ -175,6 +180,13 @@ function initializeSocketHandlers(socket, callbacks) {
             if (callbacks.showStatus) {
                 callbacks.showStatus(data.message || 'Failed to reactivate team', 'error');
             }
+        }
+    });
+
+    // Handle rejoin team response
+    socket.on('rejoin_team_response', (data) => {
+        if (callbacks.onRejoinTeamResponse) {
+            callbacks.onRejoinTeamResponse(data);
         }
     });
 }
