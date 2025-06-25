@@ -59,7 +59,12 @@
     <div class="dashboard-container">
         <div class="panel">
             <div class="panel-header">
-                <h2>Teams</h2>
+                <div id="teams-header" onclick="toggleTeamsStream()">
+                    <h2>Teams</h2>
+                    <span id="teams-toggle-chevron">▶</span>
+                    <span class="streaming-text">streaming</span>
+                    <button id="toggle-teams-btn" onclick="event.stopPropagation(); toggleTeamsStream()" class="toggle-off">OFF</button>
+                </div>
                 <div class="team-filters">
                     <label>
                         <img class="refresh-icon" src="https://upload.wikimedia.org/wikipedia/commons/thumb/b/bc/Refresh_icon.png/250px-Refresh_icon.png" alt="refresh">
