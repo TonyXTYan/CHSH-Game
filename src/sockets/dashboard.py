@@ -531,7 +531,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
-    # global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _cached_teams_result
     
     try:
         compute_team_hashes.cache_clear()
@@ -539,10 +539,9 @@ def clear_team_caches() -> None:
         _calculate_team_statistics.cache_clear()
         _process_single_team.cache_clear()
         
-        # Don't clear throttle cache - respect REFRESH_DELAY for performance
-        # The fix is in the team status logic, not the caching
-        # _last_refresh_time = 0
-        # _cached_teams_result = None
+        # Clear throttle cache for critical team state changes like disconnections
+        _last_refresh_time = 0
+        _cached_teams_result = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
