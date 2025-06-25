@@ -547,21 +547,50 @@ def clear_team_caches() -> None:
 
 def emit_dashboard_team_update(force_refresh: bool = False) -> None:
     try:
-        # Only compute teams data if there are clients with teams streaming enabled
-        streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
-        
-        if not streaming_clients:
-            return  # No clients want teams updates
+        # Always compute teams data and metrics for all dashboard clients
+        if not state.dashboard_clients:
+            return  # No dashboard clients at all
             
+        # Get teams data using existing caching for performance
         serialized_teams = get_all_teams(force_refresh=force_refresh)
-        update_data = {
-            'teams': serialized_teams,
-            'connected_players_count': len(state.connected_players)
-        }
         
-        # Only send to clients with teams streaming enabled
-        for sid in streaming_clients:
-            socketio.emit('team_status_changed_for_dashboard', update_data, to=sid)  # type: ignore
+        # Calculate metrics that all clients need (streaming and non-streaming)
+        active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+        active_teams_count = len(active_teams)
+        ready_players_count = sum(
+            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+            for team in active_teams
+        )
+        connected_players_count = len(state.connected_players)
+        
+        # Separate clients by streaming preference
+        streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
+        non_streaming_clients = [sid for sid in state.dashboard_clients if not dashboard_teams_streaming.get(sid, False)]
+        
+        # Send full teams data to streaming clients
+        if streaming_clients:
+            streaming_update_data = {
+                'teams': serialized_teams,
+                'connected_players_count': connected_players_count,
+                'active_teams_count': active_teams_count,
+                'ready_players_count': ready_players_count
+            }
+            
+            for sid in streaming_clients:
+                socketio.emit('team_status_changed_for_dashboard', streaming_update_data, to=sid)  # type: ignore
+        
+        # Send metrics-only updates to non-streaming clients
+        if non_streaming_clients:
+            metrics_update_data = {
+                'teams': [],  # Empty teams array for non-streaming clients
+                'connected_players_count': connected_players_count,
+                'active_teams_count': active_teams_count,
+                'ready_players_count': ready_players_count
+            }
+            
+            for sid in non_streaming_clients:
+                socketio.emit('team_status_changed_for_dashboard', metrics_update_data, to=sid)  # type: ignore
+                
     except Exception as e:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 

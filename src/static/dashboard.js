@@ -486,15 +486,24 @@ socket.on("team_status_changed_for_dashboard", (data) => {
         }
     }
     
-    // For team status changes, calculate metrics from teams data since this only goes to streaming clients
-    // Use same definition as backend: active teams are those with is_active=true OR status='waiting_pair'
-    const activeTeams = data.teams ? data.teams.filter(team => 
-        team.is_active || team.status === 'waiting_pair'
-    ) : [];
-    const activeTeamsCount = activeTeams.length;
-    const readyPlayersCount = activeTeams.reduce((count, team) => {
-        return count + (team.player1_sid ? 1 : 0) + (team.player2_sid ? 1 : 0);
-    }, 0);
+    // Use metrics provided by backend when available, otherwise calculate from teams data
+    let activeTeamsCount, readyPlayersCount;
+    
+    if (typeof data.active_teams_count === 'number' && typeof data.ready_players_count === 'number') {
+        // Backend provides metrics directly - use them for accuracy
+        activeTeamsCount = data.active_teams_count;
+        readyPlayersCount = data.ready_players_count;
+    } else {
+        // Fallback: calculate metrics from teams data (for backwards compatibility)
+        // Use same definition as backend: active teams are those with is_active=true OR status='waiting_pair'
+        const activeTeams = data.teams ? data.teams.filter(team => 
+            team.is_active || team.status === 'waiting_pair'
+        ) : [];
+        activeTeamsCount = activeTeams.length;
+        readyPlayersCount = activeTeams.reduce((count, team) => {
+            return count + (team.player1_sid ? 1 : 0) + (team.player2_sid ? 1 : 0);
+        }, 0);
+    }
     
     updateMetrics(activeTeamsCount, readyPlayersCount, currentAnswersCount, data.connected_players_count);
 });
