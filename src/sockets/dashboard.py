@@ -565,7 +565,7 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
     except Exception as e:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
-def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
+def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Optional[str] = None) -> None:
     try:
         with app.app_context():
             total_answers = Answers.query.count()
@@ -605,6 +605,10 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None) -> None:
         else:
             # For all clients, send appropriate data based on their preferences
             for dash_sid in state.dashboard_clients:
+                # Skip excluded client to prevent duplicate updates
+                if exclude_sid and dash_sid == exclude_sid:
+                    continue
+                    
                 update_data = base_update_data.copy()
                 if dashboard_teams_streaming.get(dash_sid, False):
                     update_data['teams'] = all_teams_for_metrics
@@ -626,8 +630,8 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
             dashboard_teams_streaming[sid] = False  # Teams streaming off by default only for new clients
         logger.info(f"Dashboard client connected: {sid}")
         
-        # Whenever a dashboard client joins, emit updated status to all dashboards
-        emit_dashboard_full_update()
+        # Notify OTHER dashboard clients about the new connection (exclude the joining client to prevent duplicates)
+        emit_dashboard_full_update(exclude_sid=sid)
         
         # Prepare update data for this specific client, respecting their streaming preference
         with app.app_context():
@@ -661,7 +665,7 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
         if callback:
             callback(update_data)
         else:
-            # Otherwise emit as usual
+            # Send update to the joining client only once
             socketio.emit('dashboard_update', update_data, to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_dashboard_join: {str(e)}", exc_info=True)

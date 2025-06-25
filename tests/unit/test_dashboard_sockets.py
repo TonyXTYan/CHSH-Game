@@ -1113,3 +1113,249 @@ def test_emit_dashboard_team_update_includes_metrics_for_streaming_clients(mock_
         assert 'teams' in update_data
         assert update_data['teams'] == mock_teams
         assert 'connected_players_count' in update_data
+
+# ===== TESTS FOR DUPLICATE UPDATE FIX =====
+
+def test_dashboard_join_no_duplicate_updates_without_callback(mock_request, mock_state, mock_socketio):
+    """Test that dashboard join without callback sends exactly one dashboard_update event to joining client"""
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Setup: Add existing clients and remove the joining client to simulate new connection
+    mock_state.dashboard_clients = MockSet(['existing_client1', 'existing_client2'])
+    dashboard_teams_streaming['existing_client1'] = True
+    dashboard_teams_streaming['existing_client2'] = False
+    
+    # Mock teams data
+    mock_teams = [{'team_id': 1, 'team_name': 'Team1', 'is_active': True}]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Clear socketio mock to track calls
+            mock_socketio.emit.reset_mock()
+            
+            # Join dashboard without callback
+            on_dashboard_join(data=None, callback=None)
+            
+            # Count dashboard_update emissions to the joining client
+            joining_client_updates = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'test_dashboard_sid'
+            ]
+            
+            # Should receive exactly ONE dashboard_update event
+            assert len(joining_client_updates) == 1
+            
+            # Verify the update contains expected data
+            update_data = joining_client_updates[0][0][1]
+            assert 'teams' in update_data
+            assert 'active_teams_count' in update_data
+            assert 'ready_players_count' in update_data
+            assert update_data['teams'] == []  # Empty since new client gets streaming disabled by default
+
+def test_dashboard_join_other_clients_receive_updates(mock_request, mock_state, mock_socketio):
+    """Test that existing dashboard clients receive updates when a new client joins"""
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Setup existing clients
+    mock_state.dashboard_clients = MockSet(['existing_client1', 'existing_client2'])
+    dashboard_teams_streaming['existing_client1'] = True
+    dashboard_teams_streaming['existing_client2'] = False
+    
+    # Mock teams data
+    mock_teams = [{'team_id': 1, 'team_name': 'Team1', 'is_active': True}]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Clear socketio mock to track calls
+            mock_socketio.emit.reset_mock()
+            
+            # Join dashboard
+            on_dashboard_join(data=None, callback=None)
+            
+            # Check that existing clients received updates
+            existing_client1_updates = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'existing_client1'
+            ]
+            existing_client2_updates = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'existing_client2'
+            ]
+            
+            # Each existing client should receive exactly one update
+            assert len(existing_client1_updates) == 1
+            assert len(existing_client2_updates) == 1
+            
+            # Verify update data respects streaming preferences
+            client1_data = existing_client1_updates[0][0][1]
+            client2_data = existing_client2_updates[0][0][1]
+            
+            assert client1_data['teams'] == mock_teams  # Client1 has streaming enabled
+            assert client2_data['teams'] == []  # Client2 has streaming disabled
+
+def test_dashboard_join_with_callback_no_duplicate(mock_request, mock_state, mock_socketio):
+    """Test that dashboard join with callback doesn't send duplicate updates"""
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Setup existing clients
+    mock_state.dashboard_clients = MockSet(['existing_client'])
+    dashboard_teams_streaming['existing_client'] = True
+    
+    # Remove joining client to simulate new connection
+    mock_state.dashboard_clients.discard('test_dashboard_sid')
+    
+    mock_teams = [{'team_id': 1, 'team_name': 'Team1', 'is_active': True}]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Clear socketio mock
+            mock_socketio.emit.reset_mock()
+            
+            # Join with callback
+            mock_callback = MagicMock()
+            on_dashboard_join(data=None, callback=mock_callback)
+            
+            # Joining client should NOT receive any dashboard_update via socketio.emit
+            # (they get data via callback instead)
+            joining_client_socketio_updates = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'test_dashboard_sid'
+            ]
+            assert len(joining_client_socketio_updates) == 0
+            
+            # But should receive data via callback
+            mock_callback.assert_called_once()
+            callback_data = mock_callback.call_args[0][0]
+            assert 'teams' in callback_data
+            assert 'active_teams_count' in callback_data
+
+def test_emit_dashboard_full_update_exclude_sid_parameter(mock_state, mock_socketio):
+    """Test that emit_dashboard_full_update exclude_sid parameter works correctly"""
+    from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
+    
+    # Setup multiple clients
+    mock_state.dashboard_clients = MockSet(['client1', 'client2', 'client3'])
+    dashboard_teams_streaming['client1'] = True
+    dashboard_teams_streaming['client2'] = False
+    dashboard_teams_streaming['client3'] = True
+    
+    mock_teams = [{'team_id': 1, 'team_name': 'Team1', 'is_active': True}]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Clear socketio mock
+            mock_socketio.emit.reset_mock()
+            
+            # Call emit_dashboard_full_update with exclude_sid
+            emit_dashboard_full_update(exclude_sid='client2')
+            
+            # Check which clients received updates
+            receiving_clients = set()
+            for call in mock_socketio.emit.call_args_list:
+                if call[0][0] == 'dashboard_update':
+                    receiving_clients.add(call[1]['to'])
+            
+            # Should include client1 and client3, but exclude client2
+            assert 'client1' in receiving_clients
+            assert 'client3' in receiving_clients
+            assert 'client2' not in receiving_clients
+
+def test_emit_dashboard_full_update_exclude_sid_with_client_sid(mock_state, mock_socketio):
+    """Test exclude_sid parameter works when client_sid is also specified"""
+    from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
+    
+    # Setup clients
+    mock_state.dashboard_clients = MockSet(['client1', 'client2'])
+    dashboard_teams_streaming['client1'] = True
+    dashboard_teams_streaming['client2'] = False
+    
+    mock_teams = [{'team_id': 1, 'team_name': 'Team1', 'is_active': True}]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Clear socketio mock
+            mock_socketio.emit.reset_mock()
+            
+            # Call with specific client_sid (should ignore exclude_sid)
+            emit_dashboard_full_update(client_sid='client1', exclude_sid='client2')
+            
+            # Should only send to client1 (client_sid takes precedence)
+            assert mock_socketio.emit.call_count == 1
+            call_args = mock_socketio.emit.call_args
+            assert call_args[1]['to'] == 'client1'
+
+def test_dashboard_join_multiple_clients_no_duplicates(mock_request, mock_state, mock_socketio):
+    """Test that multiple rapid dashboard joins don't cause duplicate updates"""
+    from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # Start with empty client list
+    mock_state.dashboard_clients = MockSet()
+    dashboard_teams_streaming.clear()
+    
+    mock_teams = [{'team_id': 1, 'team_name': 'Team1', 'is_active': True}]
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = mock_teams
+        
+        with patch('src.sockets.dashboard.Answers') as mock_answers:
+            mock_answers.query.count.return_value = 5
+            
+            # Simulate multiple clients joining
+            mock_socketio.emit.reset_mock()
+            
+            # First client joins
+            with patch('src.sockets.dashboard.request') as mock_req1:
+                mock_req1.sid = 'client1'
+                on_dashboard_join(data=None, callback=None)
+            
+            # Count updates to client1
+            client1_updates = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'client1'
+            ]
+            
+            # Client1 should receive exactly one update
+            assert len(client1_updates) == 1
+            
+            # Reset mock for second client
+            mock_socketio.emit.reset_mock()
+            
+            # Second client joins
+            with patch('src.sockets.dashboard.request') as mock_req2:
+                mock_req2.sid = 'client2'
+                on_dashboard_join(data=None, callback=None)
+            
+            # Check updates after second join
+            client1_updates_after = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'client1'
+            ]
+            client2_updates = [
+                call for call in mock_socketio.emit.call_args_list
+                if call[0][0] == 'dashboard_update' and call[1].get('to') == 'client2'
+            ]
+            
+            # Client1 should receive one update (about new connection)
+            # Client2 should receive one update (their join response)
+            assert len(client1_updates_after) == 1
+            assert len(client2_updates) == 1
