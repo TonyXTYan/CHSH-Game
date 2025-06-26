@@ -25,10 +25,12 @@ from src.routes import static
 from src.routes.user import user_bp
 app.register_blueprint(user_bp)
 
-# Import socket handlers to register them
-from src.sockets.team_management import handle_connect, handle_disconnect
-from src.sockets import game
-
 # Create database tables
 with app.app_context():
     db.create_all()
+
+# Initialize socket handlers separately to avoid circular imports
+def initialize_socket_handlers():
+    """Initialize socket handlers after app configuration is complete"""
+    from src.sockets.team_management import handle_connect, handle_disconnect
+    from src.sockets import game

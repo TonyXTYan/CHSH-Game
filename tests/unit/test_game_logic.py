@@ -27,6 +27,13 @@ def test_start_new_round_for_pair_basic(mock_socketio, mock_db, mock_rounds, moc
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'classic'  # Ensure classic mode for backwards compatibility
     
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
+    
     # Create a mock for the new round
     mock_round = MagicMock()
     mock_round.round_id = 123
@@ -109,6 +116,13 @@ def test_combo_distribution(mock_shuffle, mock_socketio, mock_db, mock_rounds, m
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'classic'
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()
@@ -212,6 +226,13 @@ def test_new_mode_player_question_filtering(mock_socketio, mock_db, mock_rounds,
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'new'  # Set to new mode
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'  # Must match team_info['players'][0]
+    mock_db_team.player2_session_id = 'player2_sid'  # Must match team_info['players'][1]
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()
