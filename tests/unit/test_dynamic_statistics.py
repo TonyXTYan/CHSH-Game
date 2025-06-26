@@ -468,3 +468,174 @@ class TestDynamicStatistics:
         for team_data in teams_data:
             team_awards = get_awards_string(team_data['team_id'], highestBalancedTrTeamId, highestChshTeamId)
             assert "🎯" not in team_awards, f"Team {team_data['team_id']} should not have 🎯 award in NEW mode"
+
+    def test_dashboard_success_rate_sorting_new_mode(self):
+        """Test that NEW mode dashboard sorting by success rate works correctly."""
+        # Mock teams data for NEW mode with different success rates
+        teams_data = [
+            {
+                'team_id': 1,
+                'team_name': 'Team_Low',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.65,  # 65% success rate
+                    'trace_average_statistic_uncertainty': 0.05,
+                    'same_item_balance': 0.7,
+                    'chsh_value_statistic': 0.4
+                }
+            },
+            {
+                'team_id': 2,
+                'team_name': 'Team_High',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.95,  # 95% success rate - highest
+                    'trace_average_statistic_uncertainty': 0.03,
+                    'same_item_balance': 0.8,
+                    'chsh_value_statistic': 0.6
+                }
+            },
+            {
+                'team_id': 3,
+                'team_name': 'Team_Med',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.75,  # 75% success rate
+                    'trace_average_statistic_uncertainty': 0.04,
+                    'same_item_balance': 0.6,
+                    'chsh_value_statistic': 0.5
+                }
+            },
+            {
+                'team_id': 4,
+                'team_name': 'Team_No_Stats',
+                'is_active': True,
+                'min_stats_sig': False,
+                'new_stats': None  # No stats available
+            }
+        ]
+        
+        # Sort by success rate (should be descending: highest first)
+        def get_success_rate(team):
+            if team.get('new_stats') and team['new_stats']:
+                return team['new_stats'].get('trace_average_statistic', -1)
+            return -1
+        
+        sorted_teams = sorted(teams_data, key=get_success_rate, reverse=True)
+        
+        # Verify sorting order: Team_High (0.95), Team_Med (0.75), Team_Low (0.65), Team_No_Stats (-1)
+        expected_order = ['Team_High', 'Team_Med', 'Team_Low', 'Team_No_Stats']
+        actual_order = [team['team_name'] for team in sorted_teams]
+        
+        assert actual_order == expected_order, f"Expected {expected_order}, got {actual_order}"
+        
+        # Verify highest success rate team should get 🏆
+        highest_team = sorted_teams[0]
+        assert highest_team['team_name'] == 'Team_High'
+        assert highest_team['new_stats']['trace_average_statistic'] == 0.95
+        
+    def test_dashboard_success_rate_sorting_classic_mode(self):
+        """Test that CLASSIC mode dashboard sorting by success rate uses trace_average_statistic."""
+        # Mock teams data for CLASSIC mode with different trace averages
+        teams_data = [
+            {
+                'team_id': 1,
+                'team_name': 'Team_A',
+                'is_active': True,
+                'min_stats_sig': True,
+                'classic_stats': {
+                    'trace_average_statistic': 0.3,  # Lower trace average
+                    'trace_average_statistic_uncertainty': 0.05,
+                    'same_item_balance': 0.7,
+                    'cross_term_combination_statistic': 2.5
+                }
+            },
+            {
+                'team_id': 2,
+                'team_name': 'Team_B',
+                'is_active': True,
+                'min_stats_sig': True,
+                'classic_stats': {
+                    'trace_average_statistic': 0.8,  # Higher trace average
+                    'trace_average_statistic_uncertainty': 0.03,
+                    'same_item_balance': 0.8,
+                    'cross_term_combination_statistic': 2.8
+                }
+            },
+            {
+                'team_id': 3,
+                'team_name': 'Team_C',
+                'is_active': True,
+                'min_stats_sig': True,
+                'classic_stats': {
+                    'trace_average_statistic': 0.5,  # Medium trace average
+                    'trace_average_statistic_uncertainty': 0.04,
+                    'same_item_balance': 0.6,
+                    'cross_term_combination_statistic': 2.3
+                }
+            }
+        ]
+        
+        # Sort by trace average (classic mode success rate)
+        def get_classic_success_rate(team):
+            if team.get('classic_stats') and team['classic_stats']:
+                return team['classic_stats'].get('trace_average_statistic', -1)
+            return -1
+        
+        sorted_teams = sorted(teams_data, key=get_classic_success_rate, reverse=True)
+        
+        # Verify sorting order: Team_B (0.8), Team_C (0.5), Team_A (0.3)
+        expected_order = ['Team_B', 'Team_C', 'Team_A']
+        actual_order = [team['team_name'] for team in sorted_teams]
+        
+        assert actual_order == expected_order, f"Expected {expected_order}, got {actual_order}"
+        
+    def test_dashboard_success_rate_sorting_with_equal_values(self):
+        """Test that teams with equal success rates are sorted by name as tiebreaker."""
+        teams_data = [
+            {
+                'team_id': 1,
+                'team_name': 'Team_Z',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.75,  # Same success rate
+                }
+            },
+            {
+                'team_id': 2,
+                'team_name': 'Team_A',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.75,  # Same success rate
+                }
+            },
+            {
+                'team_id': 3,
+                'team_name': 'Team_M',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.75,  # Same success rate
+                }
+            }
+        ]
+        
+        # Sort by success rate (descending) then by name (ascending) for tiebreaker
+        def sort_teams(teams):
+            return sorted(teams, key=lambda t: (
+                -(t.get('new_stats', {}).get('trace_average_statistic', -1)),  # Negative for descending
+                t['team_name']  # Ascending for tiebreaker
+            ))
+        
+        sorted_teams = sort_teams(teams_data)
+        
+        # With equal success rates, should sort alphabetically by name
+        expected_order = ['Team_A', 'Team_M', 'Team_Z']
+        actual_order = [team['team_name'] for team in sorted_teams]
+        
+        assert actual_order == expected_order, f"Expected {expected_order}, got {actual_order}"

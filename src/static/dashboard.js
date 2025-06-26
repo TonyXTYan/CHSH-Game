@@ -777,6 +777,24 @@ function updateActiveTeams(teams) {
             return a.is_active ? -1 : 1;
         } else if (sortBy === 'date') {
             return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        } else if (sortBy === 'success-rate') {
+            // Sort by success rate (highest first)
+            const getSuccessRate = (team) => {
+                if (currentGameMode === 'new') {
+                    return team.new_stats?.trace_average_statistic ?? -1;
+                } else {
+                    return team.classic_stats?.trace_average_statistic ?? -1;
+                }
+            };
+            const aRate = getSuccessRate(a);
+            const bRate = getSuccessRate(b);
+            
+            // Sort descending (highest success rate first)
+            if (bRate !== aRate) {
+                return bRate - aRate;
+            }
+            // If success rates are equal, sort by team name as tiebreaker
+            return a.team_name.localeCompare(b.team_name);
         }
         return a.team_name.localeCompare(b.team_name);
     });
