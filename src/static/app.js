@@ -108,8 +108,12 @@ function updatePlayerResponsibilityMessage() {
 
     if (message) {
         playerResponsibilityMessage.textContent = message;
-        // Only show the message when in the question section (after team is paired up)
-        if (currentTeamStatus === 'full' || currentTeamStatus === 'active') {
+        // Show message when team is paired up but game hasn't started yet (still in teamSection)
+        // Hide message when game is running (in questionSection)
+        const isTeamPaired = currentTeamStatus === 'full' || currentTeamStatus === 'active';
+        const isInTeamSection = teamSection.style.display !== 'none';
+        
+        if (isTeamPaired && isInTeamSection) {
             playerResponsibilityMessage.style.display = 'block';
         } else {
             playerResponsibilityMessage.style.display = 'none';
@@ -157,6 +161,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
     if (!currentTeam) {
         teamSection.style.display = 'block';
         questionSection.style.display = 'none';
+        updatePlayerResponsibilityMessage();
         return;
     }
     
@@ -216,6 +221,9 @@ function updateGameState(newGameStarted = null, isReset = false) {
         trueBtn.disabled = false;
         falseBtn.disabled = false;
     }
+    
+    // Update responsibility message visibility based on current state
+    updatePlayerResponsibilityMessage();
 }
 
 // Reset all game controls to their initial state

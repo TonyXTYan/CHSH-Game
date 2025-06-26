@@ -23,12 +23,13 @@
 - Removed all related CSS styles
 
 ### 4. **Added Player Responsibility Messages**
-- Added new `playerResponsibilityMessage` div in HTML 
+- Added new `playerResponsibilityMessage` div in teamSection (underneath team status header)
 - Created `updatePlayerResponsibilityMessage()` function that shows:
   - **NEW mode, Player 1**: "You are responsible for answering A and B questions"
   - **NEW mode, Player 2**: "You are responsible for answering X and Y questions"  
   - **Classic mode**: "You will need to answer questions from all categories (A, B, X, Y)"
-- Messages only appear when team is paired up (`currentTeamStatus === 'full' || 'active'`)
+- Messages appear when team is paired up AND before game starts (in teamSection)
+- Messages are hidden during gameplay (when in questionSection)
 
 ### 5. **Updated Event Handlers**
 - Modified team creation/joining callbacks to use new header system
@@ -45,11 +46,17 @@
 - Header: "Team: [TeamName] - Player [1/2]"
 - No player responsibility message (team not full yet)
 
-### After Team is Paired Up
+### After Team is Paired Up (Before Game Starts)
 - Header: "Team: [TeamName] - Player [1/2]"
-- Player responsibility message appears based on mode:
+- Team status: "Team Paired Up!"
+- Player responsibility message appears underneath team status based on mode:
   - NEW mode: Shows specific A/B or X/Y responsibility
   - Classic mode: Shows need to answer all categories
+
+### During Gameplay (Question Section)
+- Header: "Team: [TeamName] - Player [1/2]"
+- Player responsibility message is hidden
+- Focus is on answering questions
 
 ### Console Logging
 - Page load: "Page loaded - current mode: [mode]"
@@ -71,5 +78,6 @@
 1. Team creation/joining → `updatePlayerPosition()` → `updateGameHeader()` + `updatePlayerResponsibilityMessage()`
 2. Team status changes → `updatePlayerResponsibilityMessage()` (shows/hides based on team status)
 3. Mode changes → `updateGameMode()` → console log + `updatePlayerResponsibilityMessage()`
+4. Game state changes → `updateGameState()` → `updatePlayerResponsibilityMessage()` (shows in teamSection, hides in questionSection)
 
 All functionality has been implemented according to the user requirements.
