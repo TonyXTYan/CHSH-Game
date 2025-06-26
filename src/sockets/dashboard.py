@@ -905,3 +905,12 @@ def download_csv():
             status=500,
             mimetype='text/plain'
         )
+
+@socketio.on('disconnect')
+def on_disconnect() -> None:
+    """Handle disconnect event for dashboard clients"""
+    try:
+        sid = request.sid  # type: ignore
+        handle_dashboard_disconnect(sid)
+    except Exception as e:
+        logger.error(f"Error in on_disconnect: {str(e)}", exc_info=True)
