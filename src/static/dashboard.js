@@ -5,6 +5,9 @@ const socket = io(window.location.origin, {
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
+// Game mode state
+let currentGameMode = 'classic';
+
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -31,6 +34,72 @@ const answerLogTableBody = document.querySelector("#answer-log-table tbody");
 const noAnswersLogMsg = document.getElementById("no-answers-log");
 
 let currentAnswersCount = 0;
+
+// Game Mode Functions
+function updateGameModeDisplay(mode) {
+    currentGameMode = mode;
+    const modeIndicator = document.getElementById('current-game-mode');
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    const modeDescription = document.getElementById('mode-description-text');
+    
+    if (modeIndicator) {
+        modeIndicator.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        modeIndicator.className = `mode-indicator ${mode}`;
+    }
+    
+    if (toggleBtn) {
+        if (mode === 'classic') {
+            toggleBtn.textContent = 'Switch to New Mode';
+        } else {
+            toggleBtn.textContent = 'Switch to Classic Mode';
+        }
+    }
+    
+    if (modeDescription) {
+        if (mode === 'classic') {
+            modeDescription.innerHTML = `
+                <strong>Classic Mode:</strong> Random question assignment to both players from all items (A, B, X, Y). 
+                Metrics focus on quantum correlation measurements.
+            `;
+        } else {
+            modeDescription.innerHTML = `
+                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                Metrics focus on success rates and optimal strategy adherence.
+            `;
+        }
+    }
+}
+
+function toggleGameMode() {
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    if (toggleBtn && !toggleBtn.disabled) {
+        toggleBtn.disabled = true;
+        toggleBtn.textContent = 'Switching...';
+        socket.emit('toggle_game_mode');
+        
+        // Re-enable button after a short delay to prevent spam
+        setTimeout(() => {
+            toggleBtn.disabled = false;
+            updateGameModeDisplay(currentGameMode);
+        }, 2000);
+    }
+}
+
+// Handle game mode changes from server
+socket.on('game_mode_changed', (data) => {
+    console.log('Game mode changed:', data);
+    updateGameModeDisplay(data.mode);
+    
+    // Show a brief notification
+    connectionStatusDiv.textContent = `Game mode changed to: ${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)}`;
+    connectionStatusDiv.className = "status-connected";
+    
+    // Reset status after 3 seconds
+    setTimeout(() => {
+        connectionStatusDiv.textContent = "Connected to server";
+        connectionStatusDiv.className = "status-connected";
+    }, 3000);
+});
 
 // Helper function to format statistics with uncertainty
 function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
@@ -199,6 +268,9 @@ window.addEventListener('load', () => {
     // Initialize streaming UI states
     updateStreamingUI();
     updateTeamsStreamingUI();
+    
+    // Initialize game mode display (will be updated when dashboard connects)
+    updateGameModeDisplay(currentGameMode);
 });
 
 let confirmingStop = false;
@@ -388,7 +460,12 @@ socket.on("dashboard_update", (data) => {
     console.log("Dashboard update received:", data);
     lastReceivedTeams = data.teams;
     if (data.game_state) {
-        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}`);
+        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}, mode: ${data.game_state.mode}`);
+        
+        // Update game mode if provided
+        if (data.game_state.mode && data.game_state.mode !== currentGameMode) {
+            updateGameModeDisplay(data.game_state.mode);
+        }
         
         // Persist full game state from server
         localStorage.setItem('game_started', data.game_state.started.toString());
