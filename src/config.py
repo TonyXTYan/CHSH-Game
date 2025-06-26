@@ -29,8 +29,5 @@ app.register_blueprint(user_bp)
 with app.app_context():
     db.create_all()
 
-# Initialize socket handlers separately to avoid circular imports
-def initialize_socket_handlers():
-    """Initialize socket handlers after app configuration is complete"""
-    from src.sockets.team_management import handle_connect, handle_disconnect
-    from src.sockets import game
+# Socket handlers are automatically registered when their modules are imported in main.py
+# The @socketio.on() decorators in each module register the handlers with the socketio instance
