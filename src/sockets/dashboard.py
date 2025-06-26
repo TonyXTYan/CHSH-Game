@@ -6,7 +6,7 @@ from functools import lru_cache
 from sqlalchemy.orm import joinedload
 from src.config import app, socketio, db
 from src.state import state
-from src.models.quiz_models import Teams, Answers, PairQuestionRounds
+from src.models.quiz_models import Teams, Answers, PairQuestionRounds, ItemEnum
 from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
 from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
@@ -668,11 +668,14 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         
         # Mode-specific combo calculation for min_stats_sig
         if state.game_mode == 'new':
-            # New mode: Only A,B x X,Y combinations are possible
-            from src.models.quiz_models import ItemEnum
+            # New mode: Only A,B x X,Y combinations are possible, but must include both (A,X) and (X,A) style pairs
+            all_combos = []
             player1_items = [ItemEnum.A, ItemEnum.B]
             player2_items = [ItemEnum.X, ItemEnum.Y]
-            all_combos = [(i1.value, i2.value) for i1 in player1_items for i2 in player2_items]
+            for i1 in player1_items:
+                for i2 in player2_items:
+                    all_combos.append((i1.value, i2.value))
+                    all_combos.append((i2.value, i1.value))  # Add reverse pair
         else:
             # Classic mode: All combinations possible
             all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
