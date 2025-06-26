@@ -36,6 +36,25 @@ const noAnswersLogMsg = document.getElementById("no-answers-log");
 let currentAnswersCount = 0;
 
 // Game Mode Functions
+function updateTableHeaders(mode) {
+    const header1 = document.getElementById('header-stat1');
+    const header2 = document.getElementById('header-stat2');
+    const header3 = document.getElementById('header-stat3');
+    const header4 = document.getElementById('header-stat4');
+    
+    if (mode === 'classic') {
+        header1.textContent = 'Trace Avg ⏐⟨Tr⟩⏐';
+        header2.textContent = 'Balance';
+        header3.textContent = 'Balanced ⏐⟨Tr⟩⏐ 🎯';
+        header4.textContent = 'CHSH Value 🏆';
+    } else {
+        header1.textContent = 'Success Rate %';
+        header2.textContent = 'Same Q Balance';
+        header3.textContent = 'Balanced Success 🎯';
+        header4.textContent = 'Norm. Score 🏆';
+    }
+}
+
 function updateGameModeDisplay(mode) {
     currentGameMode = mode;
     const modeIndicator = document.getElementById('current-game-mode');
@@ -68,6 +87,9 @@ function updateGameModeDisplay(mode) {
             `;
         }
     }
+    
+    // Update table headers when mode changes
+    updateTableHeaders(mode);
 }
 
 // Track game mode toggle timeouts for cleanup
@@ -756,25 +778,51 @@ function updateActiveTeams(teams) {
     const eligibleTeams = teams.filter(team => team.min_stats_sig === true);
 
     eligibleTeams.forEach(team => {
-        const stats = team.correlation_stats;
-
-        // Calculate Balanced |Tr|
-        if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
-            const traceAvg = stats.trace_average_statistic;
-            const balance = stats.same_item_balance;
-            const balancedTr = (traceAvg + balance) / 2;
-            if (balancedTr > maxBalancedTrValue) {
-                maxBalancedTrValue = balancedTr;
-                highestBalancedTrTeamId = team.team_id;
+        if (currentGameMode === 'new') {
+            // New mode: Use new_stats
+            const stats = team.new_stats;
+            
+            // Calculate Balanced Success (equivalent to Balanced |Tr|)
+            if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
+                const successRate = stats.trace_average_statistic;
+                const balance = stats.same_item_balance;
+                const balancedSuccess = (successRate + balance) / 2;
+                if (balancedSuccess > maxBalancedTrValue) {
+                    maxBalancedTrValue = balancedSuccess;
+                    highestBalancedTrTeamId = team.team_id;
+                }
             }
-        }
 
-        // Calculate CHSH Value
-        if (stats && typeof stats.cross_term_combination_statistic === 'number') {
-            const chshValue = stats.cross_term_combination_statistic;
-            if (chshValue > maxChshValue) {
-                maxChshValue = chshValue;
-                highestChshTeamId = team.team_id;
+            // Use Normalized Score (equivalent to CHSH Value)
+            if (stats && typeof stats.chsh_value_statistic === 'number') {
+                const normalizedScore = stats.chsh_value_statistic;
+                if (normalizedScore > maxChshValue) {
+                    maxChshValue = normalizedScore;
+                    highestChshTeamId = team.team_id;
+                }
+            }
+        } else {
+            // Classic mode: Use classic_stats
+            const stats = team.classic_stats;
+
+            // Calculate Balanced |Tr|
+            if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
+                const traceAvg = stats.trace_average_statistic;
+                const balance = stats.same_item_balance;
+                const balancedTr = (traceAvg + balance) / 2;
+                if (balancedTr > maxBalancedTrValue) {
+                    maxBalancedTrValue = balancedTr;
+                    highestBalancedTrTeamId = team.team_id;
+                }
+            }
+
+            // Calculate CHSH Value
+            if (stats && typeof stats.cross_term_combination_statistic === 'number') {
+                const chshValue = stats.cross_term_combination_statistic;
+                if (chshValue > maxChshValue) {
+                    maxChshValue = chshValue;
+                    highestChshTeamId = team.team_id;
+                }
             }
         }
     });
@@ -819,97 +867,193 @@ function updateActiveTeams(teams) {
         
         // Add trace_avg column (now Trace Average Statistic)
         const traceAvgCell = row.insertCell();
-        if (team.correlation_stats) {
-            traceAvgCell.innerHTML = formatStatWithUncertainty(
-                team.correlation_stats.trace_average_statistic,
-                team.correlation_stats.trace_average_statistic_uncertainty
-            );
-            // Retain visual indicator logic if desired, e.g., based on nominal value
-            if (typeof team.correlation_stats.trace_average_statistic === 'number' &&
-                Math.abs(team.correlation_stats.trace_average_statistic) >= 0.5) { // Example, adjust as needed
-                traceAvgCell.style.fontWeight = "bold";
-                traceAvgCell.style.color = "#0022aa"; // Blue
+        if (currentGameMode === 'new') {
+            // New mode: Show Success Rate as percentage
+            if (team.new_stats && team.new_stats.trace_average_statistic !== undefined) {
+                const successRate = team.new_stats.trace_average_statistic * 100; // Convert to percentage
+                const uncertainty = team.new_stats.trace_average_statistic_uncertainty;
+                const uncertaintyPercent = uncertainty ? uncertainty * 100 : null;
+                traceAvgCell.innerHTML = `${successRate.toFixed(1)}%${uncertaintyPercent ? ` ± ${uncertaintyPercent.toFixed(1)}%` : ''}`;
+                if (successRate >= 50) {
+                    traceAvgCell.style.fontWeight = "bold";
+                    traceAvgCell.style.color = "#0022aa";
+                }
+            } else {
+                traceAvgCell.innerHTML = "—";
             }
         } else {
-            traceAvgCell.innerHTML = "—";
+            // Classic mode: Show Trace Average Statistic
+            if (team.classic_stats) {
+                traceAvgCell.innerHTML = formatStatWithUncertainty(
+                    team.classic_stats.trace_average_statistic,
+                    team.classic_stats.trace_average_statistic_uncertainty
+                );
+                if (typeof team.classic_stats.trace_average_statistic === 'number' &&
+                    Math.abs(team.classic_stats.trace_average_statistic) >= 0.5) {
+                    traceAvgCell.style.fontWeight = "bold";
+                    traceAvgCell.style.color = "#0022aa";
+                }
+            } else {
+                traceAvgCell.innerHTML = "—";
+            }
         }
         
         // Add Same Item Balance column
         const balanceCell = row.insertCell();
-        if (team.correlation_stats && 
-            team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance)) {
-            try {
-                const balanceValue = parseFloat(team.correlation_stats.same_item_balance);
-                const balanceUncertainty = team.correlation_stats.same_item_balance_uncertainty !== undefined ? 
-                                           parseFloat(team.correlation_stats.same_item_balance_uncertainty) : null;
-                balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
-                
-                // Add visual indicator for interesting values
-                if (Math.abs(balanceValue) >= 0.5) {
-                    balanceCell.style.fontWeight = "bold";
-                    balanceCell.style.color = "#0022aa";                }
-            } catch (e) {
-                console.error("Error formatting same_item_balance", e);
-                balanceCell.innerHTML = "Error";
+        if (currentGameMode === 'new') {
+            // New mode: Show Same Question Balance
+            if (team.new_stats && 
+                team.new_stats.same_item_balance !== undefined && 
+                team.new_stats.same_item_balance !== null && 
+                !isNaN(team.new_stats.same_item_balance)) {
+                try {
+                    const balanceValue = parseFloat(team.new_stats.same_item_balance);
+                    const balanceUncertainty = team.new_stats.same_item_balance_uncertainty !== undefined ? 
+                                               parseFloat(team.new_stats.same_item_balance_uncertainty) : null;
+                    balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
+                    
+                    if (Math.abs(balanceValue) >= 0.5) {
+                        balanceCell.style.fontWeight = "bold";
+                        balanceCell.style.color = "#0022aa";
+                    }
+                } catch (e) {
+                    console.error("Error formatting new mode same_item_balance", e);
+                    balanceCell.innerHTML = "Error";
+                }
+            } else {
+                balanceCell.innerHTML = "—";
             }
         } else {
-            balanceCell.innerHTML = "—";
+            // Classic mode: Show Same Item Balance
+            if (team.classic_stats && 
+                team.classic_stats.same_item_balance !== undefined && 
+                team.classic_stats.same_item_balance !== null && 
+                !isNaN(team.classic_stats.same_item_balance)) {
+                try {
+                    const balanceValue = parseFloat(team.classic_stats.same_item_balance);
+                    const balanceUncertainty = team.classic_stats.same_item_balance_uncertainty !== undefined ? 
+                                               parseFloat(team.classic_stats.same_item_balance_uncertainty) : null;
+                    balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
+                    
+                    if (Math.abs(balanceValue) >= 0.5) {
+                        balanceCell.style.fontWeight = "bold";
+                        balanceCell.style.color = "#0022aa";
+                    }
+                } catch (e) {
+                    console.error("Error formatting classic mode same_item_balance", e);
+                    balanceCell.innerHTML = "Error";
+                }
+            } else {
+                balanceCell.innerHTML = "—";
+            }
         }
 
         // Add Balanced Random column with robust error handling
         const balancedRandomCell = row.insertCell();
-        if (team.correlation_stats && 
-            team.correlation_stats.trace_average_statistic !== undefined && 
-            team.correlation_stats.trace_average_statistic !== null && 
-            !isNaN(team.correlation_stats.trace_average_statistic) &&
-            team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance) &&
-            team.correlation_stats.trace_average_statistic_uncertainty !== undefined &&
-            team.correlation_stats.same_item_balance_uncertainty !== undefined) { 
-            try {
-                const traceAvg = parseFloat(team.correlation_stats.trace_average_statistic);
-                const balance = parseFloat(team.correlation_stats.same_item_balance);
-                const balancedRandom = (traceAvg + balance) / 2;
-                
-                const traceAvgUncInput = team.correlation_stats.trace_average_statistic_uncertainty;
-                const balanceUncInput = team.correlation_stats.same_item_balance_uncertainty;
-                let uncBalancedRandom = null;
+        if (currentGameMode === 'new') {
+            // New mode: Calculate balanced success from success rate and balance
+            if (team.new_stats && 
+                team.new_stats.trace_average_statistic !== undefined && 
+                team.new_stats.trace_average_statistic !== null && 
+                !isNaN(team.new_stats.trace_average_statistic) &&
+                team.new_stats.same_item_balance !== undefined && 
+                team.new_stats.same_item_balance !== null && 
+                !isNaN(team.new_stats.same_item_balance)) {
+                try {
+                    const successRate = parseFloat(team.new_stats.trace_average_statistic);
+                    const balance = parseFloat(team.new_stats.same_item_balance);
+                    const balancedSuccess = (successRate + balance) / 2;
+                    
+                    const successRateUnc = team.new_stats.trace_average_statistic_uncertainty;
+                    const balanceUnc = team.new_stats.same_item_balance_uncertainty;
+                    let uncBalancedSuccess = null;
 
-                if (typeof traceAvgUncInput === 'number' && !isNaN(traceAvgUncInput) &&
-                    typeof balanceUncInput === 'number' && !isNaN(balanceUncInput)) {
-                    const traceAvgUnc = parseFloat(traceAvgUncInput);
-                    const balanceUnc = parseFloat(balanceUncInput);
-                    uncBalancedRandom = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
+                    if (typeof successRateUnc === 'number' && !isNaN(successRateUnc) &&
+                        typeof balanceUnc === 'number' && !isNaN(balanceUnc)) {
+                        uncBalancedSuccess = Math.sqrt(Math.pow(successRateUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
+                    }
+                    
+                    balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedSuccess, uncBalancedSuccess);
+                } catch (e) {
+                    console.error("Error calculating new mode balancedSuccess", e);
+                    balancedRandomCell.innerHTML = "Error";
                 }
-                
-                balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedRandom, uncBalancedRandom);
-            } catch (e) {
-                console.error("Error calculating or formatting balancedRandom", e);
-                balancedRandomCell.innerHTML = "Error";
+            } else {
+                balancedRandomCell.innerHTML = "—";
             }
         } else {
-            balancedRandomCell.innerHTML = "—";
+            // Classic mode: Calculate balanced random from trace avg and balance
+            if (team.classic_stats && 
+                team.classic_stats.trace_average_statistic !== undefined && 
+                team.classic_stats.trace_average_statistic !== null && 
+                !isNaN(team.classic_stats.trace_average_statistic) &&
+                team.classic_stats.same_item_balance !== undefined && 
+                team.classic_stats.same_item_balance !== null && 
+                !isNaN(team.classic_stats.same_item_balance) &&
+                team.classic_stats.trace_average_statistic_uncertainty !== undefined &&
+                team.classic_stats.same_item_balance_uncertainty !== undefined) { 
+                try {
+                    const traceAvg = parseFloat(team.classic_stats.trace_average_statistic);
+                    const balance = parseFloat(team.classic_stats.same_item_balance);
+                    const balancedRandom = (traceAvg + balance) / 2;
+                    
+                    const traceAvgUncInput = team.classic_stats.trace_average_statistic_uncertainty;
+                    const balanceUncInput = team.classic_stats.same_item_balance_uncertainty;
+                    let uncBalancedRandom = null;
+
+                    if (typeof traceAvgUncInput === 'number' && !isNaN(traceAvgUncInput) &&
+                        typeof balanceUncInput === 'number' && !isNaN(balanceUncInput)) {
+                        const traceAvgUnc = parseFloat(traceAvgUncInput);
+                        const balanceUnc = parseFloat(balanceUncInput);
+                        uncBalancedRandom = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
+                    }
+                    
+                    balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedRandom, uncBalancedRandom);
+                } catch (e) {
+                    console.error("Error calculating classic mode balancedRandom", e);
+                    balancedRandomCell.innerHTML = "Error";
+                }
+            } else {
+                balancedRandomCell.innerHTML = "—";
+            }
         }
         
         // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
         const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
-        if (team.correlation_stats) {
-            crossTermChshCell.innerHTML = formatStatWithUncertainty(
-                team.correlation_stats.cross_term_combination_statistic,
-                team.correlation_stats.cross_term_combination_statistic_uncertainty
-            );
-             if (typeof team.correlation_stats.cross_term_combination_statistic === 'number') {
-                // Example: Highlight significant CHSH values
-                if (Math.abs(team.correlation_stats.cross_term_combination_statistic) > 2) {
-                    crossTermChshCell.style.fontWeight = "bold";
-                    crossTermChshCell.style.color = team.correlation_stats.cross_term_combination_statistic > 2 ? "green" : "red"; // Green for >2, Red for < -2
+        if (currentGameMode === 'new') {
+            // New mode: Show Normalized Score
+            if (team.new_stats && team.new_stats.chsh_value_statistic !== undefined) {
+                crossTermChshCell.innerHTML = formatStatWithUncertainty(
+                    team.new_stats.chsh_value_statistic,
+                    team.new_stats.chsh_value_statistic_uncertainty
+                );
+                if (typeof team.new_stats.chsh_value_statistic === 'number') {
+                    // Highlight significant scores
+                    if (Math.abs(team.new_stats.chsh_value_statistic) > 0.5) {
+                        crossTermChshCell.style.fontWeight = "bold";
+                        crossTermChshCell.style.color = team.new_stats.chsh_value_statistic > 0.5 ? "green" : "red";
+                    }
                 }
-             }
+            } else {
+                crossTermChshCell.innerHTML = "—";
+            }
         } else {
-            crossTermChshCell.innerHTML = "—";
+            // Classic mode: Show Cross-Term Combination Statistic
+            if (team.classic_stats) {
+                crossTermChshCell.innerHTML = formatStatWithUncertainty(
+                    team.classic_stats.cross_term_combination_statistic,
+                    team.classic_stats.cross_term_combination_statistic_uncertainty
+                );
+                if (typeof team.classic_stats.cross_term_combination_statistic === 'number') {
+                    // Example: Highlight significant CHSH values
+                    if (Math.abs(team.classic_stats.cross_term_combination_statistic) > 2) {
+                        crossTermChshCell.style.fontWeight = "bold";
+                        crossTermChshCell.style.color = team.classic_stats.cross_term_combination_statistic > 2 ? "green" : "red";
+                    }
+                }
+            } else {
+                crossTermChshCell.innerHTML = "—";
+            }
         }
         
         // Details button cell
@@ -1170,8 +1314,19 @@ function updateModalContent(team) {
     const modalHash1 = document.getElementById('modal-hash1');
     const modalHash2 = document.getElementById('modal-hash2');
     const correlationTable = document.getElementById('correlation-matrix-table');
-    const modalChshValue = document.getElementById('modal-chsh-value'); // New ID from HTML (was modal-chsh-stat2)
-    const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh'); // New ID from HTML (was modal-chsh-stat3)
+    const matrixTitle = document.getElementById('matrix-title');
+    
+    // Classic mode statistics elements
+    const modalClassicTrace = document.getElementById('modal-classic-trace');
+    const modalClassicBalance = document.getElementById('modal-classic-balance');
+    const modalClassicBalanced = document.getElementById('modal-classic-balanced');
+    const modalClassicChsh = document.getElementById('modal-classic-chsh');
+    
+    // New mode statistics elements
+    const modalNewSuccessRate = document.getElementById('modal-new-success-rate');
+    const modalNewBalance = document.getElementById('modal-new-balance');
+    const modalNewBalanced = document.getElementById('modal-new-balanced');
+    const modalNewScore = document.getElementById('modal-new-score');
     
     // Set team name in modal
     modalTeamName.textContent = team.team_name;
@@ -1185,20 +1340,92 @@ function updateModalContent(team) {
     modalHash1.textContent = team.history_hash1 || "—";
     modalHash2.textContent = team.history_hash2 || "—";
     
+    // Populate classic mode statistics
+    if (team.classic_stats) {
+        modalClassicTrace.innerHTML = formatStatWithUncertainty(
+            team.classic_stats.trace_average_statistic,
+            team.classic_stats.trace_average_statistic_uncertainty
+        );
+        modalClassicBalance.innerHTML = formatStatWithUncertainty(
+            team.classic_stats.same_item_balance,
+            team.classic_stats.same_item_balance_uncertainty
+        );
+        
+        // Calculate balanced classic
+        if (team.classic_stats.trace_average_statistic !== undefined && team.classic_stats.same_item_balance !== undefined) {
+            const balanced = (team.classic_stats.trace_average_statistic + team.classic_stats.same_item_balance) / 2;
+            modalClassicBalanced.innerHTML = balanced.toFixed(3);
+        } else {
+            modalClassicBalanced.textContent = "—";
+        }
+        
+        modalClassicChsh.innerHTML = formatStatWithUncertainty(
+            team.classic_stats.cross_term_combination_statistic,
+            team.classic_stats.cross_term_combination_statistic_uncertainty
+        );
+    } else {
+        modalClassicTrace.textContent = "—";
+        modalClassicBalance.textContent = "—";
+        modalClassicBalanced.textContent = "—";
+        modalClassicChsh.textContent = "—";
+    }
+    
+    // Populate new mode statistics
+    if (team.new_stats) {
+        const successRatePercent = team.new_stats.trace_average_statistic ? (team.new_stats.trace_average_statistic * 100) : 0;
+        const successRateUncertaintyPercent = team.new_stats.trace_average_statistic_uncertainty ? (team.new_stats.trace_average_statistic_uncertainty * 100) : null;
+        modalNewSuccessRate.innerHTML = `${successRatePercent.toFixed(1)}%${successRateUncertaintyPercent ? ` ± ${successRateUncertaintyPercent.toFixed(1)}%` : ''}`;
+        
+        modalNewBalance.innerHTML = formatStatWithUncertainty(
+            team.new_stats.same_item_balance,
+            team.new_stats.same_item_balance_uncertainty
+        );
+        
+        // Calculate balanced success
+        if (team.new_stats.trace_average_statistic !== undefined && team.new_stats.same_item_balance !== undefined) {
+            const balancedSuccess = (team.new_stats.trace_average_statistic + team.new_stats.same_item_balance) / 2;
+            modalNewBalanced.innerHTML = balancedSuccess.toFixed(3);
+        } else {
+            modalNewBalanced.textContent = "—";
+        }
+        
+        modalNewScore.innerHTML = formatStatWithUncertainty(
+            team.new_stats.chsh_value_statistic,
+            team.new_stats.chsh_value_statistic_uncertainty
+        );
+    } else {
+        modalNewSuccessRate.textContent = "—";
+        modalNewBalance.textContent = "—";
+        modalNewBalanced.textContent = "—";
+        modalNewScore.textContent = "—";
+    }
+    
     // Clear existing correlation matrix
     correlationTable.innerHTML = '';
 
+    // Determine which matrix to show based on current mode and update title
+    let matrixToShow, labelsToShow;
+    if (currentGameMode === 'new') {
+        matrixToShow = team.new_matrix || team.correlation_matrix;
+        labelsToShow = team.correlation_labels;
+        matrixTitle.textContent = 'Success Matrix (Successful/Total)';
+    } else {
+        matrixToShow = team.classic_matrix || team.correlation_matrix;
+        labelsToShow = team.correlation_labels;
+        matrixTitle.textContent = 'Correlation Matrix';
+    }
+
     // Populate correlation matrix table if available with validation
-    if (team.correlation_matrix && team.correlation_labels && 
-        Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
-        team.correlation_matrix.length > 0 && team.correlation_labels.length > 0 &&
-        team.correlation_matrix.length === team.correlation_labels.length &&
-        team.correlation_matrix.every(row => Array.isArray(row) && row.length === team.correlation_labels.length)) {
+    if (matrixToShow && labelsToShow && 
+        Array.isArray(matrixToShow) && Array.isArray(labelsToShow) &&
+        matrixToShow.length > 0 && labelsToShow.length > 0 &&
+        matrixToShow.length === labelsToShow.length &&
+        matrixToShow.every(row => Array.isArray(row) && row.length === labelsToShow.length)) {
         
         try {
-            const labels = team.correlation_labels;
+            const labels = labelsToShow;
             const numLabels = labels.length;
-            const matrixData = team.correlation_matrix;
+            const matrixData = matrixToShow;
 
             // Create thead and tbody elements for better structure (optional but good practice)
             // However, to minimize changes to existing patterns, we'll append rows directly to the table.
@@ -1211,6 +1438,7 @@ function updateModalContent(team) {
             player2Th.colSpan = numLabels;
             player2Th.textContent = 'Player 2';
             player2Th.style.textAlign = 'center';
+            player2Th.classList.add('corr-matrix-col-item-label');
             player2LabelRow.appendChild(player2Th);
 
             // Row 1: Column Item Labels (A, B, X, Y for Player 2)
@@ -1297,21 +1525,6 @@ function updateModalContent(team) {
         errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
         errorCell.textContent = "No correlation data available";
         errorCell.classList.add('corr-matrix-error-cell');
-    }
-
-    // Populate CHSH Statistics in modal
-    if (team.correlation_stats) {
-        modalChshValue.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.chsh_value_statistic,
-            team.correlation_stats.chsh_value_statistic_uncertainty
-        );
-        modalCrossTermChsh.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.cross_term_combination_statistic,
-            team.correlation_stats.cross_term_combination_statistic_uncertainty
-        );
-    } else {
-        modalChshValue.innerHTML = "—";
-        modalCrossTermChsh.innerHTML = "—";
     }
 }
 
