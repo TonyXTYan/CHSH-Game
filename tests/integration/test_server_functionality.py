@@ -96,14 +96,17 @@ class TestServerFunctionality:
         response = requests.get(f"{self.BASE_URL}/dashboard", timeout=10)
         soup = BeautifulSoup(response.content, 'html.parser')
         
-        # Test metric cards
-        active_teams_count = soup.find('p', id='active-teams-count')
+        # Test metric cards - now merged into comprehensive stats card
+        active_teams_count = soup.find('div', id='active-teams-count')
         assert active_teams_count is not None, "Active teams count not found"
         
         connected_players_count = soup.find('div', id='connected-players-count')
         assert connected_players_count is not None, "Connected players count not found"
         
-        total_responses_count = soup.find('p', id='total-responses-count')
+        ready_players_count = soup.find('div', id='ready-players-count')
+        assert ready_players_count is not None, "Ready players count not found"
+        
+        total_responses_count = soup.find('div', id='total-responses-count')
         assert total_responses_count is not None, "Total responses count not found"
         
         # Test game control buttons
@@ -133,6 +136,13 @@ class TestServerFunctionality:
         
         toggle_answers_btn = soup.find('button', id='toggle-answers-btn')
         assert toggle_answers_btn is not None, "Toggle answers button not found"
+        
+        # Test advanced controls section
+        advanced_controls_header = soup.find('div', id='advanced-controls-header')
+        assert advanced_controls_header is not None, "Advanced controls header not found"
+        
+        toggle_mode_btn = soup.find('button', id='toggle-mode-btn')
+        assert toggle_mode_btn is not None, "Toggle mode button not found"
     
     def test_about_page_loads(self):
         """Test that the about page loads correctly"""

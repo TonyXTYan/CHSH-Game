@@ -221,9 +221,9 @@ th {
 
 .stat-item {
     display: flex;
-    flex-direction: column;
+    justify-content: space-between;
     align-items: center;
-    padding: 8px;
+    padding: 8px 12px;
     background-color: rgba(255, 255, 255, 0.5);
     border-radius: 4px;
     border-left: 3px solid #0056b3;
@@ -232,7 +232,6 @@ th {
 .stat-label {
     font-size: 0.85em;
     color: #666;
-    margin-bottom: 4px;
     font-weight: 500;
 }
 
@@ -593,7 +592,8 @@ th {
 }
 
 #live-answer-log-header,
-#teams-header {
+#teams-header,
+#advanced-controls-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -602,11 +602,14 @@ th {
 }
 
 #live-answer-log-header h2,
-#teams-header h2 {
+#teams-header h2,
+#advanced-controls-header h2 {
     margin: 0;
 }
 
-#toggle-chevron {
+#toggle-chevron,
+#teams-toggle-chevron,
+#advanced-controls-chevron {
     font-weight: bold;
     margin-left: 5px;
     font-size: 1.1em;

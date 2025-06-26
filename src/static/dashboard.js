@@ -6,7 +6,7 @@ const socket = io(window.location.origin, {
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
 // Game mode state
-let currentGameMode = 'classic';
+let currentGameMode = 'new';
 
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
@@ -268,6 +268,7 @@ window.addEventListener('load', () => {
     // Initialize streaming UI states
     updateStreamingUI();
     updateTeamsStreamingUI();
+    updateAdvancedControlsUI();
     
     // Initialize game mode display (will be updated when dashboard connects)
     updateGameModeDisplay(currentGameMode);
@@ -869,6 +870,7 @@ function updateAnswerLog(answers) {
 
 let answerStreamEnabled = false;
 let teamsStreamEnabled = false;
+let advancedControlsEnabled = false;
 const answerTable = document.getElementById('answer-log-table');
 const noAnswersMsg = document.getElementById('no-answers-log');
 const toggleBtn = document.getElementById('toggle-answers-btn');
@@ -878,6 +880,9 @@ const teamsTable = document.getElementById('active-teams-table');
 const noTeamsMsg = document.getElementById('no-active-teams');
 const teamsToggleBtn = document.getElementById('toggle-teams-btn');
 const teamsToggleChevron = document.getElementById('teams-toggle-chevron');
+
+const advancedControlsContent = document.getElementById('advanced-controls-content');
+const advancedControlsChevron = document.getElementById('advanced-controls-chevron');
 
 // Initialize to OFF state
 toggleBtn.textContent = 'OFF';
@@ -890,6 +895,14 @@ teamsToggleBtn.textContent = 'OFF';
 teamsTable.style.display = 'none';
 noTeamsMsg.style.display = 'none';
 teamsToggleChevron.textContent = '▶';
+
+// Initialize advanced controls to collapsed state
+if (advancedControlsContent) {
+    advancedControlsContent.style.display = 'none';
+}
+if (advancedControlsChevron) {
+    advancedControlsChevron.textContent = '▶';
+}
 
 function updateStreamingUI() {
     if (answerStreamEnabled) {
@@ -928,6 +941,24 @@ function updateTeamsStreamingUI() {
     }
 }
 
+function updateAdvancedControlsUI() {
+    if (advancedControlsEnabled) {
+        if (advancedControlsContent) {
+            advancedControlsContent.style.display = 'flex';
+        }
+        if (advancedControlsChevron) {
+            advancedControlsChevron.textContent = '▼';
+        }
+    } else {
+        if (advancedControlsContent) {
+            advancedControlsContent.style.display = 'none';
+        }
+        if (advancedControlsChevron) {
+            advancedControlsChevron.textContent = '▶';
+        }
+    }
+}
+
 function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
@@ -944,6 +975,11 @@ function toggleTeamsStream() {
     if (teamsStreamEnabled) {
         socket.emit('request_teams_update');
     }
+}
+
+function toggleAdvancedControls() {
+    advancedControlsEnabled = !advancedControlsEnabled;
+    updateAdvancedControlsUI();
 }
 
 function togglePause() {

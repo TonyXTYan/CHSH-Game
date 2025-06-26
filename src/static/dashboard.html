@@ -29,7 +29,6 @@
             <div id="connection-status-dash">Connecting...</div>
             <div class="panel metrics">
                 <div class="metric-card comprehensive-stats">
-                    <h3>Game Statistics</h3>
                     <div class="stats-grid">
                         <div class="stat-item">
                             <div class="stat-label">Active Teams</div>
@@ -166,24 +165,27 @@
         <!-- Advanced Controls Section -->
         <div class="panel">
             <div class="panel-header">
-                <h2>Advanced Controls</h2>
+                <div id="advanced-controls-header" onclick="toggleAdvancedControls()">
+                    <h2>Advanced Controls</h2>
+                    <span id="advanced-controls-chevron">▶</span>
+                </div>
             </div>
-            <div class="advanced-controls-content">
+            <div id="advanced-controls-content" class="advanced-controls-content" style="display: none;">
                 <!-- Game Mode Control -->
                 <div class="control-section">
                     <h4>Game Mode</h4>
                     <div class="game-mode-controls">
                         <div class="current-mode-display">
                             <span>Current Mode: </span>
-                            <span id="current-game-mode" class="mode-indicator">Classic</span>
+                            <span id="current-game-mode" class="mode-indicator">New</span>
                         </div>
                         <button id="toggle-mode-btn" onclick="toggleGameMode()" class="control-btn mode-toggle-btn">
-                            Switch to New Mode
+                            Switch to Classic Mode
                         </button>
                         <div class="mode-description">
                             <div id="mode-description-text">
-                                <strong>Classic Mode:</strong> Random question assignment to both players from all items (A, B, X, Y). 
-                                Metrics focus on quantum correlation measurements.
+                                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                                Metrics focus on success rates and optimal strategy adherence.
                             </div>
                         </div>
                     </div>
