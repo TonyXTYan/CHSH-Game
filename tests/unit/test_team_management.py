@@ -130,7 +130,8 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
                 'team_id': inactive_team.team_id,
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
-                'game_mode': state.game_mode
+                'game_mode': state.game_mode,
+                'player_slot': 1  # Player reactivating is assigned to slot 1
             }
         )
         
@@ -244,7 +245,8 @@ def test_create_team_success(mock_request_context):
                 'team_id': ANY,
                 'message': 'Team created. Waiting for another player.',
                 'game_started': state.game_started,
-                'game_mode': state.game_mode
+                'game_mode': state.game_mode,
+                'player_slot': 1  # Team creator is assigned to slot 1
             }
         )
         
@@ -316,7 +318,8 @@ def test_join_team_success(mock_request_context, active_team):
                 'game_started': state.game_started,
                 'team_status': 'full',
                 'is_reconnection': False,
-                'game_mode': state.game_mode
+                'game_mode': state.game_mode,
+                'player_slot': 2  # Player joins into player2_session_id slot
             },
             to='test_sid'
         )
@@ -694,7 +697,8 @@ def test_reconnection_join_team_different_player(mock_request_context, active_te
                 'game_started': state.game_started,
                 'team_status': 'full',
                 'is_reconnection': False,
-                'game_mode': state.game_mode
+                'game_mode': state.game_mode,
+                'player_slot': 2  # New player joins into the available slot
             },
             to='new_session_id'
         )
@@ -748,7 +752,8 @@ def test_reconnection_join_team_same_player(mock_request_context, active_team):
                 'game_started': state.game_started,
                 'team_status': 'full',
                 'is_reconnection': True,
-                'game_mode': state.game_mode
+                'game_mode': state.game_mode,
+                'player_slot': 2  # Player reconnects to their original slot
             },
             to='player2_sid'
         )

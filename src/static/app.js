@@ -416,8 +416,13 @@ const callbacks = {
         gameStarted = data.game_started;
         currentTeamStatus = 'created'; // Set initial team status
         
-        // Team creator is always Player 1
-        updatePlayerPosition(1);
+        // Use actual player slot from backend instead of assuming
+        if (data.player_slot) {
+            updatePlayerPosition(data.player_slot);
+        } else {
+            // Fallback for backwards compatibility
+            updatePlayerPosition(1);
+        }
         
         // Update game mode if provided
         if (data.game_mode) {
@@ -441,8 +446,15 @@ const callbacks = {
         gameStarted = data.game_started;
         teamId = data.team_id; // Assuming team_id is sent, if not, it might be part of team_status_update
 
-        // Player joining an existing team is always Player 2
-        updatePlayerPosition(2);
+        // Use actual player slot from backend instead of assuming
+        // This fixes the bug where player position was incorrectly determined by join order
+        // instead of actual database slot assignment (important for new game mode)
+        if (data.player_slot) {
+            updatePlayerPosition(data.player_slot);
+        } else {
+            // Fallback for backwards compatibility - but this could be wrong
+            updatePlayerPosition(2);
+        }
         
         // Update game mode if provided
         if (data.game_mode) {
