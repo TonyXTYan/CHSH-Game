@@ -7,6 +7,7 @@ class AppState:
         self.game_started = False # Track if game has started
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
+        self.game_mode = 'classic'  # Track current game mode: 'classic' or 'new'
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
@@ -22,6 +23,7 @@ class AppState:
         self.game_started = False
         self.game_paused = False
         self.answer_stream_enabled = False
+        self.game_mode = 'classic'  # Reset game mode to classic
 
 # Create singleton instance for state
 state = AppState()
