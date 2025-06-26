@@ -51,8 +51,8 @@ def _can_rejoin_team(team_name: str) -> bool:
 
 def _import_dashboard_functions():
     """Import dashboard functions to avoid circular import"""
-    from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
-    return emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
+    from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect
+    return emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect
 
 def get_available_teams_list() -> List[Dict[str, Any]]:
     try:
@@ -101,7 +101,7 @@ def handle_connect() -> None:
         # By default, treat all non-dashboard connections as players
         if sid not in state.dashboard_clients:
             state.connected_players.add(sid)
-            _, emit_dashboard_full_update, _ = _import_dashboard_functions()
+            _, emit_dashboard_full_update, _, _ = _import_dashboard_functions()
             emit_dashboard_full_update()  # Use full update to refresh player count
         
         emit('connection_established', {
@@ -116,14 +116,13 @@ def handle_disconnect() -> None:
     sid = request.sid  # type: ignore
     logger.info(f'Client disconnected: {sid}')
     try:
-        if sid in state.dashboard_clients:
-            state.dashboard_clients.remove(sid)
-            logger.info(f"Dashboard client disconnected: {sid}")
+        # Handle dashboard client disconnection
+        _, emit_dashboard_full_update, _, handle_dashboard_disconnect = _import_dashboard_functions()
+        handle_dashboard_disconnect(sid)
 
         # Remove from connected players list regardless of team status
         if sid in state.connected_players:
             state.connected_players.remove(sid)
-            _, emit_dashboard_full_update, _ = _import_dashboard_functions()
             emit_dashboard_full_update()  # Update dashboard with new player count
 
         # Handle team-related disconnection
@@ -150,6 +149,12 @@ def handle_disconnect() -> None:
                             db_team.player1_session_id = None
                         elif db_team.player2_session_id == sid:
                             db_team.player2_session_id = None
+                            
+                        # Leave the team room BEFORE emitting to the team
+                        try:
+                            leave_room(team_name, sid=sid)
+                        except Exception as e:
+                            logger.error(f"Error leaving room: {str(e)}")
                             
                         # Notify remaining players and update team status
                         remaining_players = team_info['players']
@@ -181,19 +186,15 @@ def handle_disconnect() -> None:
                         
                         db.session.commit()
                         # Clear caches after team state change
-                        _, _, clear_team_caches = _import_dashboard_functions()
+                        _, _, clear_team_caches, _ = _import_dashboard_functions()
                         clear_team_caches()
                         
-                        try:
-                            leave_room(team_name, sid=sid)
-                        except Exception as e:
-                            logger.error(f"Error leaving room: {str(e)}")
                         del state.player_to_team[sid]
                         
                         # Update all clients - this should happen regardless of whether team becomes inactive
                         # Move dashboard update to end to ensure all state changes are committed
                         # Force refresh for critical team state changes like disconnections
-                        emit_dashboard_team_update, _, _ = _import_dashboard_functions()
+                        emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
                         emit_dashboard_team_update(force_refresh=True)
                         socketio.emit('teams_updated', {
                             'teams': get_available_teams_list(),
@@ -221,7 +222,7 @@ def on_create_team(data: Dict[str, Any]) -> None:
         db.session.add(new_team_db)
         db.session.commit()
         # Clear caches after team state change
-        _, _, clear_team_caches = _import_dashboard_functions()
+        _, _, clear_team_caches, _ = _import_dashboard_functions()
         clear_team_caches()
         state.active_teams[team_name] = {
             'players': [sid],
@@ -252,7 +253,7 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'game_started': state.game_started
         })  # type: ignore
         
-        emit_dashboard_team_update, _, _ = _import_dashboard_functions()
+        emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
         emit_dashboard_team_update()
     except Exception as e:
         logger.error(f"Error in on_create_team: {str(e)}", exc_info=True)
@@ -295,7 +296,7 @@ def on_join_team(data: Dict[str, Any]) -> None:
             db_team.is_active = True
             db.session.commit()
             # Clear caches after team state change
-            _, _, clear_team_caches = _import_dashboard_functions()
+            _, _, clear_team_caches, _ = _import_dashboard_functions()
             clear_team_caches()
 
         team_is_now_full = len(team_info['players']) == 2
@@ -334,7 +335,7 @@ def on_join_team(data: Dict[str, Any]) -> None:
         
         # Update dashboard
         # Force refresh when team becomes active (critical state change)
-        emit_dashboard_team_update, _, _ = _import_dashboard_functions()
+        emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
         emit_dashboard_team_update(force_refresh=team_is_now_full)
         
         # If the game has already started and the team is now full, start a new round for them
@@ -376,7 +377,7 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
             team.player1_session_id = sid
             db.session.commit()
             # Clear caches after team state change
-            _, _, clear_team_caches = _import_dashboard_functions()
+            _, _, clear_team_caches, _ = _import_dashboard_functions()
             clear_team_caches()
 
             # Query for the highest round number previously played by this team
@@ -410,7 +411,7 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'game_started': state.game_started
             })  # type: ignore
             
-            emit_dashboard_team_update, _, _ = _import_dashboard_functions()
+            emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
             emit_dashboard_team_update()
             
     except Exception as e:
@@ -506,7 +507,7 @@ def on_leave_team(data: Dict[str, Any]) -> None:
             if db_team: # Commit changes if db_team was involved
                 db.session.commit()
                 # Clear caches after team state change
-                _, _, clear_team_caches = _import_dashboard_functions()
+                _, _, clear_team_caches, _ = _import_dashboard_functions()
                 clear_team_caches()
 
             emit('left_team_success', {'message': 'You have left the team.'}, to=sid)  # type: ignore
@@ -523,7 +524,7 @@ def on_leave_team(data: Dict[str, Any]) -> None:
                 'game_started': state.game_started
             })  # type: ignore
             # Force refresh for critical team state changes like leaving
-            emit_dashboard_team_update, _, _ = _import_dashboard_functions()
+            emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
             emit_dashboard_team_update(force_refresh=True)
     except Exception as e:
         logger.error(f"Error in on_leave_team: {str(e)}", exc_info=True)

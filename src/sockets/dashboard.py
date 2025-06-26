@@ -749,10 +749,9 @@ def on_pause_game() -> None:
         logger.error(f"Error in on_pause_game: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while toggling game pause'})  # type: ignore
 
-@socketio.on('disconnect')
-def on_disconnect() -> None:
+def handle_dashboard_disconnect(sid: str) -> None:
+    """Handle disconnect logic for dashboard clients"""
     try:
-        sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
             if sid in dashboard_last_activity:
@@ -760,7 +759,7 @@ def on_disconnect() -> None:
             if sid in dashboard_teams_streaming:
                 del dashboard_teams_streaming[sid]
     except Exception as e:
-        logger.error(f"Error in on_disconnect: {str(e)}", exc_info=True)
+        logger.error(f"Error in handle_dashboard_disconnect: {str(e)}", exc_info=True)
 
 @socketio.on('restart_game')
 def on_restart_game() -> None:
