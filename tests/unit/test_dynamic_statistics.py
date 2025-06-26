@@ -65,7 +65,8 @@ class TestDynamicStatistics:
                 0.75,  # overall_success_rate
                 0.5,   # normalized_cumulative_score
                 {('A', 'B'): 8},  # success_counts
-                {('A', 'B'): 10}  # success_pair_counts
+                {('A', 'B'): 10}, # success_pair_counts
+                {'A': {'true': 8, 'false': 2}, 'B': {'true': 5, 'false': 5}, 'X': {'true': 7, 'false': 3}, 'Y': {'true': 6, 'false': 4}}  # player_responses
             )
             
             mock_hashes.return_value = ('hash1', 'hash2')
@@ -167,7 +168,8 @@ class TestDynamicStatistics:
             0.75,  # overall_success_rate
             0.5,   # normalized_cumulative_score
             {('A', 'B'): 8, ('A', 'X'): 6},  # success_counts
-            {('A', 'B'): 10, ('A', 'X'): 10}  # pair_counts
+            {('A', 'B'): 10, ('A', 'X'): 10}, # pair_counts
+            {'A': {'true': 8, 'false': 2}, 'B': {'true': 5, 'false': 5}, 'X': {'true': 7, 'false': 3}, 'Y': {'true': 6, 'false': 4}}  # player_responses
         )
         
         success_metrics_str = str(success_data)
@@ -231,3 +233,123 @@ class TestDynamicStatistics:
                 assert 'new_matrix' in result
                 assert 'correlation_stats' in result  # Current display stats
                 assert 'correlation_matrix' in result  # Current display matrix
+
+    def test_new_mode_individual_balance_calculation(self):
+        """Test that NEW mode correctly calculates individual player balance instead of same-question balance."""
+        # Mock success data with realistic player responses for NEW mode
+        # Player 1 gets A,B questions; Player 2 gets X,Y questions
+        success_data = (
+            [[(8, 10), (7, 10), (6, 10), (5, 10)] for _ in range(4)],  # success_matrix_tuples
+            ['A', 'B', 'X', 'Y'],  # item_values
+            0.75,  # overall_success_rate
+            0.5,   # normalized_cumulative_score
+            {('A', 'X'): 8, ('A', 'Y'): 6, ('B', 'X'): 7, ('B', 'Y'): 5},  # success_counts
+            {('A', 'X'): 10, ('A', 'Y'): 10, ('B', 'X'): 10, ('B', 'Y'): 10}, # pair_counts
+            {
+                # Player 1 responses (A,B questions)
+                'A': {'true': 8, 'false': 2},   # 80% true, balance = 0.4 (min(8,2)/10 * 2)
+                'B': {'true': 5, 'false': 5},   # 50% true, balance = 1.0 (min(5,5)/10 * 2)
+                # Player 2 responses (X,Y questions)  
+                'X': {'true': 7, 'false': 3},   # 70% true, balance = 0.6 (min(7,3)/10 * 2)
+                'Y': {'true': 6, 'false': 4}    # 60% true, balance = 0.8 (min(6,4)/10 * 2)
+            }
+        )
+        
+        success_metrics_str = str(success_data)
+        result = _calculate_success_statistics(success_metrics_str)
+        
+        # Expected individual balances:
+        # A: min(8,2)/10 * 2 = 0.4
+        # B: min(5,5)/10 * 2 = 1.0  
+        # X: min(7,3)/10 * 2 = 0.6
+        # Y: min(6,4)/10 * 2 = 0.8
+        # Average: (0.4 + 1.0 + 0.6 + 0.8) / 4 = 0.7
+        
+        expected_balance = (0.4 + 1.0 + 0.6 + 0.8) / 4
+        
+        assert isinstance(result, dict)
+        assert 'same_item_balance' in result
+        assert result['same_item_balance'] == pytest.approx(expected_balance, abs=1e-6)
+        
+        # Verify uncertainty calculation
+        assert 'same_item_balance_uncertainty' in result
+        assert result['same_item_balance_uncertainty'] is not None
+
+    def test_compute_success_metrics_tracks_individual_responses(self):
+        """Test that compute_success_metrics properly tracks individual player responses for NEW mode."""
+        from unittest.mock import MagicMock
+        from src.sockets.dashboard import compute_success_metrics
+        from src.models.quiz_models import PairQuestionRounds, Answers, ItemEnum
+        
+        # Mock the database queries
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds_model, \
+             patch('src.sockets.dashboard.Answers') as mock_answers_model:
+            
+            # Mock rounds data - NEW mode pattern (Player 1: A,B; Player 2: X,Y)
+            mock_round_1 = MagicMock()
+            mock_round_1.round_id = 1
+            mock_round_1.player1_item = ItemEnum.A
+            mock_round_1.player2_item = ItemEnum.X
+            
+            mock_round_2 = MagicMock()
+            mock_round_2.round_id = 2
+            mock_round_2.player1_item = ItemEnum.B
+            mock_round_2.player2_item = ItemEnum.Y
+            
+            mock_rounds_query = MagicMock()
+            mock_rounds_query.filter_by.return_value.order_by.return_value.all.return_value = [mock_round_1, mock_round_2]
+            mock_rounds_model.query = mock_rounds_query
+            
+            # Mock answers data
+            # Round 1: Player 1 (A) = True, Player 2 (X) = False  
+            # Round 2: Player 1 (B) = False, Player 2 (Y) = True
+            mock_answer_1a = MagicMock()
+            mock_answer_1a.question_round_id = 1
+            mock_answer_1a.assigned_item = ItemEnum.A
+            mock_answer_1a.response_value = True
+            
+            mock_answer_1b = MagicMock()
+            mock_answer_1b.question_round_id = 1  
+            mock_answer_1b.assigned_item = ItemEnum.X
+            mock_answer_1b.response_value = False
+            
+            mock_answer_2a = MagicMock()
+            mock_answer_2a.question_round_id = 2
+            mock_answer_2a.assigned_item = ItemEnum.B
+            mock_answer_2a.response_value = False
+            
+            mock_answer_2b = MagicMock()
+            mock_answer_2b.question_round_id = 2
+            mock_answer_2b.assigned_item = ItemEnum.Y  
+            mock_answer_2b.response_value = True
+            
+            mock_answers_query = MagicMock()
+            mock_answers_query.filter_by.return_value.order_by.return_value.all.return_value = [
+                mock_answer_1a, mock_answer_1b, mock_answer_2a, mock_answer_2b
+            ]
+            mock_answers_model.query = mock_answers_query
+            
+            # Call the function
+            result = compute_success_metrics(team_id=1)
+            
+            # Verify return structure
+            assert len(result) == 7
+            success_matrix, item_values, overall_success_rate, normalized_score, success_counts, pair_counts, player_responses = result
+            
+            # Verify player_responses tracks individual responses correctly
+            assert 'A' in player_responses
+            assert 'B' in player_responses
+            assert 'X' in player_responses
+            assert 'Y' in player_responses
+            
+            # Check that player responses are tracked correctly
+            # Player 1: A=True, B=False
+            # Player 2: X=False, Y=True
+            assert player_responses['A']['true'] == 1
+            assert player_responses['A']['false'] == 0
+            assert player_responses['B']['true'] == 0
+            assert player_responses['B']['false'] == 1
+            assert player_responses['X']['true'] == 0
+            assert player_responses['X']['false'] == 1
+            assert player_responses['Y']['true'] == 1
+            assert player_responses['Y']['false'] == 0

@@ -125,10 +125,10 @@ def compute_team_hashes(team_id: int) -> Tuple[str, str]:
         return "ERROR", "ERROR"
 
 @lru_cache(maxsize=CACHE_SIZE)
-def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
+def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """
     Compute success metrics for new mode instead of correlation matrix.
-    Returns success rate matrix and overall success metrics.
+    Returns success rate matrix, overall success metrics, and individual player balance data.
     """
     try:
         # Get all rounds and their corresponding answers for this team
@@ -150,6 +150,12 @@ def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], 
         # Count pairs for each item combination
         pair_counts: Dict[Tuple[str, str], int] = {(i, j): 0 for i in item_values for j in item_values}
         success_counts: Dict[Tuple[str, str], int] = {(i, j): 0 for i in item_values for j in item_values}
+        
+        # Track individual player responses for balance calculation
+        # NEW MODE: Track each player's responses to their assigned question types
+        player_responses: Dict[str, Dict[str, int]] = {}  # {item: {'true': count, 'false': count}}
+        for item in item_values:
+            player_responses[item] = {'true': 0, 'false': 0}
         
         total_rounds = 0
         successful_rounds = 0
@@ -193,6 +199,10 @@ def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], 
             if p1_answer is None or p2_answer is None:
                 continue
                 
+            # Track individual player responses for balance calculation
+            player_responses[p1_item]['true' if p1_answer else 'false'] += 1
+            player_responses[p2_item]['true' if p2_answer else 'false'] += 1
+                
             # Apply success rules for new mode
             # Success Rule: {B,Y} combinations require different answers; all others require same answers
             is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
@@ -227,11 +237,11 @@ def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], 
         score_sum = successful_rounds - (total_rounds - successful_rounds)  # successful - failed
         normalized_cumulative_score = score_sum / total_rounds if total_rounds > 0 else 0.0
         
-        return (success_matrix, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts)
+        return (success_matrix, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts, player_responses)
         
     except Exception as e:
         logger.error(f"Error computing success metrics: {str(e)}", exc_info=True)
-        return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {})
+        return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_correlation_matrix(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
@@ -558,7 +568,7 @@ def _calculate_success_statistics(success_metrics_tuple_str: str) -> Dict[str, O
     try:
         # Parse the success metrics from string back to tuple format
         import ast
-        success_matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts = ast.literal_eval(success_metrics_tuple_str)
+        success_matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts, player_responses = ast.literal_eval(success_metrics_tuple_str)
         
         # Calculate success statistics with uncertainties using ufloat
         # Replace trace_average_statistic with overall_success_rate
@@ -609,23 +619,27 @@ def _calculate_success_statistics(success_metrics_tuple_str: str) -> Dict[str, O
             cross_term_avg = 0.0
             cross_term_uncertainty = None
             
-        # For same_item_balance, we can calculate balance among same-question pairs
-        same_item_pairs = [('A', 'A'), ('B', 'B'), ('X', 'X'), ('Y', 'Y')]
-        same_item_balances = []
+        # Calculate individual player balance for NEW mode
+        # Balance measures how evenly each player distributes True/False answers for their question types
+        individual_balances = []
         
-        for item1, item2 in same_item_pairs:
-            total_pair = pair_counts.get((item1, item2), 0)
-            successful_pair = success_counts.get((item1, item2), 0)
+        for item, responses in player_responses.items():
+            true_count = responses.get('true', 0)
+            false_count = responses.get('false', 0)
+            total_responses = true_count + false_count
             
-            if total_pair > 0:
-                balance = successful_pair / total_pair
-                same_item_balances.append(balance)
+            if total_responses > 0:
+                # Calculate balance: 1.0 if perfectly balanced (50/50), 0.0 if all same answer
+                balance_ratio = min(true_count, false_count) / total_responses
+                # Scale to 0-1 range where 1 is perfect balance (50/50)
+                item_balance = balance_ratio * 2  # multiply by 2 to make 0.5 ratio = 1.0 balance
+                individual_balances.append(item_balance)
         
-        if same_item_balances:
-            same_item_balance_avg = sum(same_item_balances) / len(same_item_balances)
-            # Simple uncertainty calculation
-            if len(same_item_balances) > 1:
-                variance = sum((b - same_item_balance_avg)**2 for b in same_item_balances) / len(same_item_balances)
+        if individual_balances:
+            same_item_balance_avg = sum(individual_balances) / len(individual_balances)
+            # Simple uncertainty calculation based on variance
+            if len(individual_balances) > 1:
+                variance = sum((b - same_item_balance_avg)**2 for b in individual_balances) / len(individual_balances)
                 same_item_balance_uncertainty = math.sqrt(variance)
             else:
                 same_item_balance_uncertainty = None
@@ -696,9 +710,9 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         
         # Compute new mode statistics
         success_result = compute_success_metrics(team_id)  # type: ignore
-        (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts) = success_result
+        (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts, player_responses) = success_result
         
-        success_data = (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts)
+        success_data = (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts, player_responses)
         success_metrics_str = str(success_data)
         new_stats = _calculate_success_statistics(success_metrics_str)
         
