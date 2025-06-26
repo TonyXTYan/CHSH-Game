@@ -415,7 +415,8 @@ th {
     font-family: monospace;
 }
 
-#live-answer-log-header {
+#live-answer-log-header,
+#teams-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -423,7 +424,8 @@ th {
     cursor: pointer;
 }
 
-#live-answer-log-header h2 {
+#live-answer-log-header h2,
+#teams-header h2 {
     margin: 0;
 }
 

@@ -1,5 +1,13 @@
 # TODOs
-= [ ] test website on windows
+
+## URGENT
+
+- [ ] Disable teams stats streaming for multi dashboard clients
+
+## Normal ish 
+
+- [ ] test website on windows
+
 - [ ] button clear all inactive teams
 - [ ] compact rows
 - [x] ± statistics

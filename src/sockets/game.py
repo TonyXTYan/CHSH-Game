@@ -4,13 +4,17 @@ from flask_socketio import emit, join_room, leave_room
 from src.config import socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
-from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches
 from src.game_logic import start_new_round_for_pair
 import logging
 from typing import Dict, Any, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+def _import_dashboard_functions():
+    """Import dashboard functions to avoid circular import"""
+    from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect
+    return emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect
 
 @socketio.on('submit_answer')
 def on_submit_answer(data: Dict[str, Any]) -> None:
@@ -27,6 +31,11 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         team_info = state.active_teams.get(team_name)
         if not team_info or len(team_info['players']) != 2:
             emit('error', {'message': 'Team not valid or other player missing.'})  # type: ignore
+            return
+        
+        # Check if team is in proper active state (both players connected)
+        if team_info.get('status') != 'active':
+            emit('error', {'message': 'Team is not active. Waiting for all players to connect.'})  # type: ignore
             return
 
         round_id = data.get('round_id')
@@ -72,6 +81,7 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
 
         db.session.commit()
         # Clear caches after database commit
+        _, _, clear_team_caches, _ = _import_dashboard_functions()
         clear_team_caches()
         emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, to=sid)  # type: ignore
 
@@ -89,6 +99,7 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
             socketio.emit('new_answer_for_dashboard', answer_for_dash, to=dash_sid)  # type: ignore
         
         # Only emit team update, not full dashboard refresh
+        emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
         emit_dashboard_team_update()
 
         if len(team_info['answered_current_round']) == 2:
