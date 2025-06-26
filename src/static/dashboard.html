@@ -21,29 +21,32 @@
             <h3>Join the game</h3>
             <p><a href="https://chsh-game.fly.dev" target="_blank">chsh-game.fly.dev</a></p>
             <div style="display: flex; justify-content: center; align-items: center;">
-                <img src="https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23E7F3FF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=0&frame_text=SCAN%20ME&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=https%3A%2F%2Fchsh-game.fly.dev&width=300&height=300&bordersize=2" alt="QR Code"/>
+                <img src="https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23E7F3FF&imageformat=svg&language=en&frame_style=0&frame_text=SCAN%20ME&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=https%3A%2F%2Fchsh-game.fly.dev&width=300&height=300&bordersize=2" alt="QR Code"/>
             </div>
         </div>
         <div class="right-content-container">
             <h1>CHSH Game - Host Dashboard</h1>
             <div id="connection-status-dash">Connecting...</div>
             <div class="panel metrics">
-                <div class="metric-card">
-                    <h3>Active Teams</h3>
-                    <p id="active-teams-count">0</p>
-                </div>
-                <div class="metric-card">
-                    <h3>Players</h3>
-                    <div class="players-grid">
-                        <div>Connected:</div>
-                        <div id="connected-players-count">0</div>
-                        <div>Paired:</div>
-                        <div id="ready-players-count">0</div>
+                <div class="metric-card comprehensive-stats">
+                    <div class="stats-grid">
+                        <div class="stat-item">
+                            <div class="stat-label">Active Teams</div>
+                            <div class="stat-value" id="active-teams-count">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Connected Players</div>
+                            <div class="stat-value" id="connected-players-count">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Paired Players</div>
+                            <div class="stat-value" id="ready-players-count">0</div>
+                        </div>
+                        <div class="stat-item">
+                            <div class="stat-label">Total Responses</div>
+                            <div class="stat-value" id="total-responses-count">0</div>
+                        </div>
                     </div>
-                </div>
-                <div class="metric-card">
-                    <h3>Total Responses</h3>
-                    <p id="total-responses-count">0</p>
                 </div>
                 <div class="metric-card">
                     <h3 id="game-control-text">Game Control</h3>
@@ -76,6 +79,7 @@
                         <option value="status">Sort by Status</option>
                         <option value="name">Sort by Name</option>
                         <option value="date">Sort by Last Active</option>
+                        <option value="success-rate">Sort by Success Rate</option>
                     </select>
                 </div>
             </div>
@@ -85,10 +89,10 @@
                     <th>Status</th>
                     <th>Current Round</th>
                     <th>Stats Sig</th>
-                    <th>Trace Avg ⏐⟨Tr⟩⏐</th>
-                    <th>Balance</th>
-                    <th>Balanced ⏐⟨Tr⟩⏐ 🎯</th>
-                    <th>CHSH Value 🏆</th>
+                    <th id="header-stat1">Trace Avg ⏐⟨Tr⟩⏐</th>
+                    <th id="header-stat2">Balance</th>
+                    <th id="header-stat3">Balanced ⏐⟨Tr⟩⏐ 🎯</th>
+                    <th id="header-stat4">CHSH Value 🏆</th>
                     <th>Details</th>
                 </tr></thead>
                 <tbody></tbody>
@@ -132,15 +136,26 @@
                     </div>
                 </div>
                 <div class="modal-section">
-                    <h4>Correlation Matrix</h4>
-                    <table id="correlation-matrix-table"></table>
+                    <h4>Classic Mode Statistics</h4>
+                    <div class="details-container">
+                        <div><strong>Trace Average:</strong> <span id="modal-classic-trace"></span></div>
+                        <div><strong>Same Item Balance:</strong> <span id="modal-classic-balance"></span></div>
+                        <div><strong>Balanced |⟨Tr⟩|:</strong> <span id="modal-classic-balanced"></span></div>
+                        <div><strong>CHSH Value:</strong> <span id="modal-classic-chsh"></span></div>
+                    </div>
                 </div>
                 <div class="modal-section">
-                    <h4>CHSH Statistics</h4>
+                    <h4>New Mode Statistics</h4>
                     <div class="details-container">
-                        <div><strong>Actual CHSH Value:</strong> <span id="modal-chsh-value"></span></div>
-                        <div><strong>Cross-Term CHSH:</strong> <span id="modal-cross-term-chsh"></span></div>
+                        <div><strong>Success Rate:</strong> <span id="modal-new-success-rate"></span></div>
+                        <div><strong>Response Balance:</strong> <span id="modal-new-balance"></span></div>
+                        <div><strong>Balanced Success:</strong> <span id="modal-new-balanced"></span></div>
+                        <div><strong>Normalized Score:</strong> <span id="modal-new-score"></span></div>
                     </div>
+                </div>
+                <div class="modal-section">
+                    <h4 id="matrix-title">Correlation Matrix</h4>
+                    <table id="correlation-matrix-table"></table>
                 </div>
             </div>
         </div>
@@ -158,19 +173,74 @@
             </table>
             <p id="no-answers-log">No answers streamed yet.</p>
         </div>
+
+        <!-- Advanced Controls Section -->
+        <div class="panel">
+            <div class="panel-header">
+                <div id="advanced-controls-header" onclick="toggleAdvancedControls()">
+                    <h2>Advanced Controls</h2>
+                    <span id="advanced-controls-chevron">▶</span>
+                </div>
+            </div>
+            <div id="advanced-controls-content" class="advanced-controls-content" style="display: none;">
+                <!-- Game Control - Reset -->
+                <div class="control-section">
+                    <h4>Game Management</h4>
+                    <div class="game-management-controls">
+                        <div class="reset-description">
+                            Reset all game statistics and remove inactive teams.
+                        </div>
+                        <button id="reset-game-btn" onclick="handleResetGame()" class="control-btn reset-btn" style="display: none;">
+                            Reset Game Stats
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Game Mode Control -->
+                <div class="control-section">
+                    <h4>Game Mode</h4>
+                    <div class="game-mode-controls">
+                        <div class="current-mode-display">
+                            <span>Current Mode: </span>
+                            <span id="current-game-mode" class="mode-indicator">New</span>
+                        </div>
+                        <button id="toggle-mode-btn" onclick="toggleGameMode()" class="control-btn mode-toggle-btn">
+                            Switch to Classic Mode
+                        </button>
+                        <div class="mode-description">
+                            <div id="mode-description-text">
+                                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                                Metrics focus on success rates and optimal strategy adherence.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Data Export Control -->
+                <div class="control-section">
+                    <h4>Data Export</h4>
+                    <div class="export-controls">
+                        <div class="export-description">
+                            Download all game data as CSV files for analysis.
+                        </div>
+                        <div class="export-buttons">
+                            <button onclick="downloadData()" class="control-btn export-btn">
+                                📊 Download CSV (JavaScript)
+                            </button>
+                            <button onclick="window.open('/download', '_blank')" class="control-btn export-btn">
+                                📈 Download CSV (Python)
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
     </div>
 
     <footer>
         <div class="footer-content">
             <div class="footer-link">
                 <a href="/" target="_blank">Go to Game (player's page)</a>
-            </div>
-            
-            <div class="footer-link download-section">
-                Download CSV: 
-                <a href="#" onclick="downloadData(); return false;" class="download-link">CSV from JS</a>
-                <span class="download-separator">|</span>
-                <a href="/download" class="download-link">CSV from Python</a>
             </div>
             
             <div class="footer-link">
@@ -186,8 +256,6 @@
             <div class="session-info" id="sessionInfo">
                 Server ID: <span class="session-id"></span>
             </div>
-
-
         </div>
     </footer>
 

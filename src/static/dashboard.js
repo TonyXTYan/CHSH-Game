@@ -5,6 +5,9 @@ const socket = io(window.location.origin, {
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
+// Game mode state
+let currentGameMode = 'new';
+
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -32,6 +35,162 @@ const noAnswersLogMsg = document.getElementById("no-answers-log");
 
 let currentAnswersCount = 0;
 
+// Game Mode Functions
+function updateTableHeaders(mode) {
+    const header1 = document.getElementById('header-stat1');
+    const header2 = document.getElementById('header-stat2');
+    const header3 = document.getElementById('header-stat3');
+    const header4 = document.getElementById('header-stat4');
+    
+    if (mode === 'classic') {
+        header1.textContent = 'Trace Avg ⏐⟨Tr⟩⏐';
+        header2.textContent = 'Balance';
+        header3.textContent = 'Balanced ⏐⟨Tr⟩⏐ 🎯';
+        header4.textContent = 'CHSH Value 🏆';
+        
+        // Show all columns in classic mode
+        header1.style.display = '';
+        header2.style.display = '';
+        header3.style.display = '';
+        header4.style.display = '';
+    } else {
+        header1.textContent = 'Success Rate % 🏆';
+        header2.textContent = 'Response Balance';
+        header3.textContent = 'Balanced Success 🎯';
+        header4.textContent = 'Norm. Score 🏆';
+        
+        // In NEW mode, only show success rate column
+        header1.style.display = '';
+        header2.style.display = 'none';
+        header3.style.display = 'none';
+        header4.style.display = 'none';
+    }
+}
+
+function updateGameModeDisplay(mode) {
+    currentGameMode = mode;
+    const modeIndicator = document.getElementById('current-game-mode');
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    const modeDescription = document.getElementById('mode-description-text');
+    
+    // Add CSS class to body to control column visibility
+    document.body.className = document.body.className.replace(/\b(classic|new)-mode\b/g, '');
+    document.body.classList.add(`${mode}-mode`);
+    
+    if (modeIndicator) {
+        modeIndicator.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        modeIndicator.className = `mode-indicator ${mode}`;
+    }
+    
+    if (toggleBtn) {
+        if (mode === 'classic') {
+            toggleBtn.textContent = 'Switch to New Mode';
+        } else {
+            toggleBtn.textContent = 'Switch to Classic Mode';
+        }
+    }
+    
+    if (modeDescription) {
+        if (mode === 'classic') {
+            modeDescription.innerHTML = `
+                <strong>Classic Mode:</strong> Random question assignment to both players from all items (A, B, X, Y). 
+                Metrics focus on quantum correlation measurements.
+            `;
+        } else {
+            modeDescription.innerHTML = `
+                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                Metrics focus on success rates and optimal strategy adherence.
+            `;
+        }
+    }
+    
+    // Update table headers when mode changes
+    updateTableHeaders(mode);
+    
+    // Update sort dropdown text based on mode
+    updateSortDropdownText(mode);
+}
+
+function updateSortDropdownText(mode) {
+    const sortDropdown = document.getElementById('sort-teams');
+    const successRateOption = sortDropdown.querySelector('option[value="success-rate"]');
+    
+    if (successRateOption) {
+        if (mode === 'classic') {
+            successRateOption.textContent = 'Sort by CHSH Value';
+        } else {
+            successRateOption.textContent = 'Sort by Success Rate';
+        }
+    }
+}
+
+// Track game mode toggle timeouts for cleanup
+let gameModeToggleTimeout = null;
+
+function toggleGameMode() {
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    if (toggleBtn && !toggleBtn.disabled) {
+        toggleBtn.disabled = true;
+        toggleBtn.textContent = 'Switching...';
+        
+        // Clear any existing timeout
+        if (gameModeToggleTimeout) {
+            clearTimeout(gameModeToggleTimeout);
+            gameModeToggleTimeout = null;
+        }
+        
+        socket.emit('toggle_game_mode');
+        
+        // Set fallback timeout in case server doesn't respond
+        gameModeToggleTimeout = setTimeout(() => {
+            console.error('Game mode toggle timeout - server may not have responded');
+            const btn = document.getElementById('toggle-mode-btn');
+            if (btn && btn.disabled) {
+                btn.disabled = false;
+                updateGameModeDisplay(currentGameMode);
+                
+                // Show error notification
+                connectionStatusDiv.textContent = "Failed to change game mode - please try again";
+                connectionStatusDiv.className = "status-disconnected";
+                
+                setTimeout(() => {
+                    connectionStatusDiv.textContent = "Connected to server";
+                    connectionStatusDiv.className = "status-connected";
+                }, 3000);
+            }
+            gameModeToggleTimeout = null;
+        }, 10000); // 10 second timeout
+    }
+}
+
+// Handle game mode changes from server
+socket.on('game_mode_changed', (data) => {
+    console.log('Game mode changed:', data);
+    updateGameModeDisplay(data.mode);
+    
+    // Clear the toggle timeout since server responded
+    if (gameModeToggleTimeout) {
+        clearTimeout(gameModeToggleTimeout);
+        gameModeToggleTimeout = null;
+    }
+    
+    // Re-enable the toggle button
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    if (toggleBtn && toggleBtn.disabled) {
+        toggleBtn.disabled = false;
+    }
+    
+    // Show a brief notification
+    connectionStatusDiv.textContent = `Game mode changed to: ${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)}`;
+    connectionStatusDiv.className = "status-connected";
+    
+    // Reset status after 3 seconds
+    setTimeout(() => {
+        connectionStatusDiv.textContent = "Connected to server";
+        connectionStatusDiv.className = "status-connected";
+    }, 3000);
+});
+
 // Helper function to format statistics with uncertainty
 function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
     if (typeof magnitude !== 'number' || isNaN(magnitude)) {
@@ -54,6 +213,7 @@ function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
 function resetButtonToInitialState(btn) {
     if (!btn) return;
     console.log(`Resetting button from ${btn.textContent} to Start Game`);
+    btn.style.display = "inline-block";
     btn.disabled = false;
     btn.textContent = "Start Game";
     btn.className = "";  // Remove all classes to get default blue styling
@@ -164,15 +324,22 @@ window.addEventListener('load', () => {
     localStorage.removeItem('chsh_game_state'); // Keep this if migrating from an old format
     
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
     const pauseBtn = document.getElementById("pause-game-btn");
     const gameControlText = document.getElementById("game-control-text");
 
     if (gameStarted) {
+        // Hide start button when game is started
         if (startBtn) {
-            startBtn.disabled = false;
-            startBtn.textContent = "Reset game stats";
-            startBtn.className = "reset-game";
-            startBtn.onclick = handleResetGame;
+            startBtn.style.display = "none";
+        }
+        
+        // Show reset button in advanced controls
+        if (resetBtn) {
+            resetBtn.style.display = "inline-block";
+            resetBtn.disabled = false;
+            resetBtn.textContent = "Reset Game Stats";
+            resetBtn.className = "control-btn reset-btn";
         }
         
         if (pauseBtn) {
@@ -186,7 +353,10 @@ window.addEventListener('load', () => {
     } else {
         // If game not started, ensure pause button is hidden and start button is in initial state
         if (startBtn) {
-             resetButtonToInitialState(startBtn); // Resets text, class, onclick
+             resetButtonToInitialState(startBtn); // Resets text, class, onclick, and shows button
+        }
+        if (resetBtn) {
+            resetBtn.style.display = "none";
         }
         if (pauseBtn) {
             pauseBtn.style.display = "none";
@@ -199,6 +369,10 @@ window.addEventListener('load', () => {
     // Initialize streaming UI states
     updateStreamingUI();
     updateTeamsStreamingUI();
+    updateAdvancedControlsUI();
+    
+    // Initialize game mode display (will be updated when dashboard connects)
+    updateGameModeDisplay(currentGameMode);
 });
 
 let confirmingStop = false;
@@ -207,7 +381,7 @@ let countdownInterval = null;
 let currentConfirmMouseOutListener = null; // To manage the mouseout listener
 
 // Global cleanup function for reset confirmation
-function cleanupResetConfirmation(startBtn) {
+function cleanupResetConfirmation(btn) {
     countdownActive = false;
     if (countdownInterval) {
         clearInterval(countdownInterval);
@@ -215,8 +389,8 @@ function cleanupResetConfirmation(startBtn) {
     }
 
     // Remove the mouseout listener if it's active
-    if (startBtn && currentConfirmMouseOutListener) {
-        startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
+    if (btn && currentConfirmMouseOutListener) {
+        btn.removeEventListener('mouseout', currentConfirmMouseOutListener);
         currentConfirmMouseOutListener = null;
     }
     // The 'beforeunload' listener is {once: true}, it handles itself.
@@ -224,24 +398,39 @@ function cleanupResetConfirmation(startBtn) {
     let wasConfirming = confirmingStop;
     confirmingStop = false; // Always mark confirmation as ended
 
-    if (wasConfirming && startBtn) { // Only reset button text if it was in confirmation mode
-        startBtn.textContent = "Reset game stats";
-        startBtn.className = "reset-game";
+    if (wasConfirming && btn) { // Only reset button text if it was in confirmation mode
+        // Check if this is the reset button in advanced controls
+        if (btn.id === 'reset-game-btn') {
+            btn.textContent = "Reset Game Stats";
+            btn.className = "control-btn reset-btn";
+        } else {
+            // Legacy support for start button (shouldn't be used anymore)
+            btn.textContent = "Reset game stats";
+            btn.className = "reset-game";
+        }
     }
 }
 
 socket.on("game_started", () => {
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
     const gameControlText = document.getElementById("game-control-text");
     
-    cleanupResetConfirmation(startBtn); // Ensure any prior confirmation state is cleared
+    cleanupResetConfirmation(resetBtn); // Ensure any prior confirmation state is cleared
 
     gameControlText.textContent = "Game in progress";
     document.getElementById("pause-game-btn").style.display = "inline-block";
-    startBtn.disabled = false;
-    startBtn.textContent = "Reset game stats";
-    startBtn.className = "reset-game";
-    startBtn.onclick = handleResetGame;
+    
+    // Hide start button completely when game is started
+    startBtn.style.display = "none";
+    
+    // Show reset button in advanced controls
+    if (resetBtn) {
+        resetBtn.style.display = "inline-block";
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset Game Stats";
+        resetBtn.className = "control-btn reset-btn";
+    }
 
     // Persist game started state
     localStorage.setItem('game_started', 'true');
@@ -257,14 +446,26 @@ socket.on("game_reset_complete", () => {
     }
     
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
     const gameControlText = document.getElementById("game-control-text");
     
-    cleanupResetConfirmation(startBtn); // Crucial to clear any confirmation state
+    cleanupResetConfirmation(resetBtn); // Crucial to clear any confirmation state
     
+    // Show and reset start button to initial state
+    startBtn.style.display = "inline-block";
     startBtn.disabled = false;
     startBtn.textContent = "Start Game";
     startBtn.className = "";
     startBtn.onclick = startGame;
+    
+    // Hide reset button
+    if (resetBtn) {
+        resetBtn.style.display = "none";
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset Game Stats";
+        resetBtn.className = "control-btn reset-btn";
+    }
+    
     gameControlText.textContent = "Game Control";
     document.getElementById("pause-game-btn").style.display = "none";
     
@@ -282,9 +483,9 @@ socket.on("game_reset_complete", () => {
 });
 
 function handleResetGame() {
-    const startBtn = document.getElementById("start-game-btn");
-    if (!startBtn || startBtn.disabled) {
-        console.error("Invalid button state");
+    const resetBtn = document.getElementById("reset-game-btn");
+    if (!resetBtn || resetBtn.disabled) {
+        console.error("Invalid reset button state");
         return;
     }
 
@@ -295,8 +496,8 @@ function handleResetGame() {
         ).length;
 
         // Ensure any previous mouseout listener is removed before adding a new one
-        if (currentConfirmMouseOutListener && startBtn) {
-            startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
+        if (currentConfirmMouseOutListener && resetBtn) {
+            resetBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
             currentConfirmMouseOutListener = null;
         }
         
@@ -306,7 +507,7 @@ function handleResetGame() {
             countdownInterval = null;
         }
 
-        startBtn.className = "confirm-reset";
+        resetBtn.className = "control-btn reset-btn confirm-reset";
         confirmingStop = true;
         let secondsLeft = 3;
         countdownActive = true;
@@ -315,8 +516,7 @@ function handleResetGame() {
             `Reset game stats and remove ${inactiveTeamsCount} inactive team${inactiveTeamsCount !== 1 ? 's' : ''}? (${secondsLeft})` :
             `Reset game stats? (${secondsLeft})`;
         
-        startBtn.textContent = message;
-        startBtn.style.border = '2px solid #FFC107'; // Add visual feedback for confirmation
+        resetBtn.textContent = message;
 
         countdownInterval = setInterval(() => {
             if (!countdownActive) {
@@ -331,29 +531,28 @@ function handleResetGame() {
                     const message = inactiveTeamsCount > 0 ?
                         `Reset game stats and remove ${inactiveTeamsCount} inactive team${inactiveTeamsCount !== 1 ? 's' : ''}? (${secondsLeft})` :
                         `Reset game stats? (${secondsLeft})`;
-                    startBtn.textContent = message;
+                    resetBtn.textContent = message;
                 }
             } else {
-                cleanupResetConfirmation(startBtn);
+                cleanupResetConfirmation(resetBtn);
             }
         }, 1000);
 
         // Define and add the mouseout listener
         currentConfirmMouseOutListener = () => {
-            cleanupResetConfirmation(startBtn);
+            cleanupResetConfirmation(resetBtn);
         };
-        startBtn.addEventListener('mouseout', currentConfirmMouseOutListener);
+        resetBtn.addEventListener('mouseout', currentConfirmMouseOutListener);
         
         // Add beforeunload listener
         window.addEventListener('beforeunload', () => {
-            cleanupResetConfirmation(startBtn);
+            cleanupResetConfirmation(resetBtn);
         }, { once: true });
         
     } else {
-        cleanupResetConfirmation(startBtn);
-        startBtn.disabled = true;
-        startBtn.textContent = "Resetting...";
-        startBtn.style.border = '2px solid #4CAF50'; // Add visual feedback for resetting
+        cleanupResetConfirmation(resetBtn);
+        resetBtn.disabled = true;
+        resetBtn.textContent = "Resetting...";
         startResetTimeout();
         socket.emit("restart_game");
     }
@@ -364,10 +563,12 @@ let resetTimeout;
 function startResetTimeout() {
     clearTimeout(resetTimeout);
     resetTimeout = setTimeout(() => {
-        const startBtn = document.getElementById("start-game-btn");
-        if (startBtn && startBtn.disabled) {
+        const resetBtn = document.getElementById("reset-game-btn");
+        if (resetBtn && resetBtn.disabled) {
             console.log("Reset timeout triggered - resetting button state");
-            resetButtonToInitialState(startBtn);
+            resetBtn.disabled = false;
+            resetBtn.textContent = "Reset Game Stats";
+            resetBtn.className = "control-btn reset-btn";
         }
     }, 5000); // 5 seconds timeout
 }
@@ -377,10 +578,18 @@ socket.on("error", (data) => {
     connectionStatusDiv.textContent = `Error: ${data.message}`;
     connectionStatusDiv.className = "status-disconnected";
 
-    // Reset button state in case of errors
+    // Reset button states in case of errors
     const startBtn = document.getElementById("start-game-btn");
-    if (startBtn && startBtn.disabled) {
+    const resetBtn = document.getElementById("reset-game-btn");
+    
+    if (startBtn && startBtn.disabled && startBtn.textContent === "Starting...") {
         resetButtonToInitialState(startBtn);
+    }
+    
+    if (resetBtn && resetBtn.disabled) {
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset Game Stats";
+        resetBtn.className = "control-btn reset-btn";
     }
 });
 
@@ -388,7 +597,12 @@ socket.on("dashboard_update", (data) => {
     console.log("Dashboard update received:", data);
     lastReceivedTeams = data.teams;
     if (data.game_state) {
-        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}`);
+        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}, mode: ${data.game_state.mode}`);
+        
+        // Update game mode if provided
+        if (data.game_state.mode && data.game_state.mode !== currentGameMode) {
+            updateGameModeDisplay(data.game_state.mode);
+        }
         
         // Persist full game state from server
         localStorage.setItem('game_started', data.game_state.started.toString());
@@ -435,20 +649,29 @@ socket.on("dashboard_update", (data) => {
     
     // Update button state based on game state
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
+    
     if (!confirmingStop) {
         if (data.game_state) {
-            if (data.game_state.started && startBtn.textContent === "Start Game") {
-                console.log("Updating button to Reset state");
-                startBtn.disabled = false;
-                startBtn.textContent = "Reset game stats";
-                startBtn.className = "reset-game";
-                startBtn.onclick = handleResetGame;
-            } else if (!data.game_state.started && startBtn.textContent === "Reset game stats") {
+            if (data.game_state.started && startBtn.style.display !== "none") {
+                console.log("Updating to game started state");
+                startBtn.style.display = "none";
+                
+                // Show reset button
+                if (resetBtn) {
+                    resetBtn.style.display = "inline-block";
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = "Reset Game Stats";
+                    resetBtn.className = "control-btn reset-btn";
+                }
+            } else if (!data.game_state.started && startBtn.style.display === "none") {
                 console.log("Resetting button to Start Game state");
-                startBtn.disabled = false;
-                startBtn.textContent = "Start Game";
-                startBtn.className = "";
-                startBtn.onclick = startGame;
+                resetButtonToInitialState(startBtn);
+                
+                // Hide reset button
+                if (resetBtn) {
+                    resetBtn.style.display = "none";
+                }
             }
         }
     }
@@ -570,6 +793,24 @@ function updateActiveTeams(teams) {
             return a.is_active ? -1 : 1;
         } else if (sortBy === 'date') {
             return new Date(b.created_at || 0) - new Date(a.created_at || 0);
+        } else if (sortBy === 'success-rate') {
+            // Sort by success rate in NEW mode, CHSH value in CLASSIC mode
+            const getSortValue = (team) => {
+                if (currentGameMode === 'new') {
+                    return team.new_stats?.trace_average_statistic ?? -1;
+                } else {
+                    return team.classic_stats?.cross_term_combination_statistic ?? -1;
+                }
+            };
+            const aValue = getSortValue(a);
+            const bValue = getSortValue(b);
+            
+            // Sort descending (highest value first)
+            if (bValue !== aValue) {
+                return bValue - aValue;
+            }
+            // If values are equal, sort by team name as tiebreaker
+            return a.team_name.localeCompare(b.team_name);
         }
         return a.team_name.localeCompare(b.team_name);
     });
@@ -587,25 +828,43 @@ function updateActiveTeams(teams) {
     const eligibleTeams = teams.filter(team => team.min_stats_sig === true);
 
     eligibleTeams.forEach(team => {
-        const stats = team.correlation_stats;
-
-        // Calculate Balanced |Tr|
-        if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
-            const traceAvg = stats.trace_average_statistic;
-            const balance = stats.same_item_balance;
-            const balancedTr = (traceAvg + balance) / 2;
-            if (balancedTr > maxBalancedTrValue) {
-                maxBalancedTrValue = balancedTr;
-                highestBalancedTrTeamId = team.team_id;
+        if (currentGameMode === 'new') {
+            // New mode: Only award 🏆 based on success rate (no 🎯 award)
+            const stats = team.new_stats;
+            
+            // Use Success Rate for 🏆 award in NEW mode
+            if (stats && typeof stats.trace_average_statistic === 'number') {
+                const successRate = stats.trace_average_statistic;
+                if (successRate > maxChshValue) {
+                    maxChshValue = successRate;
+                    highestChshTeamId = team.team_id;
+                }
             }
-        }
+            
+            // No 🎯 award in NEW mode - set to null
+            highestBalancedTrTeamId = null;
+        } else {
+            // Classic mode: Use classic_stats
+            const stats = team.classic_stats;
 
-        // Calculate CHSH Value
-        if (stats && typeof stats.cross_term_combination_statistic === 'number') {
-            const chshValue = stats.cross_term_combination_statistic;
-            if (chshValue > maxChshValue) {
-                maxChshValue = chshValue;
-                highestChshTeamId = team.team_id;
+            // Calculate Balanced |Tr|
+            if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
+                const traceAvg = stats.trace_average_statistic;
+                const balance = stats.same_item_balance;
+                const balancedTr = (traceAvg + balance) / 2;
+                if (balancedTr > maxBalancedTrValue) {
+                    maxBalancedTrValue = balancedTr;
+                    highestBalancedTrTeamId = team.team_id;
+                }
+            }
+
+            // Calculate CHSH Value
+            if (stats && typeof stats.cross_term_combination_statistic === 'number') {
+                const chshValue = stats.cross_term_combination_statistic;
+                if (chshValue > maxChshValue) {
+                    maxChshValue = chshValue;
+                    highestChshTeamId = team.team_id;
+                }
             }
         }
     });
@@ -650,104 +909,138 @@ function updateActiveTeams(teams) {
         
         // Add trace_avg column (now Trace Average Statistic)
         const traceAvgCell = row.insertCell();
-        if (team.correlation_stats) {
-            traceAvgCell.innerHTML = formatStatWithUncertainty(
-                team.correlation_stats.trace_average_statistic,
-                team.correlation_stats.trace_average_statistic_uncertainty
-            );
-            // Retain visual indicator logic if desired, e.g., based on nominal value
-            if (typeof team.correlation_stats.trace_average_statistic === 'number' &&
-                Math.abs(team.correlation_stats.trace_average_statistic) >= 0.5) { // Example, adjust as needed
-                traceAvgCell.style.fontWeight = "bold";
-                traceAvgCell.style.color = "#0022aa"; // Blue
+        if (currentGameMode === 'new') {
+            // New mode: Show Success Rate as percentage
+            if (team.new_stats && team.new_stats.trace_average_statistic !== undefined) {
+                const successRate = team.new_stats.trace_average_statistic * 100; // Convert to percentage
+                const uncertainty = team.new_stats.trace_average_statistic_uncertainty;
+                const uncertaintyPercent = uncertainty ? uncertainty * 100 : null;
+                traceAvgCell.innerHTML = `${successRate.toFixed(1)}%${uncertaintyPercent ? ` ± ${uncertaintyPercent.toFixed(1)}%` : ''}`;
+                if (successRate >= 50) {
+                    traceAvgCell.style.fontWeight = "bold";
+                    traceAvgCell.style.color = "#0022aa";
+                }
+            } else {
+                traceAvgCell.innerHTML = "—";
             }
         } else {
-            traceAvgCell.innerHTML = "—";
+            // Classic mode: Show Trace Average Statistic
+            if (team.classic_stats) {
+                traceAvgCell.innerHTML = formatStatWithUncertainty(
+                    team.classic_stats.trace_average_statistic,
+                    team.classic_stats.trace_average_statistic_uncertainty
+                );
+                if (typeof team.classic_stats.trace_average_statistic === 'number' &&
+                    Math.abs(team.classic_stats.trace_average_statistic) >= 0.5) {
+                    traceAvgCell.style.fontWeight = "bold";
+                    traceAvgCell.style.color = "#0022aa";
+                }
+            } else {
+                traceAvgCell.innerHTML = "—";
+            }
         }
         
         // Add Same Item Balance column
         const balanceCell = row.insertCell();
-        if (team.correlation_stats && 
-            team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance)) {
-            try {
-                const balanceValue = parseFloat(team.correlation_stats.same_item_balance);
-                const balanceUncertainty = team.correlation_stats.same_item_balance_uncertainty !== undefined ? 
-                                           parseFloat(team.correlation_stats.same_item_balance_uncertainty) : null;
-                balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
-                
-                // Add visual indicator for interesting values
-                if (Math.abs(balanceValue) >= 0.5) {
-                    balanceCell.style.fontWeight = "bold";
-                    balanceCell.style.color = "#0022aa";                }
-            } catch (e) {
-                console.error("Error formatting same_item_balance", e);
-                balanceCell.innerHTML = "Error";
-            }
+        if (currentGameMode === 'new') {
+            // New mode: Hide Response Balance column
+            balanceCell.style.display = 'none';
         } else {
-            balanceCell.innerHTML = "—";
+            // Classic mode: Show Same Item Balance
+            if (team.classic_stats && 
+                team.classic_stats.same_item_balance !== undefined && 
+                team.classic_stats.same_item_balance !== null && 
+                !isNaN(team.classic_stats.same_item_balance)) {
+                try {
+                    const balanceValue = parseFloat(team.classic_stats.same_item_balance);
+                    const balanceUncertainty = team.classic_stats.same_item_balance_uncertainty !== undefined ? 
+                                               parseFloat(team.classic_stats.same_item_balance_uncertainty) : null;
+                    balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
+                    
+                    if (Math.abs(balanceValue) >= 0.5) {
+                        balanceCell.style.fontWeight = "bold";
+                        balanceCell.style.color = "#0022aa";
+                    }
+                } catch (e) {
+                    console.error("Error formatting classic mode same_item_balance", e);
+                    balanceCell.innerHTML = "Error";
+                }
+            } else {
+                balanceCell.innerHTML = "—";
+            }
         }
 
         // Add Balanced Random column with robust error handling
         const balancedRandomCell = row.insertCell();
-        if (team.correlation_stats && 
-            team.correlation_stats.trace_average_statistic !== undefined && 
-            team.correlation_stats.trace_average_statistic !== null && 
-            !isNaN(team.correlation_stats.trace_average_statistic) &&
-            team.correlation_stats.same_item_balance !== undefined && 
-            team.correlation_stats.same_item_balance !== null && 
-            !isNaN(team.correlation_stats.same_item_balance) &&
-            team.correlation_stats.trace_average_statistic_uncertainty !== undefined &&
-            team.correlation_stats.same_item_balance_uncertainty !== undefined) { 
-            try {
-                const traceAvg = parseFloat(team.correlation_stats.trace_average_statistic);
-                const balance = parseFloat(team.correlation_stats.same_item_balance);
-                const balancedRandom = (traceAvg + balance) / 2;
-                
-                const traceAvgUncInput = team.correlation_stats.trace_average_statistic_uncertainty;
-                const balanceUncInput = team.correlation_stats.same_item_balance_uncertainty;
-                let uncBalancedRandom = null;
-
-                if (typeof traceAvgUncInput === 'number' && !isNaN(traceAvgUncInput) &&
-                    typeof balanceUncInput === 'number' && !isNaN(balanceUncInput)) {
-                    const traceAvgUnc = parseFloat(traceAvgUncInput);
-                    const balanceUnc = parseFloat(balanceUncInput);
-                    uncBalancedRandom = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
-                }
-                
-                balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedRandom, uncBalancedRandom);
-            } catch (e) {
-                console.error("Error calculating or formatting balancedRandom", e);
-                balancedRandomCell.innerHTML = "Error";
-            }
+        if (currentGameMode === 'new') {
+            // New mode: Hide Balanced Success column
+            balancedRandomCell.style.display = 'none';
         } else {
-            balancedRandomCell.innerHTML = "—";
+            // Classic mode: Calculate balanced random from trace avg and balance
+            if (team.classic_stats && 
+                team.classic_stats.trace_average_statistic !== undefined && 
+                team.classic_stats.trace_average_statistic !== null && 
+                !isNaN(team.classic_stats.trace_average_statistic) &&
+                team.classic_stats.same_item_balance !== undefined && 
+                team.classic_stats.same_item_balance !== null && 
+                !isNaN(team.classic_stats.same_item_balance) &&
+                team.classic_stats.trace_average_statistic_uncertainty !== undefined &&
+                team.classic_stats.same_item_balance_uncertainty !== undefined) { 
+                try {
+                    const traceAvg = parseFloat(team.classic_stats.trace_average_statistic);
+                    const balance = parseFloat(team.classic_stats.same_item_balance);
+                    const balancedRandom = (traceAvg + balance) / 2;
+                    
+                    const traceAvgUncInput = team.classic_stats.trace_average_statistic_uncertainty;
+                    const balanceUncInput = team.classic_stats.same_item_balance_uncertainty;
+                    let uncBalancedRandom = null;
+
+                    if (typeof traceAvgUncInput === 'number' && !isNaN(traceAvgUncInput) &&
+                        typeof balanceUncInput === 'number' && !isNaN(balanceUncInput)) {
+                        const traceAvgUnc = parseFloat(traceAvgUncInput);
+                        const balanceUnc = parseFloat(balanceUncInput);
+                        uncBalancedRandom = Math.sqrt(Math.pow(traceAvgUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
+                    }
+                    
+                    balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedRandom, uncBalancedRandom);
+                } catch (e) {
+                    console.error("Error calculating classic mode balancedRandom", e);
+                    balancedRandomCell.innerHTML = "Error";
+                }
+            } else {
+                balancedRandomCell.innerHTML = "—";
+            }
         }
         
         // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
         const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
-        if (team.correlation_stats) {
-            crossTermChshCell.innerHTML = formatStatWithUncertainty(
-                team.correlation_stats.cross_term_combination_statistic,
-                team.correlation_stats.cross_term_combination_statistic_uncertainty
-            );
-             if (typeof team.correlation_stats.cross_term_combination_statistic === 'number') {
-                // Example: Highlight significant CHSH values
-                if (Math.abs(team.correlation_stats.cross_term_combination_statistic) > 2) {
-                    crossTermChshCell.style.fontWeight = "bold";
-                    crossTermChshCell.style.color = team.correlation_stats.cross_term_combination_statistic > 2 ? "green" : "red"; // Green for >2, Red for < -2
-                }
-             }
+        if (currentGameMode === 'new') {
+            // New mode: Hide Normalized Score column
+            crossTermChshCell.style.display = 'none';
         } else {
-            crossTermChshCell.innerHTML = "—";
+            // Classic mode: Show Cross-Term Combination Statistic
+            if (team.classic_stats) {
+                crossTermChshCell.innerHTML = formatStatWithUncertainty(
+                    team.classic_stats.cross_term_combination_statistic,
+                    team.classic_stats.cross_term_combination_statistic_uncertainty
+                );
+                if (typeof team.classic_stats.cross_term_combination_statistic === 'number') {
+                    // Example: Highlight significant CHSH values
+                    if (Math.abs(team.classic_stats.cross_term_combination_statistic) > 2) {
+                        crossTermChshCell.style.fontWeight = "bold";
+                        crossTermChshCell.style.color = team.classic_stats.cross_term_combination_statistic > 2 ? "green" : "red";
+                    }
+                }
+            } else {
+                crossTermChshCell.innerHTML = "—";
+            }
         }
         
         // Details button cell
         const detailsCell = row.insertCell();
         const detailsBtn = document.createElement('button');
         detailsBtn.className = 'view-details-btn';
-        detailsBtn.textContent = 'View Details';
+        detailsBtn.textContent = 'View';
         detailsBtn.onclick = () => showTeamDetails(team);
         detailsCell.appendChild(detailsBtn);
     });
@@ -792,6 +1085,7 @@ function updateAnswerLog(answers) {
 
 let answerStreamEnabled = false;
 let teamsStreamEnabled = false;
+let advancedControlsEnabled = false;
 const answerTable = document.getElementById('answer-log-table');
 const noAnswersMsg = document.getElementById('no-answers-log');
 const toggleBtn = document.getElementById('toggle-answers-btn');
@@ -801,6 +1095,9 @@ const teamsTable = document.getElementById('active-teams-table');
 const noTeamsMsg = document.getElementById('no-active-teams');
 const teamsToggleBtn = document.getElementById('toggle-teams-btn');
 const teamsToggleChevron = document.getElementById('teams-toggle-chevron');
+
+const advancedControlsContent = document.getElementById('advanced-controls-content');
+const advancedControlsChevron = document.getElementById('advanced-controls-chevron');
 
 // Initialize to OFF state
 toggleBtn.textContent = 'OFF';
@@ -813,6 +1110,14 @@ teamsToggleBtn.textContent = 'OFF';
 teamsTable.style.display = 'none';
 noTeamsMsg.style.display = 'none';
 teamsToggleChevron.textContent = '▶';
+
+// Initialize advanced controls to collapsed state
+if (advancedControlsContent) {
+    advancedControlsContent.style.display = 'none';
+}
+if (advancedControlsChevron) {
+    advancedControlsChevron.textContent = '▶';
+}
 
 function updateStreamingUI() {
     if (answerStreamEnabled) {
@@ -851,6 +1156,24 @@ function updateTeamsStreamingUI() {
     }
 }
 
+function updateAdvancedControlsUI() {
+    if (advancedControlsEnabled) {
+        if (advancedControlsContent) {
+            advancedControlsContent.style.display = 'flex';
+        }
+        if (advancedControlsChevron) {
+            advancedControlsChevron.textContent = '▼';
+        }
+    } else {
+        if (advancedControlsContent) {
+            advancedControlsContent.style.display = 'none';
+        }
+        if (advancedControlsChevron) {
+            advancedControlsChevron.textContent = '▶';
+        }
+    }
+}
+
 function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
@@ -867,6 +1190,11 @@ function toggleTeamsStream() {
     if (teamsStreamEnabled) {
         socket.emit('request_teams_update');
     }
+}
+
+function toggleAdvancedControls() {
+    advancedControlsEnabled = !advancedControlsEnabled;
+    updateAdvancedControlsUI();
 }
 
 function togglePause() {
@@ -966,8 +1294,19 @@ function updateModalContent(team) {
     const modalHash1 = document.getElementById('modal-hash1');
     const modalHash2 = document.getElementById('modal-hash2');
     const correlationTable = document.getElementById('correlation-matrix-table');
-    const modalChshValue = document.getElementById('modal-chsh-value'); // New ID from HTML (was modal-chsh-stat2)
-    const modalCrossTermChsh = document.getElementById('modal-cross-term-chsh'); // New ID from HTML (was modal-chsh-stat3)
+    const matrixTitle = document.getElementById('matrix-title');
+    
+    // Classic mode statistics elements
+    const modalClassicTrace = document.getElementById('modal-classic-trace');
+    const modalClassicBalance = document.getElementById('modal-classic-balance');
+    const modalClassicBalanced = document.getElementById('modal-classic-balanced');
+    const modalClassicChsh = document.getElementById('modal-classic-chsh');
+    
+    // New mode statistics elements
+    const modalNewSuccessRate = document.getElementById('modal-new-success-rate');
+    const modalNewBalance = document.getElementById('modal-new-balance');
+    const modalNewBalanced = document.getElementById('modal-new-balanced');
+    const modalNewScore = document.getElementById('modal-new-score');
     
     // Set team name in modal
     modalTeamName.textContent = team.team_name;
@@ -981,20 +1320,92 @@ function updateModalContent(team) {
     modalHash1.textContent = team.history_hash1 || "—";
     modalHash2.textContent = team.history_hash2 || "—";
     
+    // Populate classic mode statistics
+    if (team.classic_stats) {
+        modalClassicTrace.innerHTML = formatStatWithUncertainty(
+            team.classic_stats.trace_average_statistic,
+            team.classic_stats.trace_average_statistic_uncertainty
+        );
+        modalClassicBalance.innerHTML = formatStatWithUncertainty(
+            team.classic_stats.same_item_balance,
+            team.classic_stats.same_item_balance_uncertainty
+        );
+        
+        // Calculate balanced classic
+        if (team.classic_stats.trace_average_statistic !== undefined && team.classic_stats.same_item_balance !== undefined) {
+            const balanced = (team.classic_stats.trace_average_statistic + team.classic_stats.same_item_balance) / 2;
+            modalClassicBalanced.innerHTML = balanced.toFixed(3);
+        } else {
+            modalClassicBalanced.textContent = "—";
+        }
+        
+        modalClassicChsh.innerHTML = formatStatWithUncertainty(
+            team.classic_stats.cross_term_combination_statistic,
+            team.classic_stats.cross_term_combination_statistic_uncertainty
+        );
+    } else {
+        modalClassicTrace.textContent = "—";
+        modalClassicBalance.textContent = "—";
+        modalClassicBalanced.textContent = "—";
+        modalClassicChsh.textContent = "—";
+    }
+    
+    // Populate new mode statistics
+    if (team.new_stats) {
+        const successRatePercent = team.new_stats.trace_average_statistic ? (team.new_stats.trace_average_statistic * 100) : 0;
+        const successRateUncertaintyPercent = team.new_stats.trace_average_statistic_uncertainty ? (team.new_stats.trace_average_statistic_uncertainty * 100) : null;
+        modalNewSuccessRate.innerHTML = `${successRatePercent.toFixed(1)}%${successRateUncertaintyPercent ? ` ± ${successRateUncertaintyPercent.toFixed(1)}%` : ''}`;
+        
+        modalNewBalance.innerHTML = formatStatWithUncertainty(
+            team.new_stats.same_item_balance,
+            team.new_stats.same_item_balance_uncertainty
+        );
+        
+        // Calculate balanced success
+        if (team.new_stats.trace_average_statistic !== undefined && team.new_stats.same_item_balance !== undefined) {
+            const balancedSuccess = (team.new_stats.trace_average_statistic + team.new_stats.same_item_balance) / 2;
+            modalNewBalanced.innerHTML = balancedSuccess.toFixed(3);
+        } else {
+            modalNewBalanced.textContent = "—";
+        }
+        
+        modalNewScore.innerHTML = formatStatWithUncertainty(
+            team.new_stats.chsh_value_statistic,
+            team.new_stats.chsh_value_statistic_uncertainty
+        );
+    } else {
+        modalNewSuccessRate.textContent = "—";
+        modalNewBalance.textContent = "—";
+        modalNewBalanced.textContent = "—";
+        modalNewScore.textContent = "—";
+    }
+    
     // Clear existing correlation matrix
     correlationTable.innerHTML = '';
 
+    // Determine which matrix to show based on current mode and update title
+    let matrixToShow, labelsToShow;
+    if (currentGameMode === 'new') {
+        matrixToShow = team.new_matrix || team.correlation_matrix;
+        labelsToShow = team.correlation_labels;
+        matrixTitle.textContent = 'Success Matrix (Successful/Total)';
+    } else {
+        matrixToShow = team.classic_matrix || team.correlation_matrix;
+        labelsToShow = team.correlation_labels;
+        matrixTitle.textContent = 'Correlation Matrix';
+    }
+
     // Populate correlation matrix table if available with validation
-    if (team.correlation_matrix && team.correlation_labels && 
-        Array.isArray(team.correlation_matrix) && Array.isArray(team.correlation_labels) &&
-        team.correlation_matrix.length > 0 && team.correlation_labels.length > 0 &&
-        team.correlation_matrix.length === team.correlation_labels.length &&
-        team.correlation_matrix.every(row => Array.isArray(row) && row.length === team.correlation_labels.length)) {
+    if (matrixToShow && labelsToShow && 
+        Array.isArray(matrixToShow) && Array.isArray(labelsToShow) &&
+        matrixToShow.length > 0 && labelsToShow.length > 0 &&
+        matrixToShow.length === labelsToShow.length &&
+        matrixToShow.every(row => Array.isArray(row) && row.length === labelsToShow.length)) {
         
         try {
-            const labels = team.correlation_labels;
+            const labels = labelsToShow;
             const numLabels = labels.length;
-            const matrixData = team.correlation_matrix;
+            const matrixData = matrixToShow;
 
             // Create thead and tbody elements for better structure (optional but good practice)
             // However, to minimize changes to existing patterns, we'll append rows directly to the table.
@@ -1007,6 +1418,7 @@ function updateModalContent(team) {
             player2Th.colSpan = numLabels;
             player2Th.textContent = 'Player 2';
             player2Th.style.textAlign = 'center';
+            player2Th.classList.add('corr-matrix-col-item-label');
             player2LabelRow.appendChild(player2Th);
 
             // Row 1: Column Item Labels (A, B, X, Y for Player 2)
@@ -1093,21 +1505,6 @@ function updateModalContent(team) {
         errorCell.colSpan = team.correlation_labels ? team.correlation_labels.length + 2 : 2;
         errorCell.textContent = "No correlation data available";
         errorCell.classList.add('corr-matrix-error-cell');
-    }
-
-    // Populate CHSH Statistics in modal
-    if (team.correlation_stats) {
-        modalChshValue.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.chsh_value_statistic,
-            team.correlation_stats.chsh_value_statistic_uncertainty
-        );
-        modalCrossTermChsh.innerHTML = formatStatWithUncertainty(
-            team.correlation_stats.cross_term_combination_statistic,
-            team.correlation_stats.cross_term_combination_statistic_uncertainty
-        );
-    } else {
-        modalChshValue.innerHTML = "—";
-        modalCrossTermChsh.innerHTML = "—";
     }
 }
 

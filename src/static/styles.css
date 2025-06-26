@@ -414,3 +414,15 @@ button:disabled {
     transition: all 0.3s ease;
     overflow: hidden;
 }
+
+/* Player Responsibility Message Styles */
+.player-responsibility-message {
+    padding: 10px 15px;
+    margin-bottom: 15px;
+    background-color: #e8f5e9;
+    border-left: 4px solid #4caf50;
+    border-radius: 4px;
+    font-weight: 500;
+    color: #2e7d32;
+    text-align: center;
+}

@@ -8,6 +8,8 @@ let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
+let currentGameMode = 'new'; // Track current game mode
+let playerPosition = null; // Track player position (1 or 2)
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -24,6 +26,7 @@ const falseBtn = document.getElementById('falseBtn');
 const waitingMessage = document.getElementById('waitingMessage');
 const sessionInfo = document.getElementById('sessionInfo');
 const connectionStatus = document.getElementById('connectionStatus');
+const playerResponsibilityMessage = document.getElementById('playerResponsibilityMessage');
 
 // Connection status handling
 function updateConnectionStatus(status) {
@@ -60,6 +63,66 @@ function showStatus(message, type = 'info') {
     }
 }
 
+// Update player position display in game header and responsibility message
+function updatePlayerPosition(position) {
+    playerPosition = position;
+    updateGameHeader();
+    updatePlayerResponsibilityMessage();
+}
+
+// Update game mode (only log to console, don't show in UI)
+function updateGameMode(mode) {
+    currentGameMode = mode;
+    console.log('Game mode:', mode);
+    updatePlayerResponsibilityMessage();
+}
+
+// Update the game header to show team name and player number
+function updateGameHeader() {
+    if (currentTeam && playerPosition) {
+        gameHeader.textContent = `Team: ${currentTeam} - Player ${playerPosition}`;
+    } else if (currentTeam) {
+        gameHeader.textContent = `Team: ${currentTeam}`;
+    } else {
+        gameHeader.textContent = 'CHSH Game';
+    }
+}
+
+// Update player responsibility message based on mode and position
+function updatePlayerResponsibilityMessage() {
+    if (!currentTeam || !playerPosition) {
+        playerResponsibilityMessage.style.display = 'none';
+        return;
+    }
+
+    let message = '';
+    if (currentGameMode === 'new') {
+        if (playerPosition === 1) {
+            message = 'You are responsible for answering A and B questions';
+        } else if (playerPosition === 2) {
+            message = 'You are responsible for answering X and Y questions';
+        }
+    } else if (currentGameMode === 'classic') {
+        message = 'You will need to answer questions from all categories (A, B, X, Y)';
+    }
+
+    if (message) {
+        playerResponsibilityMessage.textContent = message;
+        // Show message when team is paired up but game hasn't started yet (still in teamSection)
+        // Hide message when game is running (in questionSection)
+        const isTeamPaired = currentTeamStatus === 'full' || currentTeamStatus === 'active';
+        const isInTeamSection = teamSection.style.display !== 'none';
+        
+        if (isTeamPaired && isInTeamSection) {
+            playerResponsibilityMessage.style.display = 'block';
+        } else {
+            playerResponsibilityMessage.style.display = 'none';
+        }
+    } else {
+        playerResponsibilityMessage.style.display = 'none';
+    }
+}
+
 // Function to reset UI to initial state
 function resetToInitialView() {
     currentTeam = null;
@@ -67,8 +130,11 @@ function resetToInitialView() {
     currentRound = null;
     teamId = null;
     currentTeamStatus = null; // Reset team status
+    playerPosition = null; // Reset player position
+    currentGameMode = 'new'; // Reset to new mode
     localStorage.removeItem('quizSessionData');
-    gameHeader.textContent = 'CHSH Game';
+    updatePlayerPosition(null);
+    updateGameMode('new');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
 }
@@ -95,6 +161,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
     if (!currentTeam) {
         teamSection.style.display = 'block';
         questionSection.style.display = 'none';
+        updatePlayerResponsibilityMessage();
         return;
     }
     
@@ -154,6 +221,9 @@ function updateGameState(newGameStarted = null, isReset = false) {
         trueBtn.disabled = false;
         falseBtn.disabled = false;
     }
+    
+    // Update responsibility message visibility based on current state
+    updatePlayerResponsibilityMessage();
 }
 
 // Reset all game controls to their initial state
@@ -349,6 +419,15 @@ const callbacks = {
     setAnswerButtonsEnabled,
     getCurrentRoundInfo: () => currentRound,
     resetToInitialView,
+    
+    onConnectionEstablished: (data) => {
+        // Handle initial connection with game state
+        if (data.game_mode) {
+            updateGameMode(data.game_mode);
+        }
+        updateGameState(data.game_started);
+        updateTeamsList(data.available_teams);
+    },
 
     onTeamCreated: (data) => {
         currentTeam = data.team_name;
@@ -357,12 +436,22 @@ const callbacks = {
         gameStarted = data.game_started;
         currentTeamStatus = 'created'; // Set initial team status
         
+        // Use actual player slot from backend instead of assuming
+        if (data.player_slot) {
+            updatePlayerPosition(data.player_slot);
+        } else {
+            // Fallback for backwards compatibility
+            updatePlayerPosition(1);
+        }
+        
+        // Update game mode if provided
+        if (data.game_mode) {
+            updateGameMode(data.game_mode);
+        }
+        
         // Hide both create and join team sections when creating a new team
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
-        
-        // Update header with team name
-        gameHeader.textContent = `Team: ${data.team_name}`;
         
         showStatus(data.message, 'success');
         updateGameState();
@@ -374,7 +463,21 @@ const callbacks = {
         gameStarted = data.game_started;
         teamId = data.team_id; // Assuming team_id is sent, if not, it might be part of team_status_update
 
-        gameHeader.textContent = `Team: ${data.team_name}`;
+        // Use actual player slot from backend instead of assuming
+        // This fixes the bug where player position was incorrectly determined by join order
+        // instead of actual database slot assignment (important for new game mode)
+        if (data.player_slot) {
+            updatePlayerPosition(data.player_slot);
+        } else {
+            // Fallback for backwards compatibility - but this could be wrong
+            updatePlayerPosition(2);
+        }
+        
+        // Update game mode if provided
+        if (data.game_mode) {
+            updateGameMode(data.game_mode);
+        }
+
         showStatus(data.message, 'success');
         
         // The 'team_status_update' event will follow and handle UI based on whether team is full
@@ -409,6 +512,7 @@ const callbacks = {
         if (currentTeam === data.team_name) { // Ensure this update is for the current player's team
             currentTeamStatus = data.status; // Update tracked team status
             updateTeamStatus(data.status); // Update the "Team Paired Up!" or "Waiting for Player..." header
+            updatePlayerResponsibilityMessage(); // Update responsibility message visibility
 
             if (data.status === 'full') {
                 if (gameStarted) {
@@ -449,9 +553,9 @@ const callbacks = {
         currentRound = null;
         lastClickedButton = null;
         currentTeamStatus = null; // Reset team status
+        playerPosition = null; // Reset player position
         localStorage.removeItem('quizSessionData');
-        // Reset header
-        gameHeader.textContent = 'CHSH Game';
+        updatePlayerPosition(null);
         showStatus(data.message, 'error');
         updateGameState();
     },
@@ -461,11 +565,16 @@ const callbacks = {
         isCreator = false;
         currentRound = null;
         currentTeamStatus = null; // Reset team status
+        playerPosition = null; // Reset player position
         localStorage.removeItem('quizSessionData');
-        // Reset header
-        gameHeader.textContent = 'CHSH Game';
+        updatePlayerPosition(null);
         showStatus(data.message, 'success');
         updateGameState();
+    },
+
+    onGameModeChanged: (data) => {
+        updateGameMode(data.mode);
+        showStatus(`Game mode changed to: ${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)}`, 'info');
     }
 };
 
@@ -505,3 +614,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Initialize UI
 updateGameState();
+
+// Log initial mode on page load
+console.log('Page loaded - current mode:', currentGameMode);

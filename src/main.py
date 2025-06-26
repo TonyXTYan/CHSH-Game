@@ -45,9 +45,18 @@ def handle_shutdown(signum, frame):
 
 # Initialize the database tables
 with app.app_context():
-    db.create_all()
-    logger.info("Initializing database and cleaning up old data...")
     try:
+        # Test database connectivity first
+        logger.info("Testing database connectivity...")
+        db.engine.execute("SELECT 1")  # Simple connectivity test
+        logger.info("Database connection successful")
+        
+        # Create tables with error handling
+        db.create_all()
+        logger.info("Database tables created/verified successfully")
+        
+        logger.info("Initializing database and cleaning up old data...")
+        
         # Start transaction
         db.session.begin_nested()
 
@@ -87,8 +96,21 @@ with app.app_context():
         socketio.emit('game_reset_complete')
         
     except Exception as e:
-        logger.error(f"Error resetting database: {str(e)}", exc_info=True)
-        db.session.rollback()
+        logger.error(f"Database initialization failed: {str(e)}", exc_info=True)
+        
+        # Try to rollback if we have an active session
+        try:
+            if db.session.is_active:
+                db.session.rollback()
+        except Exception as rollback_error:
+            logger.error(f"Failed to rollback database session: {str(rollback_error)}")
+        
+        # Log critical error but don't crash the application
+        logger.critical("Database initialization failed - application will start with limited functionality")
+        
+        # Optionally, you could exit here if database is critical:
+        # logger.critical("Database is critical for this application - exiting")
+        # sys.exit(1)
         
     finally:
         # Always clear memory state

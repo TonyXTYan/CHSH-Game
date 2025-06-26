@@ -1214,6 +1214,198 @@ class TestPlayerInteraction:
         assert found_error, "Player did not get error when reactivating already active team name"
         new_client.disconnect()
 
+    @pytest.mark.integration
+    def test_create_team_automatically_reactivates_inactive(self, app_context, socket_client, second_client):
+        """Creating a team with an inactive team's name automatically reactivates the inactive team."""
+        # First, create a team and make it inactive
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'AutoReactivateTeam'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        original_team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+        
+        # Join with second player to get some history
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'AutoReactivateTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        
+        # Both players leave to make team inactive
+        socket_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        socket_client.get_received()
+        second_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        second_client.get_received()
+        
+        # Verify team is now inactive in database
+        from src.models.quiz_models import Teams
+        team = Teams.query.filter_by(team_id=original_team_id).first()
+        assert team.is_active == False
+        
+        # New player tries to "create" team with same name - should reactivate
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('create_team', {'team_name': 'AutoReactivateTeam'})
+        team_created = self.wait_for_event(new_client, 'team_created')
+        
+        # Verify it's a reactivation, not a new team
+        team_created_data = team_created.get('args', [{}])[0]
+        assert team_created_data.get('team_id') == original_team_id
+        assert team_created_data.get('is_reactivated') == True
+        assert 'reactivated successfully' in team_created_data.get('message', '')
+        
+        # Verify team is active again in database
+        team = Teams.query.filter_by(team_id=original_team_id).first()
+        assert team.is_active == True
+        assert team.player1_session_id is not None
+        
+        new_client.get_received()
+        new_client.disconnect()
+
+    @pytest.mark.integration
+    def test_create_team_reactivation_preserves_team_id(self, app_context, socket_client, second_client):
+        """Team reactivation through create_team preserves original team ID and history."""
+        # Create team and add some round history
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'HistoryTeam'})
+        team_created = self.wait_for_event(socket_client, 'team_created')
+        original_team_id = team_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+        
+        # Join second player
+        self.verify_connection(second_client)
+        second_client.emit('join_team', {'team_name': 'HistoryTeam'})
+        self.wait_for_event(second_client, 'team_joined')
+        second_client.get_received()
+        
+        # Simulate some game rounds by adding database records
+        from src.models.quiz_models import Teams, PairQuestionRounds, ItemEnum
+        round1 = PairQuestionRounds(
+            team_id=original_team_id,
+            round_number_for_team=1,
+            player1_item=ItemEnum.A,
+            player2_item=ItemEnum.B
+        )
+        round2 = PairQuestionRounds(
+            team_id=original_team_id,
+            round_number_for_team=2,
+            player1_item=ItemEnum.X,
+            player2_item=ItemEnum.Y
+        )
+        from src.config import db
+        db.session.add(round1)
+        db.session.add(round2)
+        db.session.commit()
+        
+        # Both players leave
+        socket_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        socket_client.get_received()
+        second_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        second_client.get_received()
+        
+        # New player reactivates by creating team with same name
+        new_client = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client)
+        new_client.emit('create_team', {'team_name': 'HistoryTeam'})
+        team_created = self.wait_for_event(new_client, 'team_created')
+        
+        # Verify same team ID and reactivation flag
+        team_created_data = team_created.get('args', [{}])[0]
+        assert team_created_data.get('team_id') == original_team_id
+        assert team_created_data.get('is_reactivated') == True
+        
+        # Verify round history is preserved in state
+        from src.state import state
+        team_state = state.active_teams.get('HistoryTeam')
+        assert team_state is not None
+        assert team_state['current_round_number'] == 2  # Should remember last round
+        
+        # Cleanup
+        db.session.delete(round1)
+        db.session.delete(round2)
+        db.session.commit()
+        
+        new_client.get_received()
+        new_client.disconnect()
+
+    @pytest.mark.integration
+    def test_create_team_vs_explicit_reactivate_identical_behavior(self, app_context, socket_client, second_client):
+        """Creating team with inactive name vs explicit reactivation should have identical results."""
+        # Create and deactivate first team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'BehaviorTest1'})
+        team1_created = self.wait_for_event(socket_client, 'team_created')
+        team1_id = team1_created.get('args', [{}])[0].get('team_id')
+        socket_client.get_received()
+        socket_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        socket_client.get_received()
+        
+        # Create and deactivate second team
+        second_client.emit('create_team', {'team_name': 'BehaviorTest2'})
+        team2_created = self.wait_for_event(second_client, 'team_created')
+        team2_id = team2_created.get('args', [{}])[0].get('team_id')
+        second_client.get_received()
+        second_client.emit('leave_team', {})
+        eventlet.sleep(0.1)
+        second_client.get_received()
+        
+        # Reactivate first team through create_team
+        new_client1 = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client1)
+        new_client1.emit('create_team', {'team_name': 'BehaviorTest1'})
+        create_result = self.wait_for_event(new_client1, 'team_created')
+        create_data = create_result.get('args', [{}])[0]
+        new_client1.get_received()
+        
+        # Reactivate second team through explicit reactivate_team
+        new_client2 = SocketIOTestClient(app, server_socketio)
+        self.verify_connection(new_client2)
+        new_client2.emit('reactivate_team', {'team_name': 'BehaviorTest2'})
+        reactivate_result = self.wait_for_event(new_client2, 'team_created')
+        reactivate_data = reactivate_result.get('args', [{}])[0]
+        new_client2.get_received()
+        
+        # Both should have identical structure (except for team-specific data)
+        assert create_data.get('team_id') == team1_id
+        assert reactivate_data.get('team_id') == team2_id
+        assert create_data.get('is_reactivated') == True
+        assert reactivate_data.get('is_reactivated') == True
+        assert create_data.get('player_slot') == 1
+        assert reactivate_data.get('player_slot') == 1
+        assert 'reactivated successfully' in create_data.get('message', '')
+        assert 'reactivated successfully' in reactivate_data.get('message', '')
+        
+        new_client1.disconnect()
+        new_client2.disconnect()
+
+    @pytest.mark.integration
+    def test_create_team_name_conflict_with_active_team(self, app_context, socket_client, second_client):
+        """Creating team with name of existing active team should fail, not reactivate."""
+        # Create active team
+        self.verify_connection(socket_client)
+        socket_client.emit('create_team', {'team_name': 'ConflictTeam'})
+        self.wait_for_event(socket_client, 'team_created')
+        socket_client.get_received()
+        
+        # Try to create another team with same name while first is active
+        self.verify_connection(second_client)
+        second_client.emit('create_team', {'team_name': 'ConflictTeam'})
+        eventlet.sleep(0.2)
+        msgs = second_client.get_received()
+        
+        # Should get error, not reactivation
+        found_error = any(msg.get('name') == 'error' for msg in msgs)
+        assert found_error, "Should get error when creating team with active team name"
+        
+        # Verify error message mentions existing/active team
+        error_msgs = [msg for msg in msgs if msg.get('name') == 'error']
+        assert any('already exists' in msg.get('args', [{}])[0].get('message', '') 
+                  for msg in error_msgs), "Error message should mention team already exists"
+
     def get_client_sid(self, client):
         """Extract session ID from test client by looking at connection events"""
         # The most reliable way is to look at the connection event that was received
