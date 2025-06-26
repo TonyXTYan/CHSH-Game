@@ -49,7 +49,7 @@ function updateTableHeaders(mode) {
         header4.textContent = 'CHSH Value 🏆';
     } else {
         header1.textContent = 'Success Rate %';
-        header2.textContent = 'Same Q Balance';
+        header2.textContent = 'Response Balance';
         header3.textContent = 'Balanced Success 🎯';
         header4.textContent = 'Norm. Score 🏆';
     }
@@ -901,7 +901,7 @@ function updateActiveTeams(teams) {
         // Add Same Item Balance column
         const balanceCell = row.insertCell();
         if (currentGameMode === 'new') {
-            // New mode: Show Same Question Balance
+            // New mode: Show Response Balance
             if (team.new_stats && 
                 team.new_stats.same_item_balance !== undefined && 
                 team.new_stats.same_item_balance !== null && 
