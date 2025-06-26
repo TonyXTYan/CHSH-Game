@@ -6,7 +6,7 @@ from functools import lru_cache
 from sqlalchemy.orm import joinedload
 from src.config import app, socketio, db
 from src.state import state
-from src.models.quiz_models import Teams, Answers, PairQuestionRounds
+from src.models.quiz_models import Teams, Answers, PairQuestionRounds, ItemEnum
 from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
 from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
@@ -68,6 +68,36 @@ def on_request_teams_update() -> None:
     except Exception as e:
         logger.error(f"Error in on_request_teams_update: {str(e)}", exc_info=True)
 
+@socketio.on('toggle_game_mode')
+def on_toggle_game_mode() -> None:
+    """Toggle between 'classic' and 'new' game modes"""
+    try:
+        sid = request.sid  # type: ignore
+        if sid not in state.dashboard_clients:
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
+            return
+
+        # Toggle the mode
+        new_mode = 'new' if state.game_mode == 'classic' else 'classic'
+        state.game_mode = new_mode
+        logger.info(f"Game mode toggled to: {new_mode}")
+        
+        # Clear caches to force recalculation with new mode
+        clear_team_caches()
+        
+        # Notify all dashboard clients about the mode change
+        for dashboard_sid in state.dashboard_clients:
+            socketio.emit('game_mode_changed', {
+                'mode': new_mode
+            }, to=dashboard_sid)  # type: ignore
+        
+        # Trigger dashboard update to recalculate metrics immediately
+        emit_dashboard_full_update()
+        
+    except Exception as e:
+        logger.error(f"Error in on_toggle_game_mode: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while toggling game mode'})  # type: ignore
+
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_team_hashes(team_id: int) -> Tuple[str, str]:
     try:
@@ -96,6 +126,115 @@ def compute_team_hashes(team_id: int) -> Tuple[str, str]:
     except Exception as e:
         logger.error(f"Error computing team hashes: {str(e)}")
         return "ERROR", "ERROR"
+
+@lru_cache(maxsize=CACHE_SIZE)
+def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
+    """
+    Compute success metrics for new mode instead of correlation matrix.
+    Returns success rate matrix and overall success metrics.
+    """
+    try:
+        # Get all rounds and their corresponding answers for this team
+        rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
+        round_map = {round.round_id: round for round in rounds}
+        answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
+        
+        # Group answers by round_id
+        answers_by_round: Dict[int, List[Any]] = {}
+        for answer in answers:
+            if answer.question_round_id not in answers_by_round:
+                answers_by_round[answer.question_round_id] = []
+            answers_by_round[answer.question_round_id].append(answer)
+        
+        # Initialize success metrics
+        item_values = ['A', 'B', 'X', 'Y']
+        success_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]  # (successful_rounds, total_rounds)
+        
+        # Count pairs for each item combination
+        pair_counts: Dict[Tuple[str, str], int] = {(i, j): 0 for i in item_values for j in item_values}
+        success_counts: Dict[Tuple[str, str], int] = {(i, j): 0 for i in item_values for j in item_values}
+        
+        total_rounds = 0
+        successful_rounds = 0
+        
+        # Analyze each round that has both player answers
+        for round_id, round_answers in answers_by_round.items():
+            # Skip if we don't have exactly 2 answers (one from each player)
+            if len(round_answers) != 2 or round_id not in round_map:
+                continue
+                
+            round_obj = round_map[round_id]
+            p1_item = round_obj.player1_item.value if round_obj.player1_item else None
+            p2_item = round_obj.player2_item.value if round_obj.player2_item else None
+            
+            # Skip if we don't have both items
+            if not p1_item or not p2_item:
+                continue
+                
+            # Get player responses
+            p1_answer = None
+            p2_answer = None
+
+            ans_A = round_answers[0]
+            ans_B = round_answers[1]
+
+            if p1_item == p2_item:
+                # Both players were assigned the same item
+                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item:
+                    p1_answer = ans_A.response_value
+                    p2_answer = ans_B.response_value
+            else:
+                # Different items
+                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p2_item:
+                    p1_answer = ans_A.response_value
+                    p2_answer = ans_B.response_value
+                elif ans_A.assigned_item.value == p2_item and ans_B.assigned_item.value == p1_item:
+                    p1_answer = ans_B.response_value 
+                    p2_answer = ans_A.response_value
+            
+            # Skip if we don't have both answers
+            if p1_answer is None or p2_answer is None:
+                continue
+                
+            # Apply success rules for new mode
+            # Success Rule: {B,Y} combinations require different answers; all others require same answers
+            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+            players_answered_differently = p1_answer != p2_answer
+            
+            if is_by_combination:
+                # B,Y combination: players should answer differently
+                is_successful = players_answered_differently
+            else:
+                # All other combinations: players should answer the same
+                is_successful = not players_answered_differently
+            
+            # Update counts
+            total_rounds += 1
+            if is_successful:
+                successful_rounds += 1
+                success_counts[(p1_item, p2_item)] += 1
+            
+            pair_counts[(p1_item, p2_item)] += 1
+        
+        # Populate the success matrix with (successful, total) tuples
+        for i, row_item in enumerate(item_values):
+            for j, col_item in enumerate(item_values):
+                successful = success_counts.get((row_item, col_item), 0)
+                total = pair_counts.get((row_item, col_item), 0)
+                success_matrix[i][j] = (successful, total)
+        
+        # Calculate overall success rate and normalized score
+        overall_success_rate = successful_rounds / total_rounds if total_rounds > 0 else 0.0
+        
+        # Normalized cumulative score: +1 for success, -1 for failure, divided by total rounds
+        score_sum = successful_rounds - (total_rounds - successful_rounds)  # successful - failed
+        normalized_cumulative_score = score_sum / total_rounds if total_rounds > 0 else 0.0
+        
+        return (success_matrix, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts)
+        
+    except Exception as e:
+        logger.error(f"Error computing success metrics: {str(e)}", exc_info=True)
+        return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {})
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_correlation_matrix(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
@@ -417,12 +556,126 @@ def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, O
         }
 
 @lru_cache(maxsize=CACHE_SIZE)
+def _calculate_success_statistics(success_metrics_tuple_str: str) -> Dict[str, Optional[float]]:
+    """Calculate success statistics for new mode from success metrics string representation."""
+    try:
+        # Parse the success metrics from string back to tuple format
+        import ast
+        success_matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts = ast.literal_eval(success_metrics_tuple_str)
+        
+        # Calculate success statistics with uncertainties using ufloat
+        # Replace trace_average_statistic with overall_success_rate
+        if overall_success_rate >= 0:
+            # Calculate uncertainty based on total number of rounds
+            total_rounds = sum(pair_counts.values())
+            if total_rounds > 0:
+                success_rate_uncertainty = math.sqrt(overall_success_rate * (1 - overall_success_rate) / total_rounds)
+            else:
+                success_rate_uncertainty = None
+        else:
+            success_rate_uncertainty = None
+            
+        # Replace chsh_value_statistic with normalized_cumulative_score  
+        if normalized_cumulative_score is not None:
+            total_rounds = sum(pair_counts.values())
+            if total_rounds > 0:
+                # Uncertainty for normalized score based on binomial distribution
+                score_uncertainty = 2 / math.sqrt(total_rounds)  # Conservative estimate
+            else:
+                score_uncertainty = None
+        else:
+            score_uncertainty = None
+            
+        # Calculate cross-term combination statistic as average success rate across specific pairs
+        cross_term_pairs = [('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')]
+        cross_term_success_rates = []
+        cross_term_uncertainties = []
+        
+        for item1, item2 in cross_term_pairs:
+            total_pair = pair_counts.get((item1, item2), 0) + pair_counts.get((item2, item1), 0)
+            successful_pair = success_counts.get((item1, item2), 0) + success_counts.get((item2, item1), 0)
+            
+            if total_pair > 0:
+                pair_success_rate = successful_pair / total_pair
+                pair_uncertainty = math.sqrt(pair_success_rate * (1 - pair_success_rate) / total_pair)
+                cross_term_success_rates.append(pair_success_rate)
+                cross_term_uncertainties.append(pair_uncertainty)
+        
+        if cross_term_success_rates:
+            cross_term_avg = sum(cross_term_success_rates) / len(cross_term_success_rates)
+            # Propagate uncertainty (simplified)
+            if cross_term_uncertainties:
+                cross_term_uncertainty = math.sqrt(sum(u**2 for u in cross_term_uncertainties)) / len(cross_term_uncertainties)
+            else:
+                cross_term_uncertainty = None
+        else:
+            cross_term_avg = 0.0
+            cross_term_uncertainty = None
+            
+        # For same_item_balance, we can calculate balance among same-question pairs
+        same_item_pairs = [('A', 'A'), ('B', 'B'), ('X', 'X'), ('Y', 'Y')]
+        same_item_balances = []
+        
+        for item1, item2 in same_item_pairs:
+            total_pair = pair_counts.get((item1, item2), 0)
+            successful_pair = success_counts.get((item1, item2), 0)
+            
+            if total_pair > 0:
+                balance = successful_pair / total_pair
+                same_item_balances.append(balance)
+        
+        if same_item_balances:
+            same_item_balance_avg = sum(same_item_balances) / len(same_item_balances)
+            # Simple uncertainty calculation
+            if len(same_item_balances) > 1:
+                variance = sum((b - same_item_balance_avg)**2 for b in same_item_balances) / len(same_item_balances)
+                same_item_balance_uncertainty = math.sqrt(variance)
+            else:
+                same_item_balance_uncertainty = None
+        else:
+            same_item_balance_avg = 0.0
+            same_item_balance_uncertainty = None
+        
+        return {
+            'trace_average_statistic': overall_success_rate,  # Replace with overall success rate
+            'trace_average_statistic_uncertainty': success_rate_uncertainty,
+            'chsh_value_statistic': normalized_cumulative_score,  # Replace with normalized score
+            'chsh_value_statistic_uncertainty': score_uncertainty,
+            'cross_term_combination_statistic': cross_term_avg,
+            'cross_term_combination_statistic_uncertainty': cross_term_uncertainty,
+            'same_item_balance': same_item_balance_avg,
+            'same_item_balance_uncertainty': same_item_balance_uncertainty
+        }
+    except Exception as e:
+        logger.error(f"Error calculating success statistics: {str(e)}", exc_info=True)
+        return {
+            'trace_average_statistic': 0.0,
+            'trace_average_statistic_uncertainty': None,
+            'chsh_value_statistic': 0.0,
+            'chsh_value_statistic_uncertainty': None,
+            'cross_term_combination_statistic': 0.0,
+            'cross_term_combination_statistic_uncertainty': None,
+            'same_item_balance': 0.0,
+            'same_item_balance_uncertainty': None
+        }
+
+@lru_cache(maxsize=CACHE_SIZE)
 def _process_single_team(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str]) -> Optional[Dict[str, Any]]:
     """Process all heavy computation for a single team."""
     try:
         # For active teams, check game progress
         team_info = state.active_teams.get(team_name)
-        all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
+        
+        # Mode-specific combo calculation for min_stats_sig
+        if state.game_mode == 'new':
+            # New mode: Only A,B x X,Y combinations are possible (Player 1: A/B, Player 2: X/Y)
+            player1_items = [ItemEnum.A, ItemEnum.B]
+            player2_items = [ItemEnum.X, ItemEnum.Y]
+            all_combos = [(i1.value, i2.value) for i1 in player1_items for i2 in player2_items]
+        else:
+            # Classic mode: All combinations possible
+            all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
+            
         combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
         min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
                         for combo in all_combos) if team_info else False
@@ -433,34 +686,65 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         # Compute hashes for the team
         hash1, hash2 = compute_team_hashes(team_id)
         
-        # Compute correlation matrix and statistics
-        correlation_result = compute_correlation_matrix(team_id)  # type: ignore
-        (corr_matrix_tuples, item_values,
-         same_item_balance_avg, same_item_balance, same_item_responses,
-         correlation_sums, pair_counts) = correlation_result
-        
-        # Convert correlation matrix data to string for caching
-        correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
-        correlation_matrix_str = str(correlation_data)
-        
-        # Calculate statistics using cached function
-        correlation_stats = _calculate_team_statistics(correlation_matrix_str)
-        
-        team_data = {
-            'team_name': team_name,
-            'team_id': team_id,
-            'is_active': is_active,
-            'player1_sid': player1_sid,
-            'player2_sid': player2_sid,
-            'current_round_number': current_round,
-            'history_hash1': hash1,
-            'history_hash2': hash2,
-            'min_stats_sig': min_stats_sig,
-            'correlation_matrix': corr_matrix_tuples, # Send the (numerator, denominator) tuples
-            'correlation_labels': item_values,
-            'correlation_stats': correlation_stats,
-            'created_at': created_at
-        }
+        # Conditional metrics calculation based on game mode - PERFORMANCE OPTIMIZATION
+        if state.game_mode == 'new':
+            # New mode: Skip physics calculations, use success metrics
+            success_result = compute_success_metrics(team_id)  # type: ignore
+            (matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts) = success_result
+            
+            # Convert success metrics data to string for caching
+            success_data = (matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts)
+            success_metrics_str = str(success_data)
+            
+            # Calculate success statistics using cached function
+            stats = _calculate_success_statistics(success_metrics_str)
+            
+            team_data = {
+                'team_name': team_name,
+                'team_id': team_id,
+                'is_active': is_active,
+                'player1_sid': player1_sid,
+                'player2_sid': player2_sid,
+                'current_round_number': current_round,
+                'history_hash1': hash1,
+                'history_hash2': hash2,
+                'min_stats_sig': min_stats_sig,
+                'correlation_matrix': matrix_tuples, # Send success matrix (successful, total) tuples
+                'correlation_labels': item_values,
+                'correlation_stats': stats,
+                'created_at': created_at,
+                'game_mode': state.game_mode  # Include current mode
+            }
+        else:
+            # Classic mode: Skip success calculations, use correlation physics
+            correlation_result = compute_correlation_matrix(team_id)  # type: ignore
+            (corr_matrix_tuples, item_values,
+             same_item_balance_avg, same_item_balance, same_item_responses,
+             correlation_sums, pair_counts) = correlation_result
+            
+            # Convert correlation matrix data to string for caching
+            correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
+            correlation_matrix_str = str(correlation_data)
+            
+            # Calculate statistics using cached function
+            correlation_stats = _calculate_team_statistics(correlation_matrix_str)
+            
+            team_data = {
+                'team_name': team_name,
+                'team_id': team_id,
+                'is_active': is_active,
+                'player1_sid': player1_sid,
+                'player2_sid': player2_sid,
+                'current_round_number': current_round,
+                'history_hash1': hash1,
+                'history_hash2': hash2,
+                'min_stats_sig': min_stats_sig,
+                'correlation_matrix': corr_matrix_tuples, # Send correlation (numerator, denominator) tuples
+                'correlation_labels': item_values,
+                'correlation_stats': correlation_stats,
+                'created_at': created_at,
+                'game_mode': state.game_mode  # Include current mode
+            }
         
         # Add status field for active teams
         if team_info and 'status' in team_info:
@@ -536,7 +820,9 @@ def clear_team_caches() -> None:
     try:
         compute_team_hashes.cache_clear()
         compute_correlation_matrix.cache_clear()
+        compute_success_metrics.cache_clear()
         _calculate_team_statistics.cache_clear()
+        _calculate_success_statistics.cache_clear()
         _process_single_team.cache_clear()
         
         # Clear throttle cache for critical team state changes like disconnections
@@ -619,7 +905,8 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
             'game_state': {
                 'started': state.game_started,
                 'paused': state.game_paused,
-                'streaming_enabled': state.answer_stream_enabled
+                'streaming_enabled': state.answer_stream_enabled,
+                'mode': state.game_mode  # Include current game mode
             }
         }
 
@@ -686,7 +973,8 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
             'ready_players_count': ready_players_count,  # Always send metrics
             'game_state': {
                 'started': state.game_started,
-                'streaming_enabled': state.answer_stream_enabled
+                'streaming_enabled': state.answer_stream_enabled,
+                'mode': state.game_mode  # Include current game mode
             }
         }
         

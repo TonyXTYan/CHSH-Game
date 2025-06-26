@@ -21,6 +21,23 @@ def _get_player_slot_in_team(team_info: Dict[str, Any], sid: str) -> Optional[in
     except (ValueError, KeyError):
         return None
 
+def _get_actual_player_slot(team_id: int, sid: str) -> Optional[int]:
+    """Get the actual database slot (1 or 2) for a session ID"""
+    try:
+        db_team = db.session.get(Teams, team_id)
+        if not db_team:
+            return None
+        
+        if db_team.player1_session_id == sid:
+            return 1
+        elif db_team.player2_session_id == sid:
+            return 2
+        else:
+            return None
+    except Exception as e:
+        logger.error(f"Error getting actual player slot: {str(e)}")
+        return None
+
 def _track_disconnected_player(team_name: str, sid: str, team_info: Dict[str, Any]) -> None:
     """Track a disconnected player for potential reconnection"""
     player_slot = _get_player_slot_in_team(team_info, sid)
@@ -106,7 +123,8 @@ def handle_connect() -> None:
         
         emit('connection_established', {
             'game_started': state.game_started,
-            'available_teams': get_available_teams_list()
+            'available_teams': get_available_teams_list(),
+            'game_mode': state.game_mode
         })  # type: ignore
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
@@ -240,7 +258,9 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'team_name': team_name,
             'team_id': new_team_db.team_id,
             'message': 'Team created. Waiting for another player.',
-            'game_started': state.game_started
+            'game_started': state.game_started,
+            'game_mode': state.game_mode,
+            'player_slot': 1  # Creator is always assigned to player1_session_id (slot 1)
         })  # type: ignore
         # This team_status_update for 'created' seems specific to the creator,
         # and might be redundant if 'team_created' already conveys enough.
@@ -309,6 +329,9 @@ def on_join_team(data: Dict[str, Any]) -> None:
         else:
             team_info['status'] = 'waiting_pair' # Internal state status
 
+        # Get the actual player slot assigned in the database
+        actual_player_slot = _get_actual_player_slot(team_info['team_id'], sid)
+        
         # Notify the player who just joined - only treat as reconnection if SIDs match
         join_message = f'You reconnected to team {team_name}.' if is_valid_reconnection else f'You joined team {team_name}.'
         emit('team_joined', {
@@ -316,7 +339,9 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'message': join_message,
             'game_started': state.game_started,
             'team_status': current_team_status_for_clients,
-            'is_reconnection': is_valid_reconnection
+            'is_reconnection': is_valid_reconnection,
+            'game_mode': state.game_mode,
+            'player_slot': actual_player_slot
         }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
@@ -405,7 +430,9 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'team_name': team_name,
                 'team_id': team.team_id,
                 'message': 'Team reactivated successfully. Waiting for another player.',
-                'game_started': state.game_started
+                'game_started': state.game_started,
+                'game_mode': state.game_mode,
+                'player_slot': 1  # Player reactivating team is assigned to player1_session_id (slot 1)
             })  # type: ignore
             
             socketio.emit('teams_updated', {

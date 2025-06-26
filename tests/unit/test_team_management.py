@@ -129,7 +129,9 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
                 'team_name': 'test_team',
                 'team_id': inactive_team.team_id,
                 'message': 'Team reactivated successfully. Waiting for another player.',
-                'game_started': state.game_started
+                'game_started': state.game_started,
+                'game_mode': state.game_mode,
+                'player_slot': 1  # Player reactivating is assigned to slot 1
             }
         )
         
@@ -208,7 +210,8 @@ def test_handle_connect(mock_request_context):
         
         mock_emit.assert_called_once_with('connection_established', {
             'game_started': state.game_started,
-            'available_teams': ANY
+            'available_teams': ANY,
+            'game_mode': state.game_mode
         })
         mock_dashboard_update.assert_called_once()
 
@@ -241,7 +244,9 @@ def test_create_team_success(mock_request_context):
                 'team_name': 'new_team',
                 'team_id': ANY,
                 'message': 'Team created. Waiting for another player.',
-                'game_started': state.game_started
+                'game_started': state.game_started,
+                'game_mode': state.game_mode,
+                'player_slot': 1  # Team creator is assigned to slot 1
             }
         )
         
@@ -312,7 +317,9 @@ def test_join_team_success(mock_request_context, active_team):
                 'message': 'You joined team active_team.',
                 'game_started': state.game_started,
                 'team_status': 'full',
-                'is_reconnection': False
+                'is_reconnection': False,
+                'game_mode': state.game_mode,
+                'player_slot': 2  # Player joins into player2_session_id slot
             },
             to='test_sid'
         )
@@ -689,7 +696,9 @@ def test_reconnection_join_team_different_player(mock_request_context, active_te
                 'message': 'You joined team active_team.',
                 'game_started': state.game_started,
                 'team_status': 'full',
-                'is_reconnection': False
+                'is_reconnection': False,
+                'game_mode': state.game_mode,
+                'player_slot': 2  # New player joins into the available slot
             },
             to='new_session_id'
         )
@@ -742,7 +751,9 @@ def test_reconnection_join_team_same_player(mock_request_context, active_team):
                 'message': 'You reconnected to team active_team.',
                 'game_started': state.game_started,
                 'team_status': 'full',
-                'is_reconnection': True
+                'is_reconnection': True,
+                'game_mode': state.game_mode,
+                'player_slot': 2  # Player reconnects to their original slot
             },
             to='player2_sid'
         )

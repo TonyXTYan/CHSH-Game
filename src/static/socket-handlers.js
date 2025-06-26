@@ -43,8 +43,13 @@ function initializeSocketHandlers(socket, callbacks) {
 
     socket.on('connection_established', (data) => {
         console.log('Connection established with game state:', data);
-        callbacks.updateGameState(data.game_started);
-        callbacks.updateTeamsList(data.available_teams);
+        if (callbacks.onConnectionEstablished) {
+            callbacks.onConnectionEstablished(data);
+        } else {
+            // Fallback to direct calls if callback not available
+            callbacks.updateGameState(data.game_started);
+            callbacks.updateTeamsList(data.available_teams);
+        }
     });
 
     socket.on('error', (data) => {
@@ -175,6 +180,14 @@ function initializeSocketHandlers(socket, callbacks) {
             if (callbacks.showStatus) {
                 callbacks.showStatus(data.message || 'Failed to reactivate team', 'error');
             }
+        }
+    });
+
+    // Handle game mode changes
+    socket.on('game_mode_changed', (data) => {
+        console.log('Game mode changed:', data);
+        if (callbacks.onGameModeChanged) {
+            callbacks.onGameModeChanged(data);
         }
     });
 }
