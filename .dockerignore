@@ -1,0 +1,73 @@
+# Git and version control
+.git/
+.gitignore
+.github/
+
+# Python cache and virtual environments
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+venv/
+env/
+.venv/
+.env/
+
+# Testing and coverage
+tests/
+htmlcov/
+.pytest_cache/
+.coverage
+coverage.xml
+.tox/
+.mypy_cache/
+
+# Load testing (not needed in production)
+load_test/
+load_test_results/
+chsh_load_test.py
+
+# Development and IDE files
+.vscode/
+.idea/
+.cursor/
+.cursorignore
+.ai-prompts/
+.ai-generated-md/
+
+# Documentation (not needed in production)
+README.md
+TODO.md
+LICENSE
+*.md
+
+# Development configuration
+pytest.ini
+pyproject.toml
+CHSH-Game.code-workspace
+
+# Deployment configuration (not needed in container)
+fly.toml
+Procfile
+
+# Database files (should be created fresh in container)
+*.db
+*.sqlite
+*.sqlite3
+
+# Mock data and temporary files
+MagicMock/
+instance/
+
+# Sample data (unless needed for the application)
+sample-data/
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db 
