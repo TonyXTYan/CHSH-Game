@@ -34,3 +34,39 @@
 - [ ] load_test should also validate info in dashabord 
 - [ ] add goal info to dashboard and participant's page
 - [ ] refactor code to break circular imports
+
+
+
+## Maybe problem but won't fix now
+- [ ] In src/main.py, there's a database initialization block that could fail silently if there are database connection issues.
+
+
+## Notes
+
+Database N+1 Query Problems (HIGH PRIORITY)
+Location: src/sockets/dashboard.py:751-802
+Problem: The get_all_teams() function makes separate queries for each team's statistics, leading to N+1 query problems.
+Impact: With many teams, this creates excessive database load and slow response times.
+
+
+Heavy DOM Operations (MEDIUM PRIORITY)
+Location: src/static/dashboard.js:739-899
+Problem: The updateActiveTeams() function rebuilds the entire table on every update, causing layout thrashing and poor performance.
+Impact: Slow UI updates, especially with many teams.
+
+
+Database Indexing (MEDIUM PRIORITY)
+Location: src/models/quiz_models.py
+Problem: Missing indexes on frequently queried fields.
+
+
+
+Server Configuration Optimization (MEDIUM PRIORITY)
+Location: wsgi.py, src/config.py
+Problem: No optimized server configuration for production loads.
+
+
+Connection Pooling (MEDIUM PRIORITY)
+Location: src/config.py
+Problem: No database connection pooling configuration.
+

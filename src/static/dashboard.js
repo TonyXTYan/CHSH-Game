@@ -1060,7 +1060,7 @@ function updateActiveTeams(teams) {
         const detailsCell = row.insertCell();
         const detailsBtn = document.createElement('button');
         detailsBtn.className = 'view-details-btn';
-        detailsBtn.textContent = 'View Details';
+        detailsBtn.textContent = 'View';
         detailsBtn.onclick = () => showTeamDetails(team);
         detailsCell.appendChild(detailsBtn);
     });
