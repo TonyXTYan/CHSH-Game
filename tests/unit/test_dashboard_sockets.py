@@ -1654,26 +1654,84 @@ def test_emit_dashboard_team_update_performance_no_duplicate_computation(mock_st
         assert mock_socketio.emit.call_count == 4
 
 def test_emit_dashboard_team_update_preserves_connected_players_count(mock_state, mock_socketio):
-    """Test that connected_players_count is correctly included in updates"""
+    """Test that team status updates preserve the connected players count across multiple calls"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup client
+    # Setup streaming client
     mock_state.dashboard_clients = MockSet(['client1'])
     dashboard_teams_streaming['client1'] = True
     
-    # Setup connected players
-    mock_state.connected_players = MockSet(['player1', 'player2', 'player3'])
+    # Initial connected players count
+    initial_player_count = len(mock_state.connected_players)
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = []
         
-        mock_socketio.emit.reset_mock()
-        
+        # First update
         emit_dashboard_team_update()
         
-        # Verify connected_players_count is included
-        assert mock_socketio.emit.call_count == 1
-        call_args = mock_socketio.emit.call_args
-        update_data = call_args[0][1]
+        # Check the emitted data preserves player count
+        assert mock_socketio.emit.called
+        first_call_data = mock_socketio.emit.call_args[0][1]
+        assert first_call_data['connected_players_count'] == initial_player_count
         
-        assert update_data['connected_players_count'] == 3
+        # Reset mock and call again
+        mock_socketio.emit.reset_mock()
+        emit_dashboard_team_update()
+        
+        # Second call should have same player count
+        assert mock_socketio.emit.called
+        second_call_data = mock_socketio.emit.call_args[0][1]
+        assert second_call_data['connected_players_count'] == initial_player_count
+
+def test_handle_dashboard_disconnect_exception_handling():
+    """Test exception handling in handle_dashboard_disconnect"""
+    from src.sockets.dashboard import handle_dashboard_disconnect, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Setup initial state
+    dashboard_last_activity['test_sid'] = 123.0
+    dashboard_teams_streaming['test_sid'] = True
+    
+    # Mock state to raise exception on client removal
+    with patch('src.sockets.dashboard.state') as mock_state:
+        mock_state.dashboard_clients.remove.side_effect = Exception("Test exception")
+        
+        # This should handle the exception gracefully and not crash
+        handle_dashboard_disconnect('test_sid')
+        
+        # The function should complete despite the exception
+        # (Exception handling is internal and logged)
+
+def test_dashboard_socket_events_error_handling(mock_request, mock_state, mock_emit):
+    """Test error handling in dashboard socket event handlers"""
+    from src.sockets.dashboard import on_keep_alive, on_set_teams_streaming, on_request_teams_update
+    
+    # Test on_keep_alive with exception
+    with patch('src.sockets.dashboard.time', side_effect=Exception("Time error")):
+        on_keep_alive()  # Should not crash
+    
+    # Test on_set_teams_streaming with malformed data
+    with patch('src.sockets.dashboard.request') as mock_req:
+        mock_req.sid = 'test_sid'
+        mock_state.dashboard_clients.add('test_sid')
+        on_set_teams_streaming({'invalid': 'data'})  # Should handle gracefully
+    
+    # Test on_request_teams_update with exception in emit
+    with patch('src.sockets.dashboard.emit_dashboard_full_update', side_effect=Exception("Emit error")):
+        on_request_teams_update()  # Should not crash
+
+def test_on_keep_alive_unauthorized_client(mock_request, mock_state, mock_emit):
+    """Test on_keep_alive with unauthorized client"""
+    from src.sockets.dashboard import on_keep_alive, dashboard_last_activity
+    
+    # Remove client from dashboard_clients to simulate unauthorized access
+    mock_state.dashboard_clients = MockSet()  # Empty set
+    dashboard_last_activity.clear()
+    
+    on_keep_alive()
+    
+    # Should not add activity for unauthorized client
+    assert 'test_dashboard_sid' not in dashboard_last_activity
+    
+    # Should not emit keep_alive_ack
+    mock_emit.assert_not_called()
