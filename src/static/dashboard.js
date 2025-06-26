@@ -5,6 +5,9 @@ const socket = io(window.location.origin, {
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
+// Game mode state
+let currentGameMode = 'new';
+
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -32,6 +35,108 @@ const noAnswersLogMsg = document.getElementById("no-answers-log");
 
 let currentAnswersCount = 0;
 
+// Game Mode Functions
+function updateGameModeDisplay(mode) {
+    currentGameMode = mode;
+    const modeIndicator = document.getElementById('current-game-mode');
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    const modeDescription = document.getElementById('mode-description-text');
+    
+    if (modeIndicator) {
+        modeIndicator.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        modeIndicator.className = `mode-indicator ${mode}`;
+    }
+    
+    if (toggleBtn) {
+        if (mode === 'classic') {
+            toggleBtn.textContent = 'Switch to New Mode';
+        } else {
+            toggleBtn.textContent = 'Switch to Classic Mode';
+        }
+    }
+    
+    if (modeDescription) {
+        if (mode === 'classic') {
+            modeDescription.innerHTML = `
+                <strong>Classic Mode:</strong> Random question assignment to both players from all items (A, B, X, Y). 
+                Metrics focus on quantum correlation measurements.
+            `;
+        } else {
+            modeDescription.innerHTML = `
+                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                Metrics focus on success rates and optimal strategy adherence.
+            `;
+        }
+    }
+}
+
+// Track game mode toggle timeouts for cleanup
+let gameModeToggleTimeout = null;
+
+function toggleGameMode() {
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    if (toggleBtn && !toggleBtn.disabled) {
+        toggleBtn.disabled = true;
+        toggleBtn.textContent = 'Switching...';
+        
+        // Clear any existing timeout
+        if (gameModeToggleTimeout) {
+            clearTimeout(gameModeToggleTimeout);
+            gameModeToggleTimeout = null;
+        }
+        
+        socket.emit('toggle_game_mode');
+        
+        // Set fallback timeout in case server doesn't respond
+        gameModeToggleTimeout = setTimeout(() => {
+            console.error('Game mode toggle timeout - server may not have responded');
+            const btn = document.getElementById('toggle-mode-btn');
+            if (btn && btn.disabled) {
+                btn.disabled = false;
+                updateGameModeDisplay(currentGameMode);
+                
+                // Show error notification
+                connectionStatusDiv.textContent = "Failed to change game mode - please try again";
+                connectionStatusDiv.className = "status-disconnected";
+                
+                setTimeout(() => {
+                    connectionStatusDiv.textContent = "Connected to server";
+                    connectionStatusDiv.className = "status-connected";
+                }, 3000);
+            }
+            gameModeToggleTimeout = null;
+        }, 10000); // 10 second timeout
+    }
+}
+
+// Handle game mode changes from server
+socket.on('game_mode_changed', (data) => {
+    console.log('Game mode changed:', data);
+    updateGameModeDisplay(data.mode);
+    
+    // Clear the toggle timeout since server responded
+    if (gameModeToggleTimeout) {
+        clearTimeout(gameModeToggleTimeout);
+        gameModeToggleTimeout = null;
+    }
+    
+    // Re-enable the toggle button
+    const toggleBtn = document.getElementById('toggle-mode-btn');
+    if (toggleBtn && toggleBtn.disabled) {
+        toggleBtn.disabled = false;
+    }
+    
+    // Show a brief notification
+    connectionStatusDiv.textContent = `Game mode changed to: ${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)}`;
+    connectionStatusDiv.className = "status-connected";
+    
+    // Reset status after 3 seconds
+    setTimeout(() => {
+        connectionStatusDiv.textContent = "Connected to server";
+        connectionStatusDiv.className = "status-connected";
+    }, 3000);
+});
+
 // Helper function to format statistics with uncertainty
 function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
     if (typeof magnitude !== 'number' || isNaN(magnitude)) {
@@ -54,6 +159,7 @@ function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
 function resetButtonToInitialState(btn) {
     if (!btn) return;
     console.log(`Resetting button from ${btn.textContent} to Start Game`);
+    btn.style.display = "inline-block";
     btn.disabled = false;
     btn.textContent = "Start Game";
     btn.className = "";  // Remove all classes to get default blue styling
@@ -164,15 +270,22 @@ window.addEventListener('load', () => {
     localStorage.removeItem('chsh_game_state'); // Keep this if migrating from an old format
     
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
     const pauseBtn = document.getElementById("pause-game-btn");
     const gameControlText = document.getElementById("game-control-text");
 
     if (gameStarted) {
+        // Hide start button when game is started
         if (startBtn) {
-            startBtn.disabled = false;
-            startBtn.textContent = "Reset game stats";
-            startBtn.className = "reset-game";
-            startBtn.onclick = handleResetGame;
+            startBtn.style.display = "none";
+        }
+        
+        // Show reset button in advanced controls
+        if (resetBtn) {
+            resetBtn.style.display = "inline-block";
+            resetBtn.disabled = false;
+            resetBtn.textContent = "Reset Game Stats";
+            resetBtn.className = "control-btn reset-btn";
         }
         
         if (pauseBtn) {
@@ -186,7 +299,10 @@ window.addEventListener('load', () => {
     } else {
         // If game not started, ensure pause button is hidden and start button is in initial state
         if (startBtn) {
-             resetButtonToInitialState(startBtn); // Resets text, class, onclick
+             resetButtonToInitialState(startBtn); // Resets text, class, onclick, and shows button
+        }
+        if (resetBtn) {
+            resetBtn.style.display = "none";
         }
         if (pauseBtn) {
             pauseBtn.style.display = "none";
@@ -199,6 +315,10 @@ window.addEventListener('load', () => {
     // Initialize streaming UI states
     updateStreamingUI();
     updateTeamsStreamingUI();
+    updateAdvancedControlsUI();
+    
+    // Initialize game mode display (will be updated when dashboard connects)
+    updateGameModeDisplay(currentGameMode);
 });
 
 let confirmingStop = false;
@@ -207,7 +327,7 @@ let countdownInterval = null;
 let currentConfirmMouseOutListener = null; // To manage the mouseout listener
 
 // Global cleanup function for reset confirmation
-function cleanupResetConfirmation(startBtn) {
+function cleanupResetConfirmation(btn) {
     countdownActive = false;
     if (countdownInterval) {
         clearInterval(countdownInterval);
@@ -215,8 +335,8 @@ function cleanupResetConfirmation(startBtn) {
     }
 
     // Remove the mouseout listener if it's active
-    if (startBtn && currentConfirmMouseOutListener) {
-        startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
+    if (btn && currentConfirmMouseOutListener) {
+        btn.removeEventListener('mouseout', currentConfirmMouseOutListener);
         currentConfirmMouseOutListener = null;
     }
     // The 'beforeunload' listener is {once: true}, it handles itself.
@@ -224,24 +344,39 @@ function cleanupResetConfirmation(startBtn) {
     let wasConfirming = confirmingStop;
     confirmingStop = false; // Always mark confirmation as ended
 
-    if (wasConfirming && startBtn) { // Only reset button text if it was in confirmation mode
-        startBtn.textContent = "Reset game stats";
-        startBtn.className = "reset-game";
+    if (wasConfirming && btn) { // Only reset button text if it was in confirmation mode
+        // Check if this is the reset button in advanced controls
+        if (btn.id === 'reset-game-btn') {
+            btn.textContent = "Reset Game Stats";
+            btn.className = "control-btn reset-btn";
+        } else {
+            // Legacy support for start button (shouldn't be used anymore)
+            btn.textContent = "Reset game stats";
+            btn.className = "reset-game";
+        }
     }
 }
 
 socket.on("game_started", () => {
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
     const gameControlText = document.getElementById("game-control-text");
     
-    cleanupResetConfirmation(startBtn); // Ensure any prior confirmation state is cleared
+    cleanupResetConfirmation(resetBtn); // Ensure any prior confirmation state is cleared
 
     gameControlText.textContent = "Game in progress";
     document.getElementById("pause-game-btn").style.display = "inline-block";
-    startBtn.disabled = false;
-    startBtn.textContent = "Reset game stats";
-    startBtn.className = "reset-game";
-    startBtn.onclick = handleResetGame;
+    
+    // Hide start button completely when game is started
+    startBtn.style.display = "none";
+    
+    // Show reset button in advanced controls
+    if (resetBtn) {
+        resetBtn.style.display = "inline-block";
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset Game Stats";
+        resetBtn.className = "control-btn reset-btn";
+    }
 
     // Persist game started state
     localStorage.setItem('game_started', 'true');
@@ -257,14 +392,26 @@ socket.on("game_reset_complete", () => {
     }
     
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
     const gameControlText = document.getElementById("game-control-text");
     
-    cleanupResetConfirmation(startBtn); // Crucial to clear any confirmation state
+    cleanupResetConfirmation(resetBtn); // Crucial to clear any confirmation state
     
+    // Show and reset start button to initial state
+    startBtn.style.display = "inline-block";
     startBtn.disabled = false;
     startBtn.textContent = "Start Game";
     startBtn.className = "";
     startBtn.onclick = startGame;
+    
+    // Hide reset button
+    if (resetBtn) {
+        resetBtn.style.display = "none";
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset Game Stats";
+        resetBtn.className = "control-btn reset-btn";
+    }
+    
     gameControlText.textContent = "Game Control";
     document.getElementById("pause-game-btn").style.display = "none";
     
@@ -282,9 +429,9 @@ socket.on("game_reset_complete", () => {
 });
 
 function handleResetGame() {
-    const startBtn = document.getElementById("start-game-btn");
-    if (!startBtn || startBtn.disabled) {
-        console.error("Invalid button state");
+    const resetBtn = document.getElementById("reset-game-btn");
+    if (!resetBtn || resetBtn.disabled) {
+        console.error("Invalid reset button state");
         return;
     }
 
@@ -295,8 +442,8 @@ function handleResetGame() {
         ).length;
 
         // Ensure any previous mouseout listener is removed before adding a new one
-        if (currentConfirmMouseOutListener && startBtn) {
-            startBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
+        if (currentConfirmMouseOutListener && resetBtn) {
+            resetBtn.removeEventListener('mouseout', currentConfirmMouseOutListener);
             currentConfirmMouseOutListener = null;
         }
         
@@ -306,7 +453,7 @@ function handleResetGame() {
             countdownInterval = null;
         }
 
-        startBtn.className = "confirm-reset";
+        resetBtn.className = "control-btn reset-btn confirm-reset";
         confirmingStop = true;
         let secondsLeft = 3;
         countdownActive = true;
@@ -315,8 +462,7 @@ function handleResetGame() {
             `Reset game stats and remove ${inactiveTeamsCount} inactive team${inactiveTeamsCount !== 1 ? 's' : ''}? (${secondsLeft})` :
             `Reset game stats? (${secondsLeft})`;
         
-        startBtn.textContent = message;
-        startBtn.style.border = '2px solid #FFC107'; // Add visual feedback for confirmation
+        resetBtn.textContent = message;
 
         countdownInterval = setInterval(() => {
             if (!countdownActive) {
@@ -331,29 +477,28 @@ function handleResetGame() {
                     const message = inactiveTeamsCount > 0 ?
                         `Reset game stats and remove ${inactiveTeamsCount} inactive team${inactiveTeamsCount !== 1 ? 's' : ''}? (${secondsLeft})` :
                         `Reset game stats? (${secondsLeft})`;
-                    startBtn.textContent = message;
+                    resetBtn.textContent = message;
                 }
             } else {
-                cleanupResetConfirmation(startBtn);
+                cleanupResetConfirmation(resetBtn);
             }
         }, 1000);
 
         // Define and add the mouseout listener
         currentConfirmMouseOutListener = () => {
-            cleanupResetConfirmation(startBtn);
+            cleanupResetConfirmation(resetBtn);
         };
-        startBtn.addEventListener('mouseout', currentConfirmMouseOutListener);
+        resetBtn.addEventListener('mouseout', currentConfirmMouseOutListener);
         
         // Add beforeunload listener
         window.addEventListener('beforeunload', () => {
-            cleanupResetConfirmation(startBtn);
+            cleanupResetConfirmation(resetBtn);
         }, { once: true });
         
     } else {
-        cleanupResetConfirmation(startBtn);
-        startBtn.disabled = true;
-        startBtn.textContent = "Resetting...";
-        startBtn.style.border = '2px solid #4CAF50'; // Add visual feedback for resetting
+        cleanupResetConfirmation(resetBtn);
+        resetBtn.disabled = true;
+        resetBtn.textContent = "Resetting...";
         startResetTimeout();
         socket.emit("restart_game");
     }
@@ -364,10 +509,12 @@ let resetTimeout;
 function startResetTimeout() {
     clearTimeout(resetTimeout);
     resetTimeout = setTimeout(() => {
-        const startBtn = document.getElementById("start-game-btn");
-        if (startBtn && startBtn.disabled) {
+        const resetBtn = document.getElementById("reset-game-btn");
+        if (resetBtn && resetBtn.disabled) {
             console.log("Reset timeout triggered - resetting button state");
-            resetButtonToInitialState(startBtn);
+            resetBtn.disabled = false;
+            resetBtn.textContent = "Reset Game Stats";
+            resetBtn.className = "control-btn reset-btn";
         }
     }, 5000); // 5 seconds timeout
 }
@@ -377,10 +524,18 @@ socket.on("error", (data) => {
     connectionStatusDiv.textContent = `Error: ${data.message}`;
     connectionStatusDiv.className = "status-disconnected";
 
-    // Reset button state in case of errors
+    // Reset button states in case of errors
     const startBtn = document.getElementById("start-game-btn");
-    if (startBtn && startBtn.disabled) {
+    const resetBtn = document.getElementById("reset-game-btn");
+    
+    if (startBtn && startBtn.disabled && startBtn.textContent === "Starting...") {
         resetButtonToInitialState(startBtn);
+    }
+    
+    if (resetBtn && resetBtn.disabled) {
+        resetBtn.disabled = false;
+        resetBtn.textContent = "Reset Game Stats";
+        resetBtn.className = "control-btn reset-btn";
     }
 });
 
@@ -388,7 +543,12 @@ socket.on("dashboard_update", (data) => {
     console.log("Dashboard update received:", data);
     lastReceivedTeams = data.teams;
     if (data.game_state) {
-        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}`);
+        console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}, mode: ${data.game_state.mode}`);
+        
+        // Update game mode if provided
+        if (data.game_state.mode && data.game_state.mode !== currentGameMode) {
+            updateGameModeDisplay(data.game_state.mode);
+        }
         
         // Persist full game state from server
         localStorage.setItem('game_started', data.game_state.started.toString());
@@ -435,20 +595,29 @@ socket.on("dashboard_update", (data) => {
     
     // Update button state based on game state
     const startBtn = document.getElementById("start-game-btn");
+    const resetBtn = document.getElementById("reset-game-btn");
+    
     if (!confirmingStop) {
         if (data.game_state) {
-            if (data.game_state.started && startBtn.textContent === "Start Game") {
-                console.log("Updating button to Reset state");
-                startBtn.disabled = false;
-                startBtn.textContent = "Reset game stats";
-                startBtn.className = "reset-game";
-                startBtn.onclick = handleResetGame;
-            } else if (!data.game_state.started && startBtn.textContent === "Reset game stats") {
+            if (data.game_state.started && startBtn.style.display !== "none") {
+                console.log("Updating to game started state");
+                startBtn.style.display = "none";
+                
+                // Show reset button
+                if (resetBtn) {
+                    resetBtn.style.display = "inline-block";
+                    resetBtn.disabled = false;
+                    resetBtn.textContent = "Reset Game Stats";
+                    resetBtn.className = "control-btn reset-btn";
+                }
+            } else if (!data.game_state.started && startBtn.style.display === "none") {
                 console.log("Resetting button to Start Game state");
-                startBtn.disabled = false;
-                startBtn.textContent = "Start Game";
-                startBtn.className = "";
-                startBtn.onclick = startGame;
+                resetButtonToInitialState(startBtn);
+                
+                // Hide reset button
+                if (resetBtn) {
+                    resetBtn.style.display = "none";
+                }
             }
         }
     }
@@ -792,6 +961,7 @@ function updateAnswerLog(answers) {
 
 let answerStreamEnabled = false;
 let teamsStreamEnabled = false;
+let advancedControlsEnabled = false;
 const answerTable = document.getElementById('answer-log-table');
 const noAnswersMsg = document.getElementById('no-answers-log');
 const toggleBtn = document.getElementById('toggle-answers-btn');
@@ -801,6 +971,9 @@ const teamsTable = document.getElementById('active-teams-table');
 const noTeamsMsg = document.getElementById('no-active-teams');
 const teamsToggleBtn = document.getElementById('toggle-teams-btn');
 const teamsToggleChevron = document.getElementById('teams-toggle-chevron');
+
+const advancedControlsContent = document.getElementById('advanced-controls-content');
+const advancedControlsChevron = document.getElementById('advanced-controls-chevron');
 
 // Initialize to OFF state
 toggleBtn.textContent = 'OFF';
@@ -813,6 +986,14 @@ teamsToggleBtn.textContent = 'OFF';
 teamsTable.style.display = 'none';
 noTeamsMsg.style.display = 'none';
 teamsToggleChevron.textContent = '▶';
+
+// Initialize advanced controls to collapsed state
+if (advancedControlsContent) {
+    advancedControlsContent.style.display = 'none';
+}
+if (advancedControlsChevron) {
+    advancedControlsChevron.textContent = '▶';
+}
 
 function updateStreamingUI() {
     if (answerStreamEnabled) {
@@ -851,6 +1032,24 @@ function updateTeamsStreamingUI() {
     }
 }
 
+function updateAdvancedControlsUI() {
+    if (advancedControlsEnabled) {
+        if (advancedControlsContent) {
+            advancedControlsContent.style.display = 'flex';
+        }
+        if (advancedControlsChevron) {
+            advancedControlsChevron.textContent = '▼';
+        }
+    } else {
+        if (advancedControlsContent) {
+            advancedControlsContent.style.display = 'none';
+        }
+        if (advancedControlsChevron) {
+            advancedControlsChevron.textContent = '▶';
+        }
+    }
+}
+
 function toggleAnswerStream() {
     answerStreamEnabled = !answerStreamEnabled;
     updateStreamingUI();
@@ -867,6 +1066,11 @@ function toggleTeamsStream() {
     if (teamsStreamEnabled) {
         socket.emit('request_teams_update');
     }
+}
+
+function toggleAdvancedControls() {
+    advancedControlsEnabled = !advancedControlsEnabled;
+    updateAdvancedControlsUI();
 }
 
 function togglePause() {

@@ -333,3 +333,219 @@ def test_classic_mode_unchanged(mock_socketio, mock_db, mock_rounds, mock_state,
     # Verify items are from the full set
     assert player1_items.issubset(all_items), f"Player 1 items should be from full set: {player1_items}"
     assert player2_items.issubset(all_items), f"Player 2 items should be from full set: {player2_items}"
+
+@patch('src.state.state')
+@patch('src.game_logic.PairQuestionRounds')
+@patch('src.game_logic.db') 
+@patch('src.game_logic.socketio')
+def test_mode_transition_behavior(mock_socketio, mock_db, mock_rounds, mock_state, mock_team_info):
+    """Test that changing mode mid-game works correctly"""
+    # Setup mocks
+    team_name = "test_team"
+    mock_state.active_teams = {team_name: mock_team_info}
+    
+    # Create a mock for the new round
+    mock_round = MagicMock()
+    mock_round.round_id = 123
+    mock_rounds.return_value = mock_round
+    
+    # Start in classic mode and run some rounds
+    mock_state.game_mode = 'classic'
+    classic_combos = set()
+    
+    for _ in range(10):
+        start_new_round_for_pair(team_name)
+        call_args = mock_rounds.call_args
+        if call_args:
+            p1_item = call_args[1]['player1_item']
+            p2_item = call_args[1]['player2_item']
+            classic_combos.add((p1_item, p2_item))
+        mock_rounds.reset_mock()
+    
+    # Switch to new mode and run more rounds
+    mock_state.game_mode = 'new'
+    new_mode_combos = set()
+    
+    for _ in range(10):
+        start_new_round_for_pair(team_name)
+        call_args = mock_rounds.call_args
+        if call_args:
+            p1_item = call_args[1]['player1_item']
+            p2_item = call_args[1]['player2_item']
+            new_mode_combos.add((p1_item, p2_item))
+        mock_rounds.reset_mock()
+    
+    # Verify new mode combos follow restrictions
+    expected_new_combos = {
+        (ItemEnum.A, ItemEnum.X), (ItemEnum.A, ItemEnum.Y),
+        (ItemEnum.B, ItemEnum.X), (ItemEnum.B, ItemEnum.Y)
+    }
+    assert new_mode_combos.issubset(expected_new_combos), f"Invalid new mode combos: {new_mode_combos - expected_new_combos}"
+    
+    # Verify round counter continued correctly
+    assert mock_state.active_teams[team_name]['current_round_number'] == 20
+
+@patch('src.state.state')
+@patch('src.game_logic.PairQuestionRounds')
+@patch('src.game_logic.db')
+@patch('src.game_logic.socketio')
+def test_invalid_game_mode_defaults_to_classic(mock_socketio, mock_db, mock_rounds, mock_state, mock_team_info):
+    """Test that invalid game modes default to classic behavior"""
+    # Setup mocks
+    team_name = "test_team"
+    mock_state.active_teams = {team_name: mock_team_info}
+    mock_state.game_mode = 'invalid_mode'  # Invalid mode
+    
+    # Create a mock for the new round
+    mock_round = MagicMock()
+    mock_round.round_id = 123
+    mock_rounds.return_value = mock_round
+    
+    # Run multiple rounds
+    player1_items = set()
+    player2_items = set()
+    
+    for _ in range(50):
+        start_new_round_for_pair(team_name)
+        
+        call_args = mock_rounds.call_args
+        if call_args:
+            p1_item = call_args[1]['player1_item']
+            p2_item = call_args[1]['player2_item']
+            player1_items.add(p1_item)
+            player2_items.add(p2_item)
+        
+        mock_rounds.reset_mock()
+    
+    # Should behave like classic mode (any item possible for any player)
+    all_items = {ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y}
+    assert player1_items.issubset(all_items), f"Player 1 items should be from full set: {player1_items}"
+    assert player2_items.issubset(all_items), f"Player 2 items should be from full set: {player2_items}"
+    
+    # Should have variety (more than just A,B or X,Y)
+    assert len(player1_items) >= 2, f"Player 1 should get variety with invalid mode: {player1_items}"
+    assert len(player2_items) >= 2, f"Player 2 should get variety with invalid mode: {player2_items}"
+
+@patch('src.state.state')
+@patch('src.game_logic.PairQuestionRounds')
+@patch('src.game_logic.db')
+@patch('src.game_logic.socketio')
+def test_new_mode_comprehensive_coverage(mock_socketio, mock_db, mock_rounds, mock_state, mock_team_info):
+    """Test that new mode eventually covers all valid combinations"""
+    # Setup mocks
+    team_name = "test_team"
+    mock_state.active_teams = {team_name: mock_team_info}
+    mock_state.game_mode = 'new'
+    
+    # Create a mock for the new round
+    mock_round = MagicMock()
+    mock_round.round_id = 123
+    mock_rounds.return_value = mock_round
+    
+    # Expected valid combinations in new mode
+    expected_combos = {
+        (ItemEnum.A, ItemEnum.X), (ItemEnum.A, ItemEnum.Y),
+        (ItemEnum.B, ItemEnum.X), (ItemEnum.B, ItemEnum.Y)
+    }
+    
+    generated_combos = set()
+    
+    # Run many rounds to ensure we eventually see all combinations
+    for _ in range(200):  # Enough rounds to ensure statistical coverage
+        start_new_round_for_pair(team_name)
+        
+        call_args = mock_rounds.call_args
+        if call_args:
+            p1_item = call_args[1]['player1_item']
+            p2_item = call_args[1]['player2_item']
+            generated_combos.add((p1_item, p2_item))
+        
+        mock_rounds.reset_mock()
+    
+    # Verify we got all expected combinations
+    assert generated_combos == expected_combos, f"Missing combinations: {expected_combos - generated_combos}"
+    
+    # Verify no invalid combinations were generated
+    assert generated_combos.issubset(expected_combos), f"Invalid combinations: {generated_combos - expected_combos}"
+
+@patch('src.state.state')
+@patch('src.game_logic.PairQuestionRounds')
+@patch('src.game_logic.db')
+@patch('src.game_logic.socketio')
+def test_mode_affects_combo_tracking(mock_socketio, mock_db, mock_rounds, mock_state, mock_team_info):
+    """Test that combo tracking works correctly in both modes"""
+    # Setup mocks
+    team_name = "test_team"
+    mock_state.active_teams = {team_name: mock_team_info}
+    
+    # Create a mock for the new round
+    mock_round = MagicMock()
+    mock_round.round_id = 123
+    mock_rounds.return_value = mock_round
+    
+    # Test classic mode combo tracking
+    mock_state.game_mode = 'classic'
+    for _ in range(50):
+        start_new_round_for_pair(team_name)
+    
+    classic_combos = set(mock_state.active_teams[team_name]['combo_tracker'].keys())
+    
+    # Reset team state for new mode test
+    mock_team_info['current_round_number'] = 0
+    mock_team_info['combo_tracker'] = {}
+    mock_state.active_teams = {team_name: mock_team_info}
+    
+    # Test new mode combo tracking
+    mock_state.game_mode = 'new'
+    for _ in range(50):
+        start_new_round_for_pair(team_name)
+    
+    new_mode_combos = set(mock_state.active_teams[team_name]['combo_tracker'].keys())
+    
+    # New mode should have fewer combo types than classic mode
+    expected_new_combos = {('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')}
+    
+    # Verify new mode only tracks valid combinations
+    assert new_mode_combos.issubset(expected_new_combos), f"New mode tracked invalid combos: {new_mode_combos - expected_new_combos}"
+    
+    # Classic mode should potentially have more variety
+    assert len(classic_combos) >= len(new_mode_combos), "Classic mode should have at least as many combo types as new mode"
+
+
+
+@patch('src.state.state')
+@patch('src.game_logic.PairQuestionRounds')
+@patch('src.game_logic.db')
+@patch('src.game_logic.socketio')
+def test_game_mode_none_defaults_to_classic(mock_socketio, mock_db, mock_rounds, mock_state, mock_team_info):
+    """Test that None game mode defaults to classic behavior"""
+    # Setup mocks
+    team_name = "test_team"
+    mock_state.active_teams = {team_name: mock_team_info}
+    mock_state.game_mode = None  # None mode
+    
+    # Create a mock for the new round
+    mock_round = MagicMock()
+    mock_round.round_id = 123
+    mock_rounds.return_value = mock_round
+    
+    # Run multiple rounds
+    player1_items = set()
+    player2_items = set()
+    
+    for _ in range(50):
+        start_new_round_for_pair(team_name)
+        
+        call_args = mock_rounds.call_args
+        if call_args:
+            p1_item = call_args[1]['player1_item']
+            p2_item = call_args[1]['player2_item']
+            player1_items.add(p1_item)
+            player2_items.add(p2_item)
+        
+        mock_rounds.reset_mock()
+    
+    # Should behave like classic mode (any item possible for any player)
+    all_items = {ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y}
+    assert player1_items.issubset(all_items), f"Player 1 items should be from full set: {player1_items}"
+    assert player2_items.issubset(all_items), f"Player 2 items should be from full set: {player2_items}"

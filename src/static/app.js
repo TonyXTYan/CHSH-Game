@@ -8,7 +8,7 @@ let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
-let currentGameMode = 'classic'; // Track current game mode
+let currentGameMode = 'new'; // Track current game mode
 let playerPosition = null; // Track player position (1 or 2)
 
 // DOM elements
@@ -110,11 +110,11 @@ function resetToInitialView() {
     teamId = null;
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
-    currentGameMode = 'classic'; // Reset to classic mode
+    currentGameMode = 'new'; // Reset to new mode
     localStorage.removeItem('quizSessionData');
     gameHeader.textContent = 'CHSH Game';
     updatePlayerPosition(null);
-    updateGameMode('classic');
+    updateGameMode('new');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
 }

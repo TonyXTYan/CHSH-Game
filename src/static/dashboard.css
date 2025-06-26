@@ -207,6 +207,52 @@ th {
     font-weight: bold; 
 }
 
+/* Comprehensive Stats Card Styles */
+.comprehensive-stats {
+    flex: 2; /* Take up more space than game control card */
+}
+
+.stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 15px;
+    margin-top: 10px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    background-color: rgba(255, 255, 255, 0.5);
+    border-radius: 4px;
+    border-left: 3px solid #0056b3;
+}
+
+.stat-label {
+    font-size: 0.85em;
+    color: #666;
+    font-weight: 500;
+}
+
+.stat-value {
+    font-size: 1.4em;
+    font-weight: bold;
+    color: #0056b3;
+}
+
+/* Responsive design for stats grid */
+@media (max-width: 768px) {
+    .stats-grid {
+        grid-template-columns: 1fr;
+        gap: 10px;
+    }
+    
+    .metrics {
+        flex-direction: column;
+    }
+}
+
 .game-controls {
     display: flex;
     gap: 10px;
@@ -272,6 +318,178 @@ th {
 #ready-players-count {
     font-size: 1.5em;
     font-weight: bold;
+}
+
+/* Advanced Controls Section Styles */
+.advanced-controls-content {
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+}
+
+.control-section {
+    border: 1px solid #e9ecef;
+    border-radius: 6px;
+    padding: 20px;
+    background-color: #f8f9fa;
+}
+
+.control-section h4 {
+    margin: 0 0 15px 0;
+    color: #495057;
+    font-size: 1.1em;
+    border-bottom: 2px solid #dee2e6;
+    padding-bottom: 8px;
+}
+
+/* Game Management Controls */
+.game-management-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.reset-description {
+    color: #6c757d;
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
+.reset-btn {
+    background-color: #dc3545;
+    color: white;
+    align-self: flex-start;
+}
+
+.reset-btn:hover {
+    background-color: #c82333;
+    transform: translateY(-1px);
+}
+
+.reset-btn.confirm-reset {
+    background-color: #ffc107;
+    color: #212529;
+    border: 2px solid #FFC107;
+}
+
+.reset-btn.confirm-reset:hover {
+    background-color: #e0a800;
+}
+
+
+
+/* Game Mode Controls */
+.game-mode-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.current-mode-display {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-weight: 500;
+}
+
+.mode-indicator {
+    padding: 4px 12px;
+    border-radius: 4px;
+    font-weight: bold;
+    text-transform: uppercase;
+    font-size: 0.9em;
+}
+
+.mode-indicator.classic {
+    background-color: #e8f4f8;
+    color: #0056b3;
+    border: 1px solid #b3d7f0;
+}
+
+.mode-indicator.new {
+    background-color: #e8f5e9;
+    color: #28a745;
+    border: 1px solid #b3e6b8;
+}
+
+.control-btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    font-size: 0.95em;
+}
+
+.mode-toggle-btn {
+    background-color: #6f42c1;
+    color: white;
+    align-self: flex-start;
+}
+
+.mode-toggle-btn:hover {
+    background-color: #5a2d91;
+    transform: translateY(-1px);
+}
+
+.mode-toggle-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    transform: none;
+}
+
+.mode-description {
+    background-color: white;
+    padding: 12px;
+    border-radius: 4px;
+    border-left: 4px solid #6f42c1;
+    font-size: 0.9em;
+    line-height: 1.4;
+}
+
+/* Export Controls */
+.export-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.export-description {
+    color: #6c757d;
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
+.export-buttons {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.export-btn {
+    background-color: #17a2b8;
+    color: white;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.export-btn:hover {
+    background-color: #138496;
+    transform: translateY(-1px);
+}
+
+/* Responsive design for advanced controls */
+@media (max-width: 768px) {
+    .export-buttons {
+        flex-direction: column;
+    }
+    
+    .control-btn {
+        width: 100%;
+        text-align: center;
+    }
 }
 
 /* Modal styles */
@@ -416,7 +634,8 @@ th {
 }
 
 #live-answer-log-header,
-#teams-header {
+#teams-header,
+#advanced-controls-header {
     display: flex;
     align-items: center;
     gap: 10px;
@@ -425,11 +644,14 @@ th {
 }
 
 #live-answer-log-header h2,
-#teams-header h2 {
+#teams-header h2,
+#advanced-controls-header h2 {
     margin: 0;
 }
 
-#toggle-chevron {
+#toggle-chevron,
+#teams-toggle-chevron,
+#advanced-controls-chevron {
     font-weight: bold;
     margin-left: 5px;
     font-size: 1.1em;
