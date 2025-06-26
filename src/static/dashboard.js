@@ -106,6 +106,22 @@ function updateGameModeDisplay(mode) {
     
     // Update table headers when mode changes
     updateTableHeaders(mode);
+    
+    // Update sort dropdown text based on mode
+    updateSortDropdownText(mode);
+}
+
+function updateSortDropdownText(mode) {
+    const sortDropdown = document.getElementById('sort-teams');
+    const successRateOption = sortDropdown.querySelector('option[value="success-rate"]');
+    
+    if (successRateOption) {
+        if (mode === 'classic') {
+            successRateOption.textContent = 'Sort by CHSH Value';
+        } else {
+            successRateOption.textContent = 'Sort by Success Rate';
+        }
+    }
 }
 
 // Track game mode toggle timeouts for cleanup
@@ -778,22 +794,22 @@ function updateActiveTeams(teams) {
         } else if (sortBy === 'date') {
             return new Date(b.created_at || 0) - new Date(a.created_at || 0);
         } else if (sortBy === 'success-rate') {
-            // Sort by success rate (highest first)
-            const getSuccessRate = (team) => {
+            // Sort by success rate in NEW mode, CHSH value in CLASSIC mode
+            const getSortValue = (team) => {
                 if (currentGameMode === 'new') {
                     return team.new_stats?.trace_average_statistic ?? -1;
                 } else {
-                    return team.classic_stats?.trace_average_statistic ?? -1;
+                    return team.classic_stats?.cross_term_combination_statistic ?? -1;
                 }
             };
-            const aRate = getSuccessRate(a);
-            const bRate = getSuccessRate(b);
+            const aValue = getSortValue(a);
+            const bValue = getSortValue(b);
             
-            // Sort descending (highest success rate first)
-            if (bRate !== aRate) {
-                return bRate - aRate;
+            // Sort descending (highest value first)
+            if (bValue !== aValue) {
+                return bValue - aValue;
             }
-            // If success rates are equal, sort by team name as tiebreaker
+            // If values are equal, sort by team name as tiebreaker
             return a.team_name.localeCompare(b.team_name);
         }
         return a.team_name.localeCompare(b.team_name);

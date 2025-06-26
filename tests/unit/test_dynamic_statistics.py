@@ -538,8 +538,8 @@ class TestDynamicStatistics:
         assert highest_team['new_stats']['trace_average_statistic'] == 0.95
         
     def test_dashboard_success_rate_sorting_classic_mode(self):
-        """Test that CLASSIC mode dashboard sorting by success rate uses trace_average_statistic."""
-        # Mock teams data for CLASSIC mode with different trace averages
+        """Test that CLASSIC mode dashboard sorting by success rate uses cross_term_combination_statistic (CHSH value)."""
+        # Mock teams data for CLASSIC mode with different CHSH values
         teams_data = [
             {
                 'team_id': 1,
@@ -547,10 +547,10 @@ class TestDynamicStatistics:
                 'is_active': True,
                 'min_stats_sig': True,
                 'classic_stats': {
-                    'trace_average_statistic': 0.3,  # Lower trace average
+                    'trace_average_statistic': 0.8,  # Higher trace average but lower CHSH
                     'trace_average_statistic_uncertainty': 0.05,
                     'same_item_balance': 0.7,
-                    'cross_term_combination_statistic': 2.5
+                    'cross_term_combination_statistic': 2.1  # Lower CHSH value
                 }
             },
             {
@@ -559,10 +559,10 @@ class TestDynamicStatistics:
                 'is_active': True,
                 'min_stats_sig': True,
                 'classic_stats': {
-                    'trace_average_statistic': 0.8,  # Higher trace average
+                    'trace_average_statistic': 0.3,  # Lower trace average but higher CHSH
                     'trace_average_statistic_uncertainty': 0.03,
                     'same_item_balance': 0.8,
-                    'cross_term_combination_statistic': 2.8
+                    'cross_term_combination_statistic': 2.8  # Highest CHSH value
                 }
             },
             {
@@ -574,20 +574,20 @@ class TestDynamicStatistics:
                     'trace_average_statistic': 0.5,  # Medium trace average
                     'trace_average_statistic_uncertainty': 0.04,
                     'same_item_balance': 0.6,
-                    'cross_term_combination_statistic': 2.3
+                    'cross_term_combination_statistic': 2.5  # Medium CHSH value
                 }
             }
         ]
         
-        # Sort by trace average (classic mode success rate)
-        def get_classic_success_rate(team):
+        # Sort by CHSH value (classic mode success rate sorting)
+        def get_classic_chsh_value(team):
             if team.get('classic_stats') and team['classic_stats']:
-                return team['classic_stats'].get('trace_average_statistic', -1)
+                return team['classic_stats'].get('cross_term_combination_statistic', -1)
             return -1
         
-        sorted_teams = sorted(teams_data, key=get_classic_success_rate, reverse=True)
+        sorted_teams = sorted(teams_data, key=get_classic_chsh_value, reverse=True)
         
-        # Verify sorting order: Team_B (0.8), Team_C (0.5), Team_A (0.3)
+        # Verify sorting order by CHSH value: Team_B (2.8), Team_C (2.5), Team_A (2.1)
         expected_order = ['Team_B', 'Team_C', 'Team_A']
         actual_order = [team['team_name'] for team in sorted_teams]
         
@@ -639,3 +639,77 @@ class TestDynamicStatistics:
         actual_order = [team['team_name'] for team in sorted_teams]
         
         assert actual_order == expected_order, f"Expected {expected_order}, got {actual_order}"
+
+    def test_dashboard_success_rate_sorting_mode_aware_behavior(self):
+        """Test that sorting behavior changes correctly between NEW and CLASSIC modes."""
+        # Mock teams data with both new and classic stats
+        teams_data = [
+            {
+                'team_id': 1,
+                'team_name': 'Team_Alpha',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.95,  # High success rate
+                },
+                'classic_stats': {
+                    'cross_term_combination_statistic': 2.1  # Low CHSH value
+                }
+            },
+            {
+                'team_id': 2,
+                'team_name': 'Team_Beta',
+                'is_active': True,
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.65,  # Low success rate
+                },
+                'classic_stats': {
+                    'cross_term_combination_statistic': 2.9  # High CHSH value
+                }
+            }
+        ]
+        
+        # Test NEW mode sorting (by success rate)
+        def get_new_mode_sort_value(team):
+            if team.get('new_stats') and team['new_stats']:
+                return team['new_stats'].get('trace_average_statistic', -1)
+            return -1
+        
+        new_mode_sorted = sorted(teams_data, key=get_new_mode_sort_value, reverse=True)
+        new_mode_order = [team['team_name'] for team in new_mode_sorted]
+        
+        # In NEW mode: Team_Alpha (0.95) should come before Team_Beta (0.65)
+        assert new_mode_order == ['Team_Alpha', 'Team_Beta'], f"NEW mode sort failed: {new_mode_order}"
+        
+        # Test CLASSIC mode sorting (by CHSH value)
+        def get_classic_mode_sort_value(team):
+            if team.get('classic_stats') and team['classic_stats']:
+                return team['classic_stats'].get('cross_term_combination_statistic', -1)
+            return -1
+        
+        classic_mode_sorted = sorted(teams_data, key=get_classic_mode_sort_value, reverse=True)
+        classic_mode_order = [team['team_name'] for team in classic_mode_sorted]
+        
+        # In CLASSIC mode: Team_Beta (2.9) should come before Team_Alpha (2.1)
+        assert classic_mode_order == ['Team_Beta', 'Team_Alpha'], f"CLASSIC mode sort failed: {classic_mode_order}"
+        
+        # Verify the sorting gives different results in different modes
+        assert new_mode_order != classic_mode_order, "Sorting should produce different results in different modes"
+    
+    def test_dashboard_dropdown_text_simulation(self):
+        """Test simulation of dropdown text changes between modes."""
+        # Simulate the dropdown text update logic
+        def get_dropdown_text(mode):
+            if mode == 'classic':
+                return 'Sort by CHSH Value'
+            else:
+                return 'Sort by Success Rate'
+        
+        # Test mode changes
+        assert get_dropdown_text('new') == 'Sort by Success Rate'
+        assert get_dropdown_text('classic') == 'Sort by CHSH Value'
+        
+        # Test case insensitivity and edge cases
+        assert get_dropdown_text('NEW') == 'Sort by Success Rate'  # Different case
+        assert get_dropdown_text('unknown') == 'Sort by Success Rate'  # Default to new mode
