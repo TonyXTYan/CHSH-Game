@@ -94,9 +94,7 @@ def test_toggle_game_mode_new_to_classic(mock_request, mock_state, mock_socketio
         mock_clear_cache.assert_called_once()
         
         # Verify all dashboard clients were notified
-        mock_socketio.emit.assert_called_with('game_mode_changed', {
-            'mode': 'classic'
-        }, to='test_dashboard_sid')
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'classic'})
         
         # Verify full dashboard update was triggered
         mock_full_update.assert_called_once()
@@ -122,9 +120,7 @@ def test_toggle_game_mode_classic_to_new(mock_request, mock_state, mock_socketio
         mock_clear_cache.assert_called_once()
         
         # Verify all dashboard clients were notified
-        mock_socketio.emit.assert_called_with('game_mode_changed', {
-            'mode': 'new'
-        }, to='test_dashboard_sid')
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'new'})
         
         # Verify full dashboard update was triggered
         mock_full_update.assert_called_once()
@@ -145,12 +141,7 @@ def test_toggle_game_mode_multiple_dashboard_clients(mock_request, mock_state, m
         assert mock_state.game_mode == 'classic'
         
         # Verify all clients were notified (one call per client)
-        expected_calls = [
-            call('game_mode_changed', {'mode': 'classic'}, to='test_dashboard_sid'),
-            call('game_mode_changed', {'mode': 'classic'}, to='client2'),
-            call('game_mode_changed', {'mode': 'classic'}, to='client3')
-        ]
-        mock_socketio.emit.assert_has_calls(expected_calls, any_order=True)
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'classic'})
 
 def test_toggle_game_mode_unauthorized_client(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that unauthorized clients cannot toggle game mode"""
@@ -190,9 +181,7 @@ def test_toggle_game_mode_no_dashboard_clients(mock_request, mock_state, mock_so
         assert mock_state.game_mode == 'new'
         
         # Verify only the current client was notified
-        mock_socketio.emit.assert_called_once_with('game_mode_changed', {
-            'mode': 'new'
-        }, to='test_dashboard_sid')
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'new'})
 
 def test_toggle_game_mode_error_handling(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test error handling during mode toggle"""
@@ -367,6 +356,10 @@ def test_toggle_game_mode_concurrent_requests(mock_request, mock_state, mock_soc
         assert mock_clear_cache.call_count == 3
         assert mock_full_update.call_count == 3
         assert mock_logger.info.call_count == 3
+        # Updated: expect three broadcast emits
+        assert mock_socketio.emit.call_count == 3
+        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'classic'})
+        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'new'})
 
 def test_toggle_game_mode_with_empty_dashboard_clients(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test mode toggle when dashboard_clients set is empty"""

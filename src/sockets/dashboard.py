@@ -85,11 +85,8 @@ def on_toggle_game_mode() -> None:
         # Clear caches to force recalculation with new mode
         clear_team_caches()
         
-        # Notify all dashboard clients about the mode change
-        for dashboard_sid in state.dashboard_clients:
-            socketio.emit('game_mode_changed', {
-                'mode': new_mode
-            }, to=dashboard_sid)  # type: ignore
+        # Notify all clients (players and dashboards) about the mode change
+        socketio.emit('game_mode_changed', {'mode': new_mode})
         
         # Trigger dashboard update to recalculate metrics immediately
         emit_dashboard_full_update()

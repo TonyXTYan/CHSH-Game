@@ -110,12 +110,7 @@ def test_multi_dashboard_mode_sync_immediate_response(mock_request, mock_state, 
         assert mock_state.game_mode == 'classic'
         
         # Verify all clients were notified simultaneously
-        expected_calls = [
-            call('game_mode_changed', {'mode': 'classic'}, to='test_dashboard_sid'),
-            call('game_mode_changed', {'mode': 'classic'}, to='client2'),
-            call('game_mode_changed', {'mode': 'classic'}, to='client3')
-        ]
-        mock_socketio.emit.assert_has_calls(expected_calls, any_order=True)
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'classic'})
         
         # Verify no timeouts or delays were introduced
         assert mock_logger.info.call_count == 1
@@ -172,28 +167,15 @@ def test_mode_toggle_with_disconnected_clients_cleanup(mock_request, mock_state,
     # Setup clients where some might be disconnected - include request SID for authorization
     mock_state.dashboard_clients = MockSet(['test_dashboard_sid', 'disconnected_client'])
     mock_state.game_mode = 'new'
-    
-    # Mock socket emit to fail for disconnected client
-    def mock_emit_side_effect(*args, **kwargs):
-        if kwargs.get('to') == 'disconnected_client':
-            raise Exception("Client disconnected")
-        return None
-    
-    mock_socketio.emit.side_effect = mock_emit_side_effect
-    
+    # Mock socket emit to do nothing (simulate disconnected client)
+    mock_socketio.emit.side_effect = lambda *args, **kwargs: None
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
-        
-        # Call should not fail despite client errors
         on_toggle_game_mode()
-        
-        # Mode should still change
         assert mock_state.game_mode == 'classic'
-        
-        # Error should be logged but not prevent operation
-        mock_logger.error.assert_called_once()
-
-
+        # No error should be logged or emitted for broadcast
+        mock_logger.error.assert_not_called()
+        mock_emit.assert_not_called()
 
 def test_mode_toggle_maintains_other_state_integrity(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that mode toggle doesn't interfere with other game state"""
@@ -221,24 +203,17 @@ def test_mode_toggle_maintains_other_state_integrity(mock_request, mock_state, m
 def test_mode_toggle_performance_under_load(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test mode toggle performance with many dashboard clients"""
     # Setup many clients - include request SID for authorization
-    many_clients = ['test_dashboard_sid'] + [f'client_{i}' for i in range(99)]
+    many_clients = ['test_dashboard_sid'] + [f'client_{i}' for i in range(9999)]
     mock_state.dashboard_clients = MockSet(many_clients)
     mock_state.game_mode = 'new'
-    
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
-        
         start_time = time.time()
         on_toggle_game_mode()
         end_time = time.time()
-        
-        # Should complete quickly even with many clients
-        assert (end_time - start_time) < 1.0  # Should complete in under 1 second
-        
-        # All clients should be notified
-        assert mock_socketio.emit.call_count == 100
-        
-        # Mode should change correctly
+        assert (end_time - start_time) < 1.0
+        # Updated: expect a single broadcast emit
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'classic'})
         assert mock_state.game_mode == 'classic'
 
 def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
@@ -271,4 +246,9 @@ def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_e
         # Each operation should have called cache clear
         assert second_call_count == first_call_count * 2
         assert mock_clear_cache.call_count == 3
+
+        # Updated: expect three broadcast emits
+        assert mock_socketio.emit.call_count == 3
+        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'classic'})
+        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'new'})
 
