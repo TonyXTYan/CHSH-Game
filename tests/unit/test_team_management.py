@@ -131,7 +131,8 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
-                'player_slot': 1  # Player reactivating is assigned to slot 1
+                'player_slot': 1,  # Player reactivating is assigned to slot 1
+                'is_reactivated': True  # Flag to indicate this was a reactivation
             }
         )
         
