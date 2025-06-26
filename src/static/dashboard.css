@@ -342,6 +342,51 @@ th {
     padding-bottom: 8px;
 }
 
+/* Game Management Controls */
+.game-management-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+.reset-description {
+    color: #6c757d;
+    font-size: 0.95em;
+    line-height: 1.4;
+}
+
+.reset-btn {
+    background-color: #dc3545;
+    color: white;
+    align-self: flex-start;
+}
+
+.reset-btn:hover {
+    background-color: #c82333;
+    transform: translateY(-1px);
+}
+
+.reset-btn.confirm-reset {
+    background-color: #ffc107;
+    color: #212529;
+    border: 2px solid #FFC107;
+}
+
+.reset-btn.confirm-reset:hover {
+    background-color: #e0a800;
+}
+
+.game-started {
+    background-color: #6c757d;
+    color: white;
+    cursor: not-allowed;
+}
+
+.game-started:hover {
+    background-color: #6c757d;
+    transform: none;
+}
+
 /* Game Mode Controls */
 .game-mode-controls {
     display: flex;
@@ -395,6 +440,12 @@ th {
 .mode-toggle-btn:hover {
     background-color: #5a2d91;
     transform: translateY(-1px);
+}
+
+.mode-toggle-btn:disabled {
+    background-color: #6c757d;
+    cursor: not-allowed;
+    transform: none;
 }
 
 .mode-description {
