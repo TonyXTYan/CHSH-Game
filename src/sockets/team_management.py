@@ -275,13 +275,10 @@ def on_join_team(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'You are already in this team.'})  # type: ignore
             return
 
-        # Check if this is a reconnection scenario
-        is_reconnection = _can_rejoin_team(team_name)
-        if is_reconnection:
-            logger.info(f"Player {sid} reconnecting to team {team_name}")
-            # Clear the disconnection tracking since player is reconnecting
-            _clear_disconnected_player_tracking(team_name)
-
+        # Always treat joining a waiting_pair team as a normal join
+        # Clear any existing disconnection tracking when team becomes full
+        was_tracked_team = team_name in state.disconnected_players
+        
         team_info['players'].append(sid)
         state.player_to_team[sid] = team_name
         join_room(team_name, sid=sid)  # type: ignore
@@ -304,17 +301,20 @@ def on_join_team(data: Dict[str, Any]) -> None:
         
         if team_is_now_full:
             team_info['status'] = 'active' # Internal state status
+            # Clear disconnection tracking when team becomes full
+            if was_tracked_team:
+                _clear_disconnected_player_tracking(team_name)
         else:
             team_info['status'] = 'waiting_pair' # Internal state status
 
-        # Notify the player who just joined
-        join_message = f'You reconnected to team {team_name}.' if is_reconnection else f'You joined team {team_name}.'
+        # Notify the player who just joined - always treat as normal join
+        join_message = f'You reconnected to team {team_name}.' if was_tracked_team else f'You joined team {team_name}.'
         emit('team_joined', {
             'team_name': team_name,
             'message': join_message,
             'game_started': state.game_started,
             'team_status': current_team_status_for_clients,
-            'is_reconnection': is_reconnection
+            'is_reconnection': was_tracked_team
         }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
@@ -427,8 +427,9 @@ def on_get_reconnectable_teams(data: Dict[str, Any]) -> None:
         
         # Find teams that are waiting for a player and have a disconnected player tracked
         for team_name, team_info in state.active_teams.items():
-            if (_can_rejoin_team(team_name) and 
-                team_name in state.disconnected_players):
+            if (team_name in state.disconnected_players and 
+                len(team_info['players']) == 1 and 
+                team_info.get('status') == 'waiting_pair'):
                 disconnected_info = state.disconnected_players[team_name]
                 reconnectable_teams.append({
                     'team_name': team_name,

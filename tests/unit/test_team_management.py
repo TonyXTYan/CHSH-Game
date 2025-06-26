@@ -607,13 +607,13 @@ def test_track_disconnected_player(mock_request_context, full_team):
     assert 'full_team' not in state.disconnected_players
 
 def test_can_rejoin_team(mock_request_context, active_team):
-    """Test checking if a player can rejoin a team"""
-    from src.sockets.team_management import _can_rejoin_team, _track_disconnected_player
+    """Test checking if a team has disconnection tracking"""
+    from src.sockets.team_management import _track_disconnected_player
     
     team_info = state.active_teams['active_team']
     
-    # Initially can't rejoin (no tracking)
-    assert not _can_rejoin_team('active_team')
+    # Initially no tracking
+    assert 'active_team' not in state.disconnected_players
     
     # Add second player and then track disconnect
     team_info['players'].append('player2_sid')
@@ -621,11 +621,10 @@ def test_can_rejoin_team(mock_request_context, active_team):
     team_info['players'].remove('player2_sid')
     team_info['status'] = 'waiting_pair'
     
-    # Now should be able to rejoin
-    assert _can_rejoin_team('active_team')
-    
-    # Test nonexistent team
-    assert not _can_rejoin_team('nonexistent_team')
+    # Now team should have disconnection tracking
+    assert 'active_team' in state.disconnected_players
+    assert len(team_info['players']) == 1
+    assert team_info.get('status') == 'waiting_pair'
 
 def test_disconnect_from_full_team_tracking(mock_request_context, full_team):
     """Test that disconnection from full team properly tracks the player"""
@@ -659,7 +658,7 @@ def test_disconnect_from_full_team_tracking(mock_request_context, full_team):
         )
 
 def test_reconnection_join_team(mock_request_context, active_team):
-    """Test successful reconnection via join_team"""
+    """Test player joining a team with disconnection tracking (appears as reconnection)"""
     # Setup: simulate a disconnected player scenario
     team_info = state.active_teams['active_team']
     team_info['players'].append('player2_sid')  # Make team full
@@ -670,7 +669,7 @@ def test_reconnection_join_team(mock_request_context, active_team):
     team_info['players'].remove('player2_sid')
     team_info['status'] = 'waiting_pair'
     
-    # New player tries to join (simulating reconnection)
+    # New player tries to join (treated as normal join but with reconnection message)
     request.sid = 'new_session_id'
     
     with patch('src.sockets.team_management.emit') as mock_emit, \
@@ -682,7 +681,7 @@ def test_reconnection_join_team(mock_request_context, active_team):
         from src.sockets.team_management import on_join_team
         on_join_team({'team_name': 'active_team'})
         
-        # Verify reconnection message
+        # Verify reconnection message (because team had disconnection tracking)
         mock_emit.assert_any_call(
             'team_joined',
             {
@@ -708,7 +707,7 @@ def test_reconnection_join_team(mock_request_context, active_team):
             to='active_team'
         )
         
-        # Verify disconnection tracking is cleared
+        # Verify disconnection tracking is cleared when team becomes full
         assert 'active_team' not in state.disconnected_players
 
 def test_get_reconnectable_teams(mock_request_context, active_team):
