@@ -376,16 +376,7 @@ th {
     background-color: #e0a800;
 }
 
-.game-started {
-    background-color: #6c757d;
-    color: white;
-    cursor: not-allowed;
-}
 
-.game-started:hover {
-    background-color: #6c757d;
-    transform: none;
-}
 
 /* Game Mode Controls */
 .game-mode-controls {

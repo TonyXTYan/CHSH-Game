@@ -159,6 +159,7 @@ function formatStatWithUncertainty(magnitude, uncertainty, precision = 2) {
 function resetButtonToInitialState(btn) {
     if (!btn) return;
     console.log(`Resetting button from ${btn.textContent} to Start Game`);
+    btn.style.display = "inline-block";
     btn.disabled = false;
     btn.textContent = "Start Game";
     btn.className = "";  // Remove all classes to get default blue styling
@@ -274,11 +275,9 @@ window.addEventListener('load', () => {
     const gameControlText = document.getElementById("game-control-text");
 
     if (gameStarted) {
-        // Start button shows game started state (disabled)
+        // Hide start button when game is started
         if (startBtn) {
-            startBtn.disabled = true;
-            startBtn.textContent = "Game Started";
-            startBtn.className = "game-started";
+            startBtn.style.display = "none";
         }
         
         // Show reset button in advanced controls
@@ -300,7 +299,7 @@ window.addEventListener('load', () => {
     } else {
         // If game not started, ensure pause button is hidden and start button is in initial state
         if (startBtn) {
-             resetButtonToInitialState(startBtn); // Resets text, class, onclick
+             resetButtonToInitialState(startBtn); // Resets text, class, onclick, and shows button
         }
         if (resetBtn) {
             resetBtn.style.display = "none";
@@ -368,10 +367,8 @@ socket.on("game_started", () => {
     gameControlText.textContent = "Game in progress";
     document.getElementById("pause-game-btn").style.display = "inline-block";
     
-    // Keep start button as start button (no longer changes to reset)
-    startBtn.disabled = true;
-    startBtn.textContent = "Game Started";
-    startBtn.className = "game-started";
+    // Hide start button completely when game is started
+    startBtn.style.display = "none";
     
     // Show reset button in advanced controls
     if (resetBtn) {
@@ -400,7 +397,8 @@ socket.on("game_reset_complete", () => {
     
     cleanupResetConfirmation(resetBtn); // Crucial to clear any confirmation state
     
-    // Reset start button to initial state
+    // Show and reset start button to initial state
+    startBtn.style.display = "inline-block";
     startBtn.disabled = false;
     startBtn.textContent = "Start Game";
     startBtn.className = "";
@@ -601,11 +599,9 @@ socket.on("dashboard_update", (data) => {
     
     if (!confirmingStop) {
         if (data.game_state) {
-            if (data.game_state.started && startBtn.textContent === "Start Game") {
+            if (data.game_state.started && startBtn.style.display !== "none") {
                 console.log("Updating to game started state");
-                startBtn.disabled = true;
-                startBtn.textContent = "Game Started";
-                startBtn.className = "game-started";
+                startBtn.style.display = "none";
                 
                 // Show reset button
                 if (resetBtn) {
@@ -614,7 +610,7 @@ socket.on("dashboard_update", (data) => {
                     resetBtn.textContent = "Reset Game Stats";
                     resetBtn.className = "control-btn reset-btn";
                 }
-            } else if (!data.game_state.started && startBtn.textContent === "Game Started") {
+            } else if (!data.game_state.started && startBtn.style.display === "none") {
                 console.log("Resetting button to Start Game state");
                 resetButtonToInitialState(startBtn);
                 
