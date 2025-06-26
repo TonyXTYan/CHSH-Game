@@ -754,3 +754,13 @@ footer {
         transform: rotate(-360deg);
     }
 }
+
+/* New mode column visibility - hide extra columns when only showing success rate */
+.new-mode #header-stat2,
+.new-mode #header-stat3,
+.new-mode #header-stat4,
+.new-mode #active-teams-table tbody td:nth-child(6),
+.new-mode #active-teams-table tbody td:nth-child(7),
+.new-mode #active-teams-table tbody td:nth-child(8) {
+    display: none !important;
+}
