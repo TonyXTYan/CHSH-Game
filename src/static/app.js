@@ -26,11 +26,7 @@ const falseBtn = document.getElementById('falseBtn');
 const waitingMessage = document.getElementById('waitingMessage');
 const sessionInfo = document.getElementById('sessionInfo');
 const connectionStatus = document.getElementById('connectionStatus');
-const playerInfoSection = document.getElementById('playerInfoSection');
-const playerPositionDisplay = document.getElementById('playerPositionDisplay');
-const playerPositionText = document.getElementById('playerPositionText');
-const gameModeDisplay = document.getElementById('gameModeDisplay');
-const gameModeText = document.getElementById('gameModeText');
+const playerResponsibilityMessage = document.getElementById('playerResponsibilityMessage');
 
 // Connection status handling
 function updateConnectionStatus(status) {
@@ -67,38 +63,59 @@ function showStatus(message, type = 'info') {
     }
 }
 
-// Update player position display
+// Update player position display in game header and responsibility message
 function updatePlayerPosition(position) {
     playerPosition = position;
-    if (position) {
-        playerPositionText.textContent = `Player ${position}`;
-        playerPositionDisplay.className = 'player-position player-' + position;
+    updateGameHeader();
+    updatePlayerResponsibilityMessage();
+}
+
+// Update game mode (only log to console, don't show in UI)
+function updateGameMode(mode) {
+    currentGameMode = mode;
+    console.log('Game mode:', mode);
+    updatePlayerResponsibilityMessage();
+}
+
+// Update the game header to show team name and player number
+function updateGameHeader() {
+    if (currentTeam && playerPosition) {
+        gameHeader.textContent = `Team: ${currentTeam} - Player ${playerPosition}`;
+    } else if (currentTeam) {
+        gameHeader.textContent = `Team: ${currentTeam}`;
     } else {
-        playerPositionText.textContent = 'Player Position: Unknown';
-        playerPositionDisplay.className = 'player-position';
+        gameHeader.textContent = 'CHSH Game';
     }
 }
 
-// Update game mode display
-function updateGameMode(mode) {
-    currentGameMode = mode;
-    const modeCapitalized = mode.charAt(0).toUpperCase() + mode.slice(1);
-    gameModeText.textContent = `Mode: ${modeCapitalized}`;
-    gameModeDisplay.className = 'game-mode ' + mode;
-    
-    // Show/hide player info section based on relevance
-    updatePlayerInfoVisibility();
-}
+// Update player responsibility message based on mode and position
+function updatePlayerResponsibilityMessage() {
+    if (!currentTeam || !playerPosition) {
+        playerResponsibilityMessage.style.display = 'none';
+        return;
+    }
 
-// Update visibility of player info section based on game mode and state
-function updatePlayerInfoVisibility() {
-    if (currentTeam && questionSection.style.display !== 'none') {
-        // Show player info when in question section
-        // More relevant in new mode, but show in both modes
-        const shouldShow = currentGameMode === 'new' || playerPosition !== null;
-        playerInfoSection.style.display = shouldShow ? 'flex' : 'none';
+    let message = '';
+    if (currentGameMode === 'new') {
+        if (playerPosition === 1) {
+            message = 'You are responsible for answering A and B questions';
+        } else if (playerPosition === 2) {
+            message = 'You are responsible for answering X and Y questions';
+        }
+    } else if (currentGameMode === 'classic') {
+        message = 'You will need to answer questions from all categories (A, B, X, Y)';
+    }
+
+    if (message) {
+        playerResponsibilityMessage.textContent = message;
+        // Only show the message when in the question section (after team is paired up)
+        if (currentTeamStatus === 'full' || currentTeamStatus === 'active') {
+            playerResponsibilityMessage.style.display = 'block';
+        } else {
+            playerResponsibilityMessage.style.display = 'none';
+        }
     } else {
-        playerInfoSection.style.display = 'none';
+        playerResponsibilityMessage.style.display = 'none';
     }
 }
 
@@ -112,7 +129,6 @@ function resetToInitialView() {
     playerPosition = null; // Reset player position
     currentGameMode = 'new'; // Reset to new mode
     localStorage.removeItem('quizSessionData');
-    gameHeader.textContent = 'CHSH Game';
     updatePlayerPosition(null);
     updateGameMode('new');
     updateGameState(); // This will show team creation/joining
@@ -141,7 +157,6 @@ function updateGameState(newGameStarted = null, isReset = false) {
     if (!currentTeam) {
         teamSection.style.display = 'block';
         questionSection.style.display = 'none';
-        updatePlayerInfoVisibility();
         return;
     }
     
@@ -201,9 +216,6 @@ function updateGameState(newGameStarted = null, isReset = false) {
         trueBtn.disabled = false;
         falseBtn.disabled = false;
     }
-    
-    // Update player info visibility after all display updates
-    updatePlayerInfoVisibility();
 }
 
 // Reset all game controls to their initial state
@@ -433,9 +445,6 @@ const callbacks = {
         document.getElementById('joinTeamSection').style.display = 'none';
         document.getElementById('createTeamSection').style.display = 'none';
         
-        // Update header with team name
-        gameHeader.textContent = `Team: ${data.team_name}`;
-        
         showStatus(data.message, 'success');
         updateGameState();
     },
@@ -461,7 +470,6 @@ const callbacks = {
             updateGameMode(data.game_mode);
         }
 
-        gameHeader.textContent = `Team: ${data.team_name}`;
         showStatus(data.message, 'success');
         
         // The 'team_status_update' event will follow and handle UI based on whether team is full
@@ -496,6 +504,7 @@ const callbacks = {
         if (currentTeam === data.team_name) { // Ensure this update is for the current player's team
             currentTeamStatus = data.status; // Update tracked team status
             updateTeamStatus(data.status); // Update the "Team Paired Up!" or "Waiting for Player..." header
+            updatePlayerResponsibilityMessage(); // Update responsibility message visibility
 
             if (data.status === 'full') {
                 if (gameStarted) {
@@ -538,8 +547,6 @@ const callbacks = {
         currentTeamStatus = null; // Reset team status
         playerPosition = null; // Reset player position
         localStorage.removeItem('quizSessionData');
-        // Reset header
-        gameHeader.textContent = 'CHSH Game';
         updatePlayerPosition(null);
         showStatus(data.message, 'error');
         updateGameState();
@@ -552,8 +559,6 @@ const callbacks = {
         currentTeamStatus = null; // Reset team status
         playerPosition = null; // Reset player position
         localStorage.removeItem('quizSessionData');
-        // Reset header
-        gameHeader.textContent = 'CHSH Game';
         updatePlayerPosition(null);
         showStatus(data.message, 'success');
         updateGameState();
@@ -601,3 +606,6 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Initialize UI
 updateGameState();
+
+// Log initial mode on page load
+console.log('Page loaded - current mode:', currentGameMode);
