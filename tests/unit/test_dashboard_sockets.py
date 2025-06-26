@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock, call
 from src.sockets.dashboard import (
     on_pause_game, compute_correlation_matrix, on_dashboard_join,
     on_start_game, on_restart_game, get_all_teams, emit_dashboard_full_update,
-    on_keep_alive, on_disconnect, emit_dashboard_team_update, clear_team_caches
+    on_keep_alive, handle_dashboard_disconnect, emit_dashboard_team_update, clear_team_caches
 )
 # Mock app for test environment
 try:
@@ -408,16 +408,16 @@ def test_on_keep_alive(mock_request, mock_state):
         # Verify timestamp was updated (mock_time from mock_request fixture returns 12345.0)
         assert dashboard_last_activity['test_dashboard_sid'] == 12345.0
 
-def test_on_disconnect(mock_request, mock_state):
-    """Test disconnect handler"""
-    from src.sockets.dashboard import on_disconnect, dashboard_last_activity, dashboard_teams_streaming
+def test_handle_dashboard_disconnect(mock_request, mock_state):
+    """Test dashboard disconnect handler"""
+    from src.sockets.dashboard import handle_dashboard_disconnect, dashboard_last_activity, dashboard_teams_streaming
     
     # Setup initial state - client should be in dashboard_clients initially
     assert 'test_dashboard_sid' in mock_state.dashboard_clients
     dashboard_last_activity['test_dashboard_sid'] = 12345
     dashboard_teams_streaming['test_dashboard_sid'] = True
     
-    on_disconnect()
+    handle_dashboard_disconnect('test_dashboard_sid')
     
     # Verify client was removed from all tracking
     assert 'test_dashboard_sid' not in mock_state.dashboard_clients
@@ -909,7 +909,7 @@ def test_emit_dashboard_team_update_no_streaming_clients(mock_state, mock_socket
 
 def test_disconnect_cleans_up_teams_streaming(mock_request, mock_state):
     """Test that disconnect handler cleans up teams streaming preferences"""
-    from src.sockets.dashboard import on_disconnect, dashboard_teams_streaming, dashboard_last_activity
+    from src.sockets.dashboard import handle_dashboard_disconnect, dashboard_teams_streaming, dashboard_last_activity
     
     # Setup client state - client should be in dashboard_clients initially
     assert 'test_dashboard_sid' in mock_state.dashboard_clients
@@ -917,7 +917,7 @@ def test_disconnect_cleans_up_teams_streaming(mock_request, mock_state):
     dashboard_teams_streaming['test_dashboard_sid'] = True
     
     # Disconnect
-    on_disconnect()
+    handle_dashboard_disconnect('test_dashboard_sid')
     
     # Verify all client data was cleaned up
     assert 'test_dashboard_sid' not in mock_state.dashboard_clients
