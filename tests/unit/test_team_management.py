@@ -2,7 +2,7 @@ import pytest
 from unittest.mock import patch, ANY, MagicMock
 from flask import request
 from src.config import app, socketio, db
-from src.models.quiz_models import Teams
+from src.models.quiz_models import Teams, PairQuestionRounds
 from src.state import state
 import warnings
 from typing import Dict, Any
@@ -131,7 +131,8 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
-                'player_slot': 1  # Player reactivating is assigned to slot 1
+                'player_slot': 1,  # Player reactivating is assigned to slot 1
+                'is_reactivated': True  # Flag to indicate this was a reactivation
             }
         )
         
@@ -286,6 +287,177 @@ def test_create_team_duplicate_name(mock_request_context, active_team):
             'error',
             {'message': 'Team name already exists or is active'}
         )
+
+def test_create_team_reactivates_inactive_team(mock_request_context, inactive_team):
+    """Test team creation automatically reactivates inactive team with same name"""
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'test_team'})
+        
+        # Verify team was reactivated in database
+        team = Teams.query.filter_by(team_id=inactive_team.team_id).first()
+        assert team.is_active == True
+        assert team.player1_session_id == 'test_sid'
+        
+        # Verify state updates
+        assert "test_team" in state.active_teams
+        assert state.active_teams["test_team"]["team_id"] == inactive_team.team_id
+        assert 'test_sid' in state.active_teams["test_team"]["players"]
+        assert state.active_teams["test_team"]["status"] == "waiting_pair"
+        assert state.player_to_team['test_sid'] == "test_team"
+        
+        # Verify event emissions include reactivation flag
+        mock_emit.assert_any_call(
+            'team_created',
+            {
+                'team_name': 'test_team',
+                'team_id': inactive_team.team_id,
+                'message': 'Team reactivated successfully. Waiting for another player.',
+                'game_started': state.game_started,
+                'game_mode': state.game_mode,
+                'player_slot': 1,
+                'is_reactivated': True  # This flag indicates automatic reactivation
+            }
+        )
+        
+        mock_socketio_emit.assert_any_call(
+            'teams_updated',
+            {
+                'teams': ANY,
+                'game_started': state.game_started
+            }
+        )
+        
+        # Verify dashboard update was called
+        mock_dashboard_update.assert_called_once()
+
+def test_create_team_reactivation_failure_fallback(mock_request_context, inactive_team):
+    """Test team creation falls back to error when reactivation fails"""
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management._reactivate_team_internal') as mock_reactivate:
+        
+        # Mock reactivation failure
+        mock_reactivate.return_value = False
+        
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'test_team'})
+        
+        # Should attempt reactivation
+        mock_reactivate.assert_called_once_with('test_team', 'test_sid')
+        
+        # Should emit error when reactivation fails
+        mock_emit.assert_called_once_with(
+            'error',
+            {'message': 'An error occurred while reactivating the team'}
+        )
+
+def test_reactivate_team_internal_success(mock_request_context, inactive_team):
+    """Test _reactivate_team_internal helper function success"""
+    from src.sockets.team_management import _reactivate_team_internal
+    
+    with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_caches, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        # Initial state check
+        assert "test_team" not in state.active_teams
+        
+        # Call the internal function
+        result = _reactivate_team_internal('test_team', 'test_sid')
+        
+        # Should return True for success
+        assert result == True
+        
+        # Verify team was updated in database
+        team = Teams.query.filter_by(team_id=inactive_team.team_id).first()
+        assert team.is_active == True
+        assert team.player1_session_id == 'test_sid'
+        
+        # Verify state updates
+        assert "test_team" in state.active_teams
+        assert state.active_teams["test_team"]["team_id"] == inactive_team.team_id
+        assert 'test_sid' in state.active_teams["test_team"]["players"]
+        assert state.active_teams["test_team"]["status"] == "waiting_pair"
+        assert state.player_to_team['test_sid'] == "test_team"
+        assert state.team_id_to_name[inactive_team.team_id] == "test_team"
+        
+        # Verify cache clearing and room joining
+        mock_clear_caches.assert_called_once()
+        mock_join_room.assert_called_once_with('test_team', sid='test_sid')
+
+def test_reactivate_team_internal_team_not_found(mock_request_context):
+    """Test _reactivate_team_internal returns False when team doesn't exist"""
+    from src.sockets.team_management import _reactivate_team_internal
+    
+    result = _reactivate_team_internal('nonexistent_team', 'test_sid')
+    assert result == False
+
+def test_reactivate_team_internal_name_conflict(mock_request_context, inactive_team):
+    """Test _reactivate_team_internal returns False when active team exists with same name"""
+    from src.sockets.team_management import _reactivate_team_internal
+    
+    # Set up conflicting active team
+    state.active_teams['test_team'] = {
+        'players': ['other_sid'],
+        'team_id': 999,
+        'status': 'waiting_pair'
+    }
+    
+    result = _reactivate_team_internal('test_team', 'test_sid')
+    assert result == False
+
+def test_reactivate_team_internal_preserves_round_history(mock_request_context, inactive_team):
+    """Test _reactivate_team_internal preserves previous round history"""
+    from src.sockets.team_management import _reactivate_team_internal
+    from src.models.quiz_models import ItemEnum
+    
+    # Add some round history to the inactive team
+    round1 = PairQuestionRounds(
+        team_id=inactive_team.team_id,
+        round_number_for_team=1,
+        player1_item=ItemEnum.A,
+        player2_item=ItemEnum.B
+    )
+    round2 = PairQuestionRounds(
+        team_id=inactive_team.team_id,
+        round_number_for_team=2,
+        player1_item=ItemEnum.X,
+        player2_item=ItemEnum.Y
+    )
+    db.session.add(round1)
+    db.session.add(round2)
+    db.session.commit()
+    
+    with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_caches, \
+         patch('src.sockets.team_management.join_room') as mock_join_room:
+        
+        result = _reactivate_team_internal('test_team', 'test_sid')
+        
+        assert result == True
+        
+        # Verify round history is preserved in state
+        assert state.active_teams["test_team"]["current_round_number"] == 2
+        
+        # Cleanup
+        db.session.delete(round1)
+        db.session.delete(round2)
+        db.session.commit()
+
+def test_reactivate_team_internal_exception_handling(mock_request_context, inactive_team):
+    """Test _reactivate_team_internal handles exceptions gracefully"""
+    from src.sockets.team_management import _reactivate_team_internal
+    
+    with patch('src.sockets.team_management.db.session.commit') as mock_commit:
+        # Mock a database error
+        mock_commit.side_effect = Exception("Database error")
+        
+        result = _reactivate_team_internal('test_team', 'test_sid')
+        
+        # Should return False on exception
+        assert result == False
 
 def test_join_team_success(mock_request_context, active_team):
     """Test successful team join"""

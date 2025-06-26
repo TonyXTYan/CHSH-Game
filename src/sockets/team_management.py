@@ -66,6 +66,53 @@ def _can_rejoin_team(team_name: str) -> bool:
     # Team must be waiting for a player and have exactly one player
     return len(team_info['players']) == 1 and team_info.get('status') == 'waiting_pair'
 
+def _reactivate_team_internal(team_name: str, sid: str) -> bool:
+    """
+    Internal helper to reactivate an inactive team.
+    Returns True if successful, False otherwise.
+    """
+    try:
+        # Find the inactive team in the database
+        team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+        if not team:
+            return False
+            
+        # Check if team name would conflict with any active team
+        if team_name in state.active_teams:
+            return False
+            
+        # Reactivate the team
+        team.is_active = True
+        team.player1_session_id = sid
+        db.session.commit()
+        # Clear caches after team state change
+        _, _, clear_team_caches, _ = _import_dashboard_functions()
+        clear_team_caches()
+
+        # Query for the highest round number previously played by this team
+        max_round_obj = db.session.query(func.max(PairQuestionRounds.round_number_for_team)) \
+                                    .filter_by(team_id=team.team_id).scalar()
+        last_played_round_number = max_round_obj if max_round_obj is not None else 0
+        
+        # Set up team state
+        state.active_teams[team_name] = {
+            'players': [sid],
+            'team_id': team.team_id,
+            'current_round_number': last_played_round_number,
+            'combo_tracker': {},
+            'answered_current_round': {},
+            'status': 'waiting_pair'
+        }
+        state.player_to_team[sid] = team_name
+        state.team_id_to_name[team.team_id] = team_name
+        
+        join_room(team_name, sid=sid)  # type: ignore
+        
+        return True
+    except Exception as e:
+        logger.error(f"Error in _reactivate_team_internal: {str(e)}", exc_info=True)
+        return False
+
 def _import_dashboard_functions():
     """Import dashboard functions to avoid circular import"""
     from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect
@@ -229,10 +276,42 @@ def on_create_team(data: Dict[str, Any]) -> None:
         if not team_name:
             emit('error', {'message': 'Team name is required'})  # type: ignore
             return
+            
+        # Check if team name already exists as active team
         if team_name in state.active_teams or Teams.query.filter_by(team_name=team_name, is_active=True).first():
             emit('error', {'message': 'Team name already exists or is active'})  # type: ignore
             return
 
+        # Check if team name exists as inactive team - if so, reactivate it
+        inactive_team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+        if inactive_team:
+            # Attempt to reactivate the existing inactive team
+            if _reactivate_team_internal(team_name, sid):
+                team_info = state.active_teams[team_name]
+                emit('team_created', {
+                    'team_name': team_name,
+                    'team_id': team_info['team_id'],
+                    'message': 'Team reactivated successfully. Waiting for another player.',
+                    'game_started': state.game_started,
+                    'game_mode': state.game_mode,
+                    'player_slot': 1,
+                    'is_reactivated': True  # Flag to indicate this was a reactivation
+                })  # type: ignore
+                emit('team_status_update', {'status': 'created'}, to=request.sid)  # type: ignore
+                
+                socketio.emit('teams_updated', {
+                    'teams': get_available_teams_list(),
+                    'game_started': state.game_started
+                })  # type: ignore
+                
+                emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
+                emit_dashboard_team_update()
+                return
+            else:
+                emit('error', {'message': 'An error occurred while reactivating the team'})  # type: ignore
+                return
+
+        # Create new team if no existing team found
         new_team_db = Teams(
             team_name=team_name,
             player1_session_id=sid
@@ -387,52 +466,29 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'Team name is required'})  # type: ignore
             return
             
-        # Find the inactive team in the database
-        with app.app_context():
-            team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
-            if not team:
-                emit('error', {'message': 'Team not found or is already active'})  # type: ignore
-                return
-                
-            # Check if team name would conflict with any active team
-            if team_name in state.active_teams:
-                emit('error', {'message': 'An active team with this name already exists'})  # type: ignore
-                return
-                
-            # Reactivate the team
-            team.is_active = True
-            team.player1_session_id = sid
-            db.session.commit()
-            # Clear caches after team state change
-            _, _, clear_team_caches, _ = _import_dashboard_functions()
-            clear_team_caches()
-
-            # Query for the highest round number previously played by this team
-            max_round_obj = db.session.query(func.max(PairQuestionRounds.round_number_for_team)) \
-                                        .filter_by(team_id=team.team_id).scalar()
-            last_played_round_number = max_round_obj if max_round_obj is not None else 0
+        # Check if team exists as inactive
+        inactive_team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+        if not inactive_team:
+            emit('error', {'message': 'Team not found or is already active'})  # type: ignore
+            return
             
-            # Set up team state
-            state.active_teams[team_name] = {
-                'players': [sid],
-                'team_id': team.team_id,
-                'current_round_number': last_played_round_number,
-                'combo_tracker': {}, # Consider if this needs reloading too for long-term game fairness
-                'answered_current_round': {},
-                'status': 'waiting_pair'
-            }
-            state.player_to_team[sid] = team_name
-            state.team_id_to_name[team.team_id] = team_name
+        # Check if team name would conflict with any active team
+        if team_name in state.active_teams:
+            emit('error', {'message': 'An active team with this name already exists'})  # type: ignore
+            return
             
-            join_room(team_name, sid=sid)  # type: ignore
+        # Use the internal reactivation helper
+        if _reactivate_team_internal(team_name, sid):
+            team_info = state.active_teams[team_name]
             
             emit('team_created', { # Client treats this like a new team creation
                 'team_name': team_name,
-                'team_id': team.team_id,
+                'team_id': team_info['team_id'],
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
-                'player_slot': 1  # Player reactivating team is assigned to player1_session_id (slot 1)
+                'player_slot': 1,  # Player reactivating team is assigned to player1_session_id (slot 1)
+                'is_reactivated': True  # Flag to indicate this was a reactivation
             })  # type: ignore
             
             socketio.emit('teams_updated', {
@@ -442,6 +498,8 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
             
             emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
             emit_dashboard_team_update()
+        else:
+            emit('error', {'message': 'An error occurred while reactivating the team'})  # type: ignore
             
     except Exception as e:
         logger.error(f"Error in on_reactivate_team: {str(e)}", exc_info=True)
