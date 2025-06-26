@@ -47,11 +47,23 @@ function updateTableHeaders(mode) {
         header2.textContent = 'Balance';
         header3.textContent = 'Balanced ⏐⟨Tr⟩⏐ 🎯';
         header4.textContent = 'CHSH Value 🏆';
+        
+        // Show all columns in classic mode
+        header1.style.display = '';
+        header2.style.display = '';
+        header3.style.display = '';
+        header4.style.display = '';
     } else {
-        header1.textContent = 'Success Rate %';
+        header1.textContent = 'Success Rate % 🏆';
         header2.textContent = 'Response Balance';
         header3.textContent = 'Balanced Success 🎯';
         header4.textContent = 'Norm. Score 🏆';
+        
+        // In NEW mode, only show success rate column
+        header1.style.display = '';
+        header2.style.display = 'none';
+        header3.style.display = 'none';
+        header4.style.display = 'none';
     }
 }
 
@@ -60,6 +72,10 @@ function updateGameModeDisplay(mode) {
     const modeIndicator = document.getElementById('current-game-mode');
     const toggleBtn = document.getElementById('toggle-mode-btn');
     const modeDescription = document.getElementById('mode-description-text');
+    
+    // Add CSS class to body to control column visibility
+    document.body.className = document.body.className.replace(/\b(classic|new)-mode\b/g, '');
+    document.body.classList.add(`${mode}-mode`);
     
     if (modeIndicator) {
         modeIndicator.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
@@ -779,28 +795,20 @@ function updateActiveTeams(teams) {
 
     eligibleTeams.forEach(team => {
         if (currentGameMode === 'new') {
-            // New mode: Use new_stats
+            // New mode: Only award 🏆 based on success rate (no 🎯 award)
             const stats = team.new_stats;
             
-            // Calculate Balanced Success (equivalent to Balanced |Tr|)
-            if (stats && typeof stats.trace_average_statistic === 'number' && typeof stats.same_item_balance === 'number') {
+            // Use Success Rate for 🏆 award in NEW mode
+            if (stats && typeof stats.trace_average_statistic === 'number') {
                 const successRate = stats.trace_average_statistic;
-                const balance = stats.same_item_balance;
-                const balancedSuccess = (successRate + balance) / 2;
-                if (balancedSuccess > maxBalancedTrValue) {
-                    maxBalancedTrValue = balancedSuccess;
-                    highestBalancedTrTeamId = team.team_id;
-                }
-            }
-
-            // Use Normalized Score (equivalent to CHSH Value)
-            if (stats && typeof stats.chsh_value_statistic === 'number') {
-                const normalizedScore = stats.chsh_value_statistic;
-                if (normalizedScore > maxChshValue) {
-                    maxChshValue = normalizedScore;
+                if (successRate > maxChshValue) {
+                    maxChshValue = successRate;
                     highestChshTeamId = team.team_id;
                 }
             }
+            
+            // No 🎯 award in NEW mode - set to null
+            highestBalancedTrTeamId = null;
         } else {
             // Classic mode: Use classic_stats
             const stats = team.classic_stats;
@@ -901,28 +909,8 @@ function updateActiveTeams(teams) {
         // Add Same Item Balance column
         const balanceCell = row.insertCell();
         if (currentGameMode === 'new') {
-            // New mode: Show Response Balance
-            if (team.new_stats && 
-                team.new_stats.same_item_balance !== undefined && 
-                team.new_stats.same_item_balance !== null && 
-                !isNaN(team.new_stats.same_item_balance)) {
-                try {
-                    const balanceValue = parseFloat(team.new_stats.same_item_balance);
-                    const balanceUncertainty = team.new_stats.same_item_balance_uncertainty !== undefined ? 
-                                               parseFloat(team.new_stats.same_item_balance_uncertainty) : null;
-                    balanceCell.innerHTML = formatStatWithUncertainty(balanceValue, balanceUncertainty);
-                    
-                    if (Math.abs(balanceValue) >= 0.5) {
-                        balanceCell.style.fontWeight = "bold";
-                        balanceCell.style.color = "#0022aa";
-                    }
-                } catch (e) {
-                    console.error("Error formatting new mode same_item_balance", e);
-                    balanceCell.innerHTML = "Error";
-                }
-            } else {
-                balanceCell.innerHTML = "—";
-            }
+            // New mode: Hide Response Balance column
+            balanceCell.style.display = 'none';
         } else {
             // Classic mode: Show Same Item Balance
             if (team.classic_stats && 
@@ -951,36 +939,8 @@ function updateActiveTeams(teams) {
         // Add Balanced Random column with robust error handling
         const balancedRandomCell = row.insertCell();
         if (currentGameMode === 'new') {
-            // New mode: Calculate balanced success from success rate and balance
-            if (team.new_stats && 
-                team.new_stats.trace_average_statistic !== undefined && 
-                team.new_stats.trace_average_statistic !== null && 
-                !isNaN(team.new_stats.trace_average_statistic) &&
-                team.new_stats.same_item_balance !== undefined && 
-                team.new_stats.same_item_balance !== null && 
-                !isNaN(team.new_stats.same_item_balance)) {
-                try {
-                    const successRate = parseFloat(team.new_stats.trace_average_statistic);
-                    const balance = parseFloat(team.new_stats.same_item_balance);
-                    const balancedSuccess = (successRate + balance) / 2;
-                    
-                    const successRateUnc = team.new_stats.trace_average_statistic_uncertainty;
-                    const balanceUnc = team.new_stats.same_item_balance_uncertainty;
-                    let uncBalancedSuccess = null;
-
-                    if (typeof successRateUnc === 'number' && !isNaN(successRateUnc) &&
-                        typeof balanceUnc === 'number' && !isNaN(balanceUnc)) {
-                        uncBalancedSuccess = Math.sqrt(Math.pow(successRateUnc, 2) + Math.pow(balanceUnc, 2)) / 2;
-                    }
-                    
-                    balancedRandomCell.innerHTML = formatStatWithUncertainty(balancedSuccess, uncBalancedSuccess);
-                } catch (e) {
-                    console.error("Error calculating new mode balancedSuccess", e);
-                    balancedRandomCell.innerHTML = "Error";
-                }
-            } else {
-                balancedRandomCell.innerHTML = "—";
-            }
+            // New mode: Hide Balanced Success column
+            balancedRandomCell.style.display = 'none';
         } else {
             // Classic mode: Calculate balanced random from trace avg and balance
             if (team.classic_stats && 
@@ -1021,22 +981,8 @@ function updateActiveTeams(teams) {
         // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
         const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
         if (currentGameMode === 'new') {
-            // New mode: Show Normalized Score
-            if (team.new_stats && team.new_stats.chsh_value_statistic !== undefined) {
-                crossTermChshCell.innerHTML = formatStatWithUncertainty(
-                    team.new_stats.chsh_value_statistic,
-                    team.new_stats.chsh_value_statistic_uncertainty
-                );
-                if (typeof team.new_stats.chsh_value_statistic === 'number') {
-                    // Highlight significant scores
-                    if (Math.abs(team.new_stats.chsh_value_statistic) > 0.5) {
-                        crossTermChshCell.style.fontWeight = "bold";
-                        crossTermChshCell.style.color = team.new_stats.chsh_value_statistic > 0.5 ? "green" : "red";
-                    }
-                }
-            } else {
-                crossTermChshCell.innerHTML = "—";
-            }
+            // New mode: Hide Normalized Score column
+            crossTermChshCell.style.display = 'none';
         } else {
             // Classic mode: Show Cross-Term Combination Statistic
             if (team.classic_stats) {

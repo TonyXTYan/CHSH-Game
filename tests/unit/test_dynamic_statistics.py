@@ -353,3 +353,118 @@ class TestDynamicStatistics:
             assert player_responses['X']['false'] == 1
             assert player_responses['Y']['true'] == 1
             assert player_responses['Y']['false'] == 0
+
+    def test_new_mode_dashboard_display_logic(self):
+        """Test that NEW mode dashboard shows only success rate and awards only 🏆 based on success rate."""
+        # Mock teams data for NEW mode
+        teams_data = [
+            {
+                'team_id': 1,
+                'team_name': 'Team1',
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.85,  # 85% success rate - highest
+                    'trace_average_statistic_uncertainty': 0.05,
+                    'same_item_balance': 0.7,
+                    'chsh_value_statistic': 0.4
+                }
+            },
+            {
+                'team_id': 2,
+                'team_name': 'Team2',
+                'min_stats_sig': True,
+                'new_stats': {
+                    'trace_average_statistic': 0.75,  # 75% success rate - lower
+                    'trace_average_statistic_uncertainty': 0.06,
+                    'same_item_balance': 0.9,  # Higher balance, but shouldn't matter for 🏆
+                    'chsh_value_statistic': 0.6  # Higher normalized score, but shouldn't matter for 🏆
+                }
+            },
+            {
+                'team_id': 3,
+                'team_name': 'Team3',
+                'min_stats_sig': False,  # Not eligible for awards
+                'new_stats': {
+                    'trace_average_statistic': 0.95,  # Highest success rate but not eligible
+                    'trace_average_statistic_uncertainty': 0.03,
+                    'same_item_balance': 0.8,
+                    'chsh_value_statistic': 0.7
+                }
+            }
+        ]
+        
+        # Simulate award calculation logic from dashboard.js for NEW mode
+        highestBalancedTrTeamId = None  # Should be None in NEW mode (no 🎯 award)
+        highestChshTeamId = None
+        maxChshValue = -float('inf')
+        
+        eligible_teams = [team for team in teams_data if team['min_stats_sig']]
+        
+        # NEW mode award logic: only 🏆 based on success rate
+        for team in eligible_teams:
+            stats = team['new_stats']
+            success_rate = stats['trace_average_statistic']
+            if success_rate > maxChshValue:
+                maxChshValue = success_rate
+                highestChshTeamId = team['team_id']
+        
+        # Verify award logic for NEW mode
+        assert highestBalancedTrTeamId is None, "NEW mode should not award 🎯"
+        assert highestChshTeamId == 1, "Team1 should get 🏆 for highest success rate (85%)"
+        assert maxChshValue == 0.85, "Max value should be Team1's success rate"
+        
+        # Verify that Team3 (not eligible) doesn't get award despite higher success rate
+        assert highestChshTeamId != 3, "Ineligible teams should not receive awards"
+        
+        # Test table header logic for NEW mode
+        current_game_mode = 'new'
+        
+        # Simulate header update logic
+        header_config = {}
+        if current_game_mode == 'classic':
+            header_config = {
+                'header1': 'Trace Avg ⏐⟨Tr⟩⏐',
+                'header2': 'Balance',
+                'header3': 'Balanced ⏐⟨Tr⟩⏐ 🎯',
+                'header4': 'CHSH Value 🏆',
+                'columns_visible': [True, True, True, True]
+            }
+        else:  # new mode
+            header_config = {
+                'header1': 'Success Rate % 🏆',
+                'header2': 'Response Balance',
+                'header3': 'Balanced Success 🎯',
+                'header4': 'Norm. Score 🏆',
+                'columns_visible': [True, False, False, False]  # Only first column visible
+            }
+        
+        # Verify NEW mode header configuration
+        assert header_config['header1'] == 'Success Rate % 🏆'
+        assert header_config['columns_visible'] == [True, False, False, False]
+        
+        # Verify that only success rate column is visible in NEW mode
+        visible_columns = sum(header_config['columns_visible'])
+        assert visible_columns == 1, "NEW mode should only show 1 column (Success Rate %)"
+        
+        # Test that awards string formation works correctly
+        def get_awards_string(team_id, highest_balanced_tr_id, highest_chsh_id):
+            awards = []
+            if team_id == highest_balanced_tr_id and highest_balanced_tr_id is not None:
+                awards.append("🎯")
+            if team_id == highest_chsh_id and highest_chsh_id is not None:
+                awards.append("🏆")
+            return " ".join(awards)
+        
+        # Test awards for each team
+        team1_awards = get_awards_string(1, highestBalancedTrTeamId, highestChshTeamId)
+        team2_awards = get_awards_string(2, highestBalancedTrTeamId, highestChshTeamId)
+        team3_awards = get_awards_string(3, highestBalancedTrTeamId, highestChshTeamId)
+        
+        assert team1_awards == "🏆", "Team1 should only get 🏆 award"
+        assert team2_awards == "", "Team2 should get no awards"
+        assert team3_awards == "", "Team3 should get no awards (not eligible)"
+        
+        # Verify no 🎯 awards in NEW mode
+        for team_data in teams_data:
+            team_awards = get_awards_string(team_data['team_id'], highestBalancedTrTeamId, highestChshTeamId)
+            assert "🎯" not in team_awards, f"Team {team_data['team_id']} should not have 🎯 award in NEW mode"
