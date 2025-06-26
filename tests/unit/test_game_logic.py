@@ -16,7 +16,7 @@ def mock_team_info():
         'answered_current_round': {}
     }
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -52,7 +52,7 @@ def test_start_new_round_for_pair_basic(mock_socketio, mock_db, mock_rounds, moc
     # Verify combo tracker was updated
     assert len(mock_state.active_teams[team_name]['combo_tracker']) == 1
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -74,7 +74,7 @@ def test_start_new_round_for_pair_invalid_team(mock_socketio, mock_db, mock_roun
     # Verify no questions were sent
     mock_socketio.emit.assert_not_called()
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -98,7 +98,7 @@ def test_start_new_round_for_pair_incomplete_team(mock_socketio, mock_db, mock_r
     # Verify no questions were sent
     mock_socketio.emit.assert_not_called()
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -134,7 +134,7 @@ def test_combo_distribution(mock_shuffle, mock_socketio, mock_db, mock_rounds, m
     assert mock_db.session.add.call_count == num_rounds
     assert mock_db.session.commit.call_count == num_rounds
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -178,7 +178,7 @@ def test_deterministic_phase(mock_socketio, mock_db, mock_rounds, mock_state, mo
     # Verify round number was incremented
     assert team_info['current_round_number'] == round_limit - len(all_possible_combos) + 1
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -202,7 +202,7 @@ def test_exception_handling(mock_socketio, mock_db, mock_rounds, mock_state, moc
     mock_rounds.assert_called_once()
     mock_db.session.add.assert_called_once()
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -246,7 +246,7 @@ def test_new_mode_player_question_filtering(mock_socketio, mock_db, mock_rounds,
     assert len(player1_items) > 0, "Player 1 should have received some questions"
     assert len(player2_items) > 0, "Player 2 should have received some questions"
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')  
 @patch('src.game_logic.db')
 @patch('src.game_logic.socketio')
@@ -291,7 +291,7 @@ def test_new_mode_combo_generation(mock_socketio, mock_db, mock_rounds, mock_sta
     # Verify we got some variety (at least 2 different combinations)
     assert len(generated_combos) >= 2, f"Should generate multiple combinations, got: {generated_combos}"
 
-@patch('src.game_logic.state')
+@patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db') 
 @patch('src.game_logic.socketio')
