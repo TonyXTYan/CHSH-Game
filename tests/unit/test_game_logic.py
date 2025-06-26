@@ -27,6 +27,13 @@ def test_start_new_round_for_pair_basic(mock_socketio, mock_db, mock_rounds, moc
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'classic'  # Ensure classic mode for backwards compatibility
     
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
+    
     # Create a mock for the new round
     mock_round = MagicMock()
     mock_round.round_id = 123
@@ -110,6 +117,13 @@ def test_combo_distribution(mock_shuffle, mock_socketio, mock_db, mock_rounds, m
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'classic'
     
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
+    
     # Create a mock for the new round
     mock_round = MagicMock()
     mock_round.round_id = 123
@@ -144,6 +158,13 @@ def test_deterministic_phase(mock_socketio, mock_db, mock_rounds, mock_state, mo
     team_name = "test_team"
     team_info = mock_team_info.copy()
     mock_state.game_mode = 'classic'
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
     
     # Set round number close to limit
     all_possible_combos = [(i1, i2) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
@@ -189,6 +210,13 @@ def test_exception_handling(mock_socketio, mock_db, mock_rounds, mock_state, moc
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'classic'
     
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
+    
     # Make db.session.commit raise an exception
     mock_db.session.commit.side_effect = Exception("Test exception")
     
@@ -212,6 +240,13 @@ def test_new_mode_player_question_filtering(mock_socketio, mock_db, mock_rounds,
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'new'  # Set to new mode
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'  # Must match team_info['players'][0]
+    mock_db_team.player2_session_id = 'player2_sid'  # Must match team_info['players'][1]
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()
@@ -256,6 +291,13 @@ def test_new_mode_combo_generation(mock_socketio, mock_db, mock_rounds, mock_sta
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'new'
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()
@@ -302,6 +344,13 @@ def test_classic_mode_unchanged(mock_socketio, mock_db, mock_rounds, mock_state,
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'classic'
     
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
+    
     # Create a mock for the new round
     mock_round = MagicMock()
     mock_round.round_id = 123
@@ -343,6 +392,13 @@ def test_mode_transition_behavior(mock_socketio, mock_db, mock_rounds, mock_stat
     # Setup mocks
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()
@@ -396,6 +452,13 @@ def test_invalid_game_mode_defaults_to_classic(mock_socketio, mock_db, mock_roun
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'invalid_mode'  # Invalid mode
     
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
+    
     # Create a mock for the new round
     mock_round = MagicMock()
     mock_round.round_id = 123
@@ -436,6 +499,13 @@ def test_new_mode_comprehensive_coverage(mock_socketio, mock_db, mock_rounds, mo
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = 'new'
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()
@@ -511,8 +581,6 @@ def test_mode_affects_combo_tracking(mock_socketio, mock_db, mock_rounds, mock_s
     # Classic mode should potentially have more variety
     assert len(classic_combos) >= len(new_mode_combos), "Classic mode should have at least as many combo types as new mode"
 
-
-
 @patch('src.state.state')
 @patch('src.game_logic.PairQuestionRounds')
 @patch('src.game_logic.db')
@@ -523,6 +591,13 @@ def test_game_mode_none_defaults_to_classic(mock_socketio, mock_db, mock_rounds,
     team_name = "test_team"
     mock_state.active_teams = {team_name: mock_team_info}
     mock_state.game_mode = None  # None mode
+    
+    # Create a mock for the database team
+    mock_db_team = MagicMock()
+    mock_db_team.team_id = 1
+    mock_db_team.player1_session_id = 'player1_sid'
+    mock_db_team.player2_session_id = 'player2_sid'
+    mock_db.session.get.return_value = mock_db_team
     
     # Create a mock for the new round
     mock_round = MagicMock()

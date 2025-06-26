@@ -25,10 +25,9 @@ from src.routes import static
 from src.routes.user import user_bp
 app.register_blueprint(user_bp)
 
-# Import socket handlers to register them
-from src.sockets.team_management import handle_connect, handle_disconnect
-from src.sockets import game
-
 # Create database tables
 with app.app_context():
     db.create_all()
+
+# Socket handlers are automatically registered when their modules are imported in main.py
+# The @socketio.on() decorators in each module register the handlers with the socketio instance

@@ -101,7 +101,8 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
             'current_round_number': last_played_round_number,
             'combo_tracker': {},
             'answered_current_round': {},
-            'status': 'waiting_pair'
+            'status': 'waiting_pair',
+            'player_slots': {sid: 1}  # Reactivator becomes Player 1
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[team.team_id] = team_name
@@ -327,7 +328,8 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'current_round_number': 0,
             'combo_tracker': {},
             'answered_current_round': {},
-            'status': 'waiting_pair'
+            'status': 'waiting_pair',
+            'player_slots': {sid: 1}  # Creator is always Player 1
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[new_team_db.team_id] = team_name
@@ -386,13 +388,21 @@ def on_join_team(data: Dict[str, Any]) -> None:
         
         # Using Session.get() instead of Query.get()
         db_team = db.session.get(Teams, team_info['team_id'])
+        assigned_slot = None
         if db_team:
             if not db_team.player1_session_id:
                 db_team.player1_session_id = sid
+                assigned_slot = 1
             elif not db_team.player2_session_id:
                 db_team.player2_session_id = sid
+                assigned_slot = 2
             db_team.is_active = True
             db.session.commit()
+            
+            # Track player slot in state
+            if assigned_slot:
+                state.set_player_slot(team_name, sid, assigned_slot)
+            
             # Clear caches after team state change
             _, _, clear_team_caches, _ = _import_dashboard_functions()
             clear_team_caches()
@@ -409,7 +419,7 @@ def on_join_team(data: Dict[str, Any]) -> None:
             team_info['status'] = 'waiting_pair' # Internal state status
 
         # Get the actual player slot assigned in the database
-        actual_player_slot = _get_actual_player_slot(team_info['team_id'], sid)
+        actual_player_slot = assigned_slot or _get_actual_player_slot(team_info['team_id'], sid)
         
         # Notify the player who just joined - only treat as reconnection if SIDs match
         join_message = f'You reconnected to team {team_name}.' if is_valid_reconnection else f'You joined team {team_name}.'
