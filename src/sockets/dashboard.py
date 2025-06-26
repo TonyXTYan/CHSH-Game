@@ -683,65 +683,55 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         # Compute hashes for the team
         hash1, hash2 = compute_team_hashes(team_id)
         
-        # Conditional metrics calculation based on game mode - PERFORMANCE OPTIMIZATION
+        # ALWAYS compute both classic and new statistics for details modal
+        # Compute classic mode statistics
+        correlation_result = compute_correlation_matrix(team_id)  # type: ignore
+        (corr_matrix_tuples, item_values,
+         same_item_balance_avg, same_item_balance, same_item_responses,
+         correlation_sums, pair_counts) = correlation_result
+        
+        correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
+        correlation_matrix_str = str(correlation_data)
+        classic_stats = _calculate_team_statistics(correlation_matrix_str)
+        
+        # Compute new mode statistics
+        success_result = compute_success_metrics(team_id)  # type: ignore
+        (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts) = success_result
+        
+        success_data = (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts)
+        success_metrics_str = str(success_data)
+        new_stats = _calculate_success_statistics(success_metrics_str)
+        
+        # Determine which matrix and stats to use for the main display based on game mode
         if state.game_mode == 'new':
-            # New mode: Skip physics calculations, use success metrics
-            success_result = compute_success_metrics(team_id)  # type: ignore
-            (matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts) = success_result
-            
-            # Convert success metrics data to string for caching
-            success_data = (matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts)
-            success_metrics_str = str(success_data)
-            
-            # Calculate success statistics using cached function
-            stats = _calculate_success_statistics(success_metrics_str)
-            
-            team_data = {
-                'team_name': team_name,
-                'team_id': team_id,
-                'is_active': is_active,
-                'player1_sid': player1_sid,
-                'player2_sid': player2_sid,
-                'current_round_number': current_round,
-                'history_hash1': hash1,
-                'history_hash2': hash2,
-                'min_stats_sig': min_stats_sig,
-                'correlation_matrix': matrix_tuples, # Send success matrix (successful, total) tuples
-                'correlation_labels': item_values,
-                'correlation_stats': stats,
-                'created_at': created_at,
-                'game_mode': state.game_mode  # Include current mode
-            }
+            display_matrix = success_matrix_tuples
+            display_labels = success_item_values
+            display_stats = new_stats
         else:
-            # Classic mode: Skip success calculations, use correlation physics
-            correlation_result = compute_correlation_matrix(team_id)  # type: ignore
-            (corr_matrix_tuples, item_values,
-             same_item_balance_avg, same_item_balance, same_item_responses,
-             correlation_sums, pair_counts) = correlation_result
-            
-            # Convert correlation matrix data to string for caching
-            correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
-            correlation_matrix_str = str(correlation_data)
-            
-            # Calculate statistics using cached function
-            correlation_stats = _calculate_team_statistics(correlation_matrix_str)
-            
-            team_data = {
-                'team_name': team_name,
-                'team_id': team_id,
-                'is_active': is_active,
-                'player1_sid': player1_sid,
-                'player2_sid': player2_sid,
-                'current_round_number': current_round,
-                'history_hash1': hash1,
-                'history_hash2': hash2,
-                'min_stats_sig': min_stats_sig,
-                'correlation_matrix': corr_matrix_tuples, # Send correlation (numerator, denominator) tuples
-                'correlation_labels': item_values,
-                'correlation_stats': correlation_stats,
-                'created_at': created_at,
-                'game_mode': state.game_mode  # Include current mode
-            }
+            display_matrix = corr_matrix_tuples
+            display_labels = item_values
+            display_stats = classic_stats
+        
+        team_data = {
+            'team_name': team_name,
+            'team_id': team_id,
+            'is_active': is_active,
+            'player1_sid': player1_sid,
+            'player2_sid': player2_sid,
+            'current_round_number': current_round,
+            'history_hash1': hash1,
+            'history_hash2': hash2,
+            'min_stats_sig': min_stats_sig,
+            'correlation_matrix': display_matrix,
+            'correlation_labels': display_labels,
+            'correlation_stats': display_stats,  # Current mode stats for main display
+            'classic_stats': classic_stats,      # Always include classic stats for details modal
+            'new_stats': new_stats,              # Always include new stats for details modal
+            'classic_matrix': corr_matrix_tuples,    # Classic correlation matrix for details modal
+            'new_matrix': success_matrix_tuples,     # New success matrix for details modal
+            'created_at': created_at,
+            'game_mode': state.game_mode  # Include current mode
+        }
         
         # Add status field for active teams
         if team_info and 'status' in team_info:

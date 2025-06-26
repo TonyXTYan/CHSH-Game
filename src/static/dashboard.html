@@ -88,10 +88,10 @@
                     <th>Status</th>
                     <th>Current Round</th>
                     <th>Stats Sig</th>
-                    <th>Trace Avg ⏐⟨Tr⟩⏐</th>
-                    <th>Balance</th>
-                    <th>Balanced ⏐⟨Tr⟩⏐ 🎯</th>
-                    <th>CHSH Value 🏆</th>
+                    <th id="header-stat1">Trace Avg ⏐⟨Tr⟩⏐</th>
+                    <th id="header-stat2">Balance</th>
+                    <th id="header-stat3">Balanced ⏐⟨Tr⟩⏐ 🎯</th>
+                    <th id="header-stat4">CHSH Value 🏆</th>
                     <th>Details</th>
                 </tr></thead>
                 <tbody></tbody>
@@ -135,15 +135,26 @@
                     </div>
                 </div>
                 <div class="modal-section">
-                    <h4>Correlation Matrix</h4>
-                    <table id="correlation-matrix-table"></table>
+                    <h4>Classic Mode Statistics</h4>
+                    <div class="details-container">
+                        <div><strong>Trace Average:</strong> <span id="modal-classic-trace"></span></div>
+                        <div><strong>Same Item Balance:</strong> <span id="modal-classic-balance"></span></div>
+                        <div><strong>Balanced |⟨Tr⟩|:</strong> <span id="modal-classic-balanced"></span></div>
+                        <div><strong>CHSH Value:</strong> <span id="modal-classic-chsh"></span></div>
+                    </div>
                 </div>
                 <div class="modal-section">
-                    <h4>CHSH Statistics</h4>
+                    <h4>New Mode Statistics</h4>
                     <div class="details-container">
-                        <div><strong>Actual CHSH Value:</strong> <span id="modal-chsh-value"></span></div>
-                        <div><strong>Cross-Term CHSH:</strong> <span id="modal-cross-term-chsh"></span></div>
+                        <div><strong>Success Rate:</strong> <span id="modal-new-success-rate"></span></div>
+                        <div><strong>Same Question Balance:</strong> <span id="modal-new-balance"></span></div>
+                        <div><strong>Balanced Success:</strong> <span id="modal-new-balanced"></span></div>
+                        <div><strong>Normalized Score:</strong> <span id="modal-new-score"></span></div>
                     </div>
+                </div>
+                <div class="modal-section">
+                    <h4 id="matrix-title">Correlation Matrix</h4>
+                    <table id="correlation-matrix-table"></table>
                 </div>
             </div>
         </div>
