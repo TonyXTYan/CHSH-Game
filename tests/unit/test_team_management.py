@@ -657,8 +657,8 @@ def test_disconnect_from_full_team_tracking(mock_request_context, full_team):
             to='full_team'
         )
 
-def test_reconnection_join_team(mock_request_context, active_team):
-    """Test player joining a team with disconnection tracking (appears as reconnection)"""
+def test_reconnection_join_team_different_player(mock_request_context, active_team):
+    """Test new player joining a team with disconnection tracking (should be treated as normal join)"""
     # Setup: simulate a disconnected player scenario
     team_info = state.active_teams['active_team']
     team_info['players'].append('player2_sid')  # Make team full
@@ -669,7 +669,7 @@ def test_reconnection_join_team(mock_request_context, active_team):
     team_info['players'].remove('player2_sid')
     team_info['status'] = 'waiting_pair'
     
-    # New player tries to join (treated as normal join but with reconnection message)
+    # Different player tries to join (should be treated as normal join)
     request.sid = 'new_session_id'
     
     with patch('src.sockets.team_management.emit') as mock_emit, \
@@ -681,15 +681,15 @@ def test_reconnection_join_team(mock_request_context, active_team):
         from src.sockets.team_management import on_join_team
         on_join_team({'team_name': 'active_team'})
         
-        # Verify reconnection message (because team had disconnection tracking)
+        # Verify normal join message (not reconnection since SID doesn't match)
         mock_emit.assert_any_call(
             'team_joined',
             {
                 'team_name': 'active_team',
-                'message': 'You reconnected to team active_team.',
+                'message': 'You joined team active_team.',
                 'game_started': state.game_started,
                 'team_status': 'full',
-                'is_reconnection': True
+                'is_reconnection': False
             },
             to='new_session_id'
         )
@@ -701,6 +701,59 @@ def test_reconnection_join_team(mock_request_context, active_team):
                 'team_name': 'active_team',
                 'status': 'full',
                 'members': ['player1_sid', 'new_session_id'],
+                'game_started': state.game_started,
+                'disable_input': False
+            },
+            to='active_team'
+        )
+        
+        # Verify disconnection tracking is cleared when team becomes full
+        assert 'active_team' not in state.disconnected_players
+
+def test_reconnection_join_team_same_player(mock_request_context, active_team):
+    """Test same player rejoining a team with disconnection tracking (should be treated as reconnection)"""
+    # Setup: simulate a disconnected player scenario
+    team_info = state.active_teams['active_team']
+    team_info['players'].append('player2_sid')  # Make team full
+    
+    # Track disconnection
+    from src.sockets.team_management import _track_disconnected_player
+    _track_disconnected_player('active_team', 'player2_sid', team_info)
+    team_info['players'].remove('player2_sid')
+    team_info['status'] = 'waiting_pair'
+    
+    # Same player tries to rejoin (should be treated as reconnection)
+    request.sid = 'player2_sid'
+    
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.join_room') as mock_join_room, \
+         patch('src.sockets.team_management.start_new_round_for_pair') as mock_start_round:
+        
+        from src.sockets.team_management import on_join_team
+        on_join_team({'team_name': 'active_team'})
+        
+        # Verify reconnection message (SID matches tracked player)
+        mock_emit.assert_any_call(
+            'team_joined',
+            {
+                'team_name': 'active_team',
+                'message': 'You reconnected to team active_team.',
+                'game_started': state.game_started,
+                'team_status': 'full',
+                'is_reconnection': True
+            },
+            to='player2_sid'
+        )
+        
+        # Verify team status update enables input
+        mock_emit.assert_any_call(
+            'team_status_update',
+            {
+                'team_name': 'active_team',
+                'status': 'full',
+                'members': ['player1_sid', 'player2_sid'],
                 'game_started': state.game_started,
                 'disable_input': False
             },

@@ -275,9 +275,11 @@ def on_join_team(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'You are already in this team.'})  # type: ignore
             return
 
-        # Always treat joining a waiting_pair team as a normal join
-        # Clear any existing disconnection tracking when team becomes full
-        was_tracked_team = team_name in state.disconnected_players
+        # Check if this is a valid reconnection by matching session IDs
+        is_valid_reconnection = False
+        if team_name in state.disconnected_players:
+            tracked_player = state.disconnected_players[team_name]
+            is_valid_reconnection = tracked_player['player_session_id'] == sid
         
         team_info['players'].append(sid)
         state.player_to_team[sid] = team_name
@@ -302,19 +304,19 @@ def on_join_team(data: Dict[str, Any]) -> None:
         if team_is_now_full:
             team_info['status'] = 'active' # Internal state status
             # Clear disconnection tracking when team becomes full
-            if was_tracked_team:
+            if team_name in state.disconnected_players:
                 _clear_disconnected_player_tracking(team_name)
         else:
             team_info['status'] = 'waiting_pair' # Internal state status
 
-        # Notify the player who just joined - always treat as normal join
-        join_message = f'You reconnected to team {team_name}.' if was_tracked_team else f'You joined team {team_name}.'
+        # Notify the player who just joined - only treat as reconnection if SIDs match
+        join_message = f'You reconnected to team {team_name}.' if is_valid_reconnection else f'You joined team {team_name}.'
         emit('team_joined', {
             'team_name': team_name,
             'message': join_message,
             'game_started': state.game_started,
             'team_status': current_team_status_for_clients,
-            'is_reconnection': was_tracked_team
+            'is_reconnection': is_valid_reconnection
         }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
