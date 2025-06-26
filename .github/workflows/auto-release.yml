@@ -1,0 +1,60 @@
+name: Automated Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.2.3
+
+permissions:
+  contents: write  # Required for creating releases
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Get version from tag
+        id: get_version
+        run: |
+          # Extract version from the git tag
+          VERSION=${GITHUB_REF#refs/tags/}
+          echo "Version from tag: $VERSION"
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+      
+      - name: Get previous tag
+        id: prev_tag
+        run: |
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${GITHUB_REF#refs/tags/}" | head -n 1)
+          echo "Previous tag: $PREV_TAG"
+          echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
+
+      - name: Gather commit messages since previous tag
+        id: commit_messages
+        run: |
+          if [ -z "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
+            # No previous tag, get all history
+            COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ github.event.repository.default_branch }}..${GITHUB_SHA})
+          else
+            COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ steps.prev_tag.outputs.prev_tag }}..${GITHUB_SHA})
+          fi
+          echo "commit_messages<<EOF" >> $GITHUB_ENV
+          echo "$COMMITS" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create GitHub Pre-release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          name: Release ${{ steps.get_version.outputs.version }}
+          draft: false
+          prerelease: true
+          body: |
+            Automated pre-release for version ${{ steps.get_version.outputs.version }}
+            
+            Commits in this release:
+            ${{ env.commit_messages }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 

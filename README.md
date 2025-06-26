@@ -30,7 +30,18 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 
 
 
+### New! v2.0.0
+The game now supports two modes:
+- **Classic Mode** Standard CHSH Bell Test game in the style of how physics experiments are done.
+- **New Mode** Implementation of the CHSH game where player 1 only need to answer A/B questions, and player 2 only need to answer X/Y questions. 
+
+
 ## How to play
+TODO
+
+<details>
+<summary>Abstract Q&As (click to unfold)</summary>
+
 - The game is designed to be played in a group setting, such as a classroom, auditorium, or at pubs. 
 
 - This game requires **at least two players** (one team of two), though it's more fun with more teams. 
@@ -48,7 +59,7 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 - Best **CHSH 🏆** (non-local correlation):
   - If one player is asked **B** and the other is asked **Y**, they have to answer **differently** as much as possible, i.e. one True and one False.
   - For any other question pair, you have to give same response as much as possible.
-
+</details>
 
 <details>
 <summary>Winning Strategy (click to unfold)</summary>
@@ -62,12 +73,6 @@ Note the following response table
 
 This strategy wins ⏐⟨Tr⟩⏐ = 1 and CHSH = 2.
 To have balance = 1, two players need to share a sequence bit bits $\{b_i\}$ where $b_i = 0$ means using the table and $b_i = 1$ means using the negation of the table, i.e. (F,F,F,T), this sequence could simply be even/odd bits of the current round number.
-
-#### Unhumanly classical strategy
-For each round, each player pre-generates an agreed answer.
-i.e. have a lookup table that tells the player at each round what to answer for each question.
-This lookup table have the size of $(2 \text{ players}) \times (4 \text{ responses})^{(\text{number of rounds})} \approx 4,600,000\text{TB}$ of data.
-If you could do this, then your CHSH = 4, known as the Tsirelson bound. 
 
 ### Quantum strategy
 See below
@@ -171,6 +176,6 @@ The `chsh_load_test.py` script simulates many teams and players. See [`LOAD_TEST
 
 
 ## Acknowledgements
-- More than 99% of the code are AI generated, thanks to GitHub Copilot, ChatGPT, Cursor, Manus, DeepSeek, Antropic, Qwen and more. Probably, more than 100 million tokens got burned up in generating this app. 
+- More than 99% of the code are AI generated, thanks to GitHub Copilot, ChatGPT, Cursor, Manus, DeepSeek, Antropic, Qwen and more. Probably, more than few billion tokens got burned up in generating this app. 
 
 
