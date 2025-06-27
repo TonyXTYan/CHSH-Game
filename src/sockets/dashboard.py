@@ -38,6 +38,11 @@ _last_refresh_time = 0
 _last_force_refresh_time = 0  # Separate tracking for force_refresh calls
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
+# Throttling variables for dashboard updates
+_last_team_update_time = 0
+_last_full_update_time = 0
+_cached_metrics: Optional[Dict[str, int]] = None
+
 def _get_team_id_from_name(team_name: str) -> Optional[int]:
     """Helper function to get team_id from team_name."""
     try:
@@ -860,6 +865,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
     global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
+    global _last_team_update_time, _last_full_update_time, _cached_metrics
     
     try:
         compute_team_hashes.cache_clear()
@@ -873,26 +879,52 @@ def clear_team_caches() -> None:
         _last_refresh_time = 0
         _last_force_refresh_time = 0
         _cached_teams_result = None
+        
+        # Clear dashboard update throttle cache
+        _last_team_update_time = 0
+        _last_full_update_time = 0
+        _cached_metrics = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update(force_refresh: bool = False) -> None:
+    global _last_team_update_time, _cached_metrics
+    
     try:
         # Always compute teams data and metrics for all dashboard clients
         if not state.dashboard_clients:
             return  # No dashboard clients at all
-            
-        # Get teams data using existing caching for performance
-        serialized_teams = get_all_teams(force_refresh=force_refresh)
         
-        # Calculate metrics that all clients need (streaming and non-streaming)
-        active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
-        active_teams_count = len(active_teams)
-        ready_players_count = sum(
-            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
-            for team in active_teams
-        )
-        connected_players_count = len(state.connected_players)
+        # Throttle team updates to prevent spam during mass connect/disconnect
+        current_time = time()
+        time_since_last_update = current_time - _last_team_update_time
+        
+        if not force_refresh and time_since_last_update < REFRESH_DELAY_QUICK and _cached_metrics is not None:
+            # Use cached metrics to avoid expensive calculations
+            active_teams_count = _cached_metrics.get('active_teams_count', 0)
+            ready_players_count = _cached_metrics.get('ready_players_count', 0)
+            connected_players_count = _cached_metrics.get('connected_players_count', 0)
+            serialized_teams = get_all_teams(force_refresh=False)  # Use cached teams
+        else:
+            # Calculate fresh metrics
+            serialized_teams = get_all_teams(force_refresh=force_refresh)
+            
+            # Calculate metrics that all clients need (streaming and non-streaming)
+            active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+            active_teams_count = len(active_teams)
+            ready_players_count = sum(
+                (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                for team in active_teams
+            )
+            connected_players_count = len(state.connected_players)
+            
+            # Cache the metrics
+            _cached_metrics = {
+                'active_teams_count': active_teams_count,
+                'ready_players_count': ready_players_count,
+                'connected_players_count': connected_players_count
+            }
+            _last_team_update_time = current_time
         
         # Separate clients by streaming preference
         streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
@@ -926,21 +958,44 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
 def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Optional[str] = None) -> None:
+    global _last_full_update_time, _cached_metrics
+    
     try:
-        with app.app_context():
-            total_answers = Answers.query.count()
-
-        # Always get teams data for metrics calculation
-        all_teams_for_metrics = get_all_teams()
+        # Throttle full updates to prevent spam during mass connect/disconnect
+        current_time = time()
+        time_since_last_update = current_time - _last_full_update_time
         
-        # Calculate metrics that should always be sent
-        # Count teams that are active or waiting for a pair as "active" for metrics
-        active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
-        active_teams_count = len(active_teams)
-        ready_players_count = sum(
-            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
-            for team in active_teams
-        )
+        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_metrics is not None:
+            # Use cached data to avoid expensive operations
+            total_answers = _cached_metrics.get('total_answers', 0)
+            active_teams_count = _cached_metrics.get('active_teams_count', 0)
+            ready_players_count = _cached_metrics.get('ready_players_count', 0)
+            all_teams_for_metrics = get_all_teams(force_refresh=False)  # Use cached teams
+        else:
+            # Calculate fresh data
+            with app.app_context():
+                total_answers = Answers.query.count()
+
+            # Always get teams data for metrics calculation
+            all_teams_for_metrics = get_all_teams()
+            
+            # Calculate metrics that should always be sent
+            # Count teams that are active or waiting for a pair as "active" for metrics
+            active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+            active_teams_count = len(active_teams)
+            ready_players_count = sum(
+                (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                for team in active_teams
+            )
+            
+            # Update cached metrics with total_answers
+            _cached_metrics = {
+                'total_answers': total_answers,
+                'active_teams_count': active_teams_count,
+                'ready_players_count': ready_players_count,
+                'connected_players_count': len(state.connected_players)
+            }
+            _last_full_update_time = current_time
 
         base_update_data = {
             'total_answers_count': total_answers,
