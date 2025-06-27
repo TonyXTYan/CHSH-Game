@@ -121,19 +121,29 @@ class SelectiveCache:
     def _is_team_key(self, cache_key: str, team_name: str) -> bool:
         """
         Check if a cache key belongs to a specific team.
-        This handles both direct team_name keys and composite keys.
+        Uses precise matching to avoid false positives from substring matches.
         """
-        # For function caches that use team_name as first parameter
-        if cache_key.startswith(f"('{team_name}',") or cache_key == f"('{team_name}',)":
-            return True
-        
-        # For simple team_name keys
+        # For simple team_name keys (exact match)
         if cache_key == team_name:
             return True
-            
-        # For composite keys that contain team parameters
-        # Handle cases where team_name might be embedded in composite keys
-        return team_name in cache_key
+        
+        # For function cache keys in format: (arg1, arg2, ...)
+        # team_name appears as repr(team_name) which is 'team_name'
+        team_name_repr = repr(team_name)
+        
+        # Check if this is a function cache key starting with (team_name, ...)
+        if cache_key.startswith(f"({team_name_repr},") or cache_key == f"({team_name_repr})":
+            return True
+        
+        # Check for team_name as any parameter in the function call
+        # Use regex to match team_name_repr as a complete parameter
+        import re
+        # Pattern matches 'team_name' that is:
+        # - after opening paren: ('team_name'
+        # - after comma and optional space: , 'team_name' or ,  'team_name'
+        # - and followed by comma, closing paren, or end: 'team_name', or 'team_name')
+        pattern = rf"(\(|,\s*){re.escape(team_name_repr)}(\s*,|\s*\)|$)"
+        return bool(re.search(pattern, cache_key))
 
 # Global selective caches
 _hash_cache = SelectiveCache()
