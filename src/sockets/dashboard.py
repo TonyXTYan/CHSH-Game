@@ -907,7 +907,9 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
         # Always get teams data first to ensure consistency
         serialized_teams = get_all_teams(force_refresh=force_refresh)
         
-        # Use the same throttling logic as get_all_teams to ensure metrics and teams data are synchronized
+        # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
+        # Metrics will sync within 1-2 seconds due to throttling, providing good balance
+        # between performance and consistency during rapid state changes.
         if not force_refresh and time_since_last_update < REFRESH_DELAY and _cached_team_metrics is not None:
             # Use cached metrics to avoid expensive calculations
             active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
@@ -977,7 +979,9 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         # Always get teams data first to ensure consistency
         all_teams_for_metrics = get_all_teams()
         
-        # Use the same throttling logic as get_all_teams to ensure metrics and teams data are synchronized
+        # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
+        # Metrics will sync within 1-2 seconds due to throttling, providing good balance
+        # between performance and consistency during rapid state changes.
         if time_since_last_update < REFRESH_DELAY and _cached_full_metrics is not None:
             # Use cached data to avoid expensive operations
             total_answers = _cached_full_metrics.get('total_answers', 0)
