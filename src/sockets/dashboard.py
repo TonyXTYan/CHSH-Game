@@ -30,10 +30,12 @@ dashboard_teams_streaming: Dict[str, bool] = {}
 
 CACHE_SIZE = 1024  # Adjust cache size as needed
 REFRESH_DELAY = 1 # seconds
+REFRESH_DELAY_QUICK = 0.5  # seconds - for throttled force_refresh calls
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
 # Throttling variables for get_all_teams
 _last_refresh_time = 0
+_last_force_refresh_time = 0  # Separate tracking for force_refresh calls
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
 @socketio.on('keep_alive')
@@ -763,18 +765,25 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         return None
 
 def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
-    global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
     
     try:
         # Check if we should throttle the request
         current_time = time()
         time_since_last_refresh = current_time - _last_refresh_time
+        time_since_last_force_refresh = current_time - _last_force_refresh_time
         
-        # If within refresh delay and we have cached data, return cached result
-        # UNLESS force_refresh is True (for critical updates like disconnections)
-        if not force_refresh and time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
-            # logger.debug("Returning cached team data")
-            return _cached_teams_result
+        # Throttle logic with separate handling for force_refresh
+        if force_refresh:
+            # Throttle force_refresh calls with REFRESH_DELAY_QUICK
+            if time_since_last_force_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
+                # logger.debug("Returning cached team data (force_refresh throttled)")
+                return _cached_teams_result
+        else:
+            # Regular throttling for non-force_refresh calls
+            if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
+                # logger.debug("Returning cached team data")
+                return _cached_teams_result
         # else:
         #     logger.debug("Computing fresh team data")
         
@@ -808,6 +817,8 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
         # Update cache and timestamp
         _cached_teams_result = teams_list
         _last_refresh_time = current_time
+        if force_refresh:
+            _last_force_refresh_time = current_time
         
         return teams_list
     except Exception as e:
@@ -816,7 +827,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
-    global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
     
     try:
         compute_team_hashes.cache_clear()
@@ -828,6 +839,7 @@ def clear_team_caches() -> None:
         
         # Clear throttle cache for critical team state changes like disconnections
         _last_refresh_time = 0
+        _last_force_refresh_time = 0
         _cached_teams_result = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
