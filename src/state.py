@@ -25,7 +25,7 @@ class GameState:
         self.reconnection_attempts: Dict[str, int] = defaultdict(int)
         
         # Load protection settings (more lenient during testing)
-        self.max_connections_per_minute = int(os.environ.get('MAX_CONNECTIONS_PER_MINUTE', '60'))
+        self.max_connections_per_minute = int(os.environ.get('MAX_CONNECTIONS_PER_MINUTE', '300'))
         self.max_reconnection_attempts = 5
         self.heartbeat_timeout = 40  # Slightly longer than ping_timeout
 
