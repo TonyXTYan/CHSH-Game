@@ -259,9 +259,8 @@ def handle_disconnect() -> None:
                         
                         # Update all clients - this should happen regardless of whether team becomes inactive
                         # Move dashboard update to end to ensure all state changes are committed
-                        # Force refresh for critical team state changes like disconnections
                         emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
-                        emit_dashboard_team_update(force_refresh=True)
+                        emit_dashboard_team_update()
                         socketio.emit('teams_updated', {
                             'teams': get_available_teams_list(),
                             'game_started': state.game_started
@@ -452,7 +451,7 @@ def on_join_team(data: Dict[str, Any]) -> None:
         # Update dashboard
         # Force refresh when team becomes active (critical state change)
         emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
-        emit_dashboard_team_update(force_refresh=team_is_now_full)
+        emit_dashboard_team_update()
         
         # If the game has already started and the team is now full, start a new round for them
         if state.game_started and team_is_now_full:
@@ -632,7 +631,7 @@ def on_leave_team(data: Dict[str, Any]) -> None:
             })  # type: ignore
             # Force refresh for critical team state changes like leaving
             emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
-            emit_dashboard_team_update(force_refresh=True)
+            emit_dashboard_team_update()
     except Exception as e:
         logger.error(f"Error in on_leave_team: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while leaving the team'})  # type: ignore

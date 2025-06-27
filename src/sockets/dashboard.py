@@ -29,13 +29,11 @@ dashboard_last_activity: Dict[str, float] = {}
 dashboard_teams_streaming: Dict[str, bool] = {}
 
 CACHE_SIZE = 1024  # Adjust cache size as needed
-REFRESH_DELAY = 1 # seconds
-REFRESH_DELAY_QUICK = 0.5  # seconds - for throttled force_refresh calls
+REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
 # Throttling variables for get_all_teams
 _last_refresh_time = 0
-_last_force_refresh_time = 0  # Separate tracking for force_refresh calls
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
 # Throttling variables for dashboard updates
@@ -802,26 +800,18 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         logger.error(f"Error processing team {team_id}: {str(e)}", exc_info=True)
         return None
 
-def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
-    global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
+def get_all_teams() -> List[Dict[str, Any]]:
+    global _last_refresh_time, _cached_teams_result
     
     try:
         # Check if we should throttle the request
         current_time = time()
         time_since_last_refresh = current_time - _last_refresh_time
-        time_since_last_force_refresh = current_time - _last_force_refresh_time
         
-        # Throttle logic with separate handling for force_refresh
-        if force_refresh:
-            # Throttle force_refresh calls with REFRESH_DELAY_QUICK
-            if time_since_last_force_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
-                # logger.debug("Returning cached team data (force_refresh throttled)")
-                return _cached_teams_result
-        else:
-            # Regular throttling for non-force_refresh calls
-            if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
-                # logger.debug("Returning cached team data")
-                return _cached_teams_result
+        # Throttle all calls with REFRESH_DELAY_QUICK
+        if time_since_last_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
+            # logger.debug("Returning cached team data")
+            return _cached_teams_result
         
         # logger.debug("Computing fresh team data")
         
@@ -855,8 +845,6 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
         # Update cache and timestamp
         _cached_teams_result = teams_list
         _last_refresh_time = current_time
-        if force_refresh:
-            _last_force_refresh_time = current_time
         
         return teams_list
     except Exception as e:
@@ -865,7 +853,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
-    global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
+    global _last_refresh_time, _cached_teams_result
     global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
     
     try:
@@ -878,7 +866,6 @@ def clear_team_caches() -> None:
         
         # Clear throttle cache for critical team state changes like disconnections
         _last_refresh_time = 0
-        _last_force_refresh_time = 0
         _cached_teams_result = None
         
         # Clear dashboard update throttle caches
@@ -889,7 +876,7 @@ def clear_team_caches() -> None:
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
-def emit_dashboard_team_update(force_refresh: bool = False) -> None:
+def emit_dashboard_team_update() -> None:
     global _last_team_update_time, _cached_team_metrics
     
     try:
@@ -905,12 +892,12 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
         time_since_last_update = current_time - _last_team_update_time
         
         # Always get teams data first to ensure consistency
-        serialized_teams = get_all_teams(force_refresh=force_refresh)
+        serialized_teams = get_all_teams()
         
         # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
         # Metrics will sync within 1-2 seconds due to throttling, providing good balance
         # between performance and consistency during rapid state changes.
-        if not force_refresh and time_since_last_update < REFRESH_DELAY and _cached_team_metrics is not None:
+        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
             # Use cached metrics to avoid expensive calculations
             active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
             ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
@@ -982,7 +969,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
         # Metrics will sync within 1-2 seconds due to throttling, providing good balance
         # between performance and consistency during rapid state changes.
-        if time_since_last_update < REFRESH_DELAY and _cached_full_metrics is not None:
+        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_full_metrics is not None:
             # Use cached data to avoid expensive operations
             total_answers = _cached_full_metrics.get('total_answers', 0)
             active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
