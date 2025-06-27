@@ -3,6 +3,7 @@ import sys
 import signal
 import uuid
 import logging
+from sqlalchemy import text
 
 # Configure logging for main module
 logging.basicConfig(
@@ -48,7 +49,7 @@ with app.app_context():
     try:
         # Test database connectivity first
         logger.info("Testing database connectivity...")
-        db.engine.execute("SELECT 1")  # Simple connectivity test
+        db.session.execute(text("SELECT 1"))  # Simple connectivity test
         logger.info("Database connection successful")
         
         # Create tables with error handling

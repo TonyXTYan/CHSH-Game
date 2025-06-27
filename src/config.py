@@ -18,7 +18,7 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///' + os.path.j
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=5, ping_interval=5)
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=30, ping_interval=5)
 
 # Import routes to register them
 from src.routes import static
