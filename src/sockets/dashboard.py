@@ -185,8 +185,8 @@ def on_toggle_game_mode() -> None:
         state.game_mode = new_mode
         logger.info(f"Game mode toggled to: {new_mode}")
         
-        # Clear caches to recalculate with new mode
-        clear_team_caches()
+        # Clear caches to recalculate with new mode - use force clear since mode affects all calculations
+        force_clear_all_caches()
         
         # Notify all clients (players and dashboards) about the mode change
         socketio.emit('game_mode_changed', {'mode': new_mode})
@@ -958,15 +958,24 @@ def clear_team_caches() -> None:
             _calculate_success_statistics.cache_clear()
             _process_single_team.cache_clear()
             
-            # Clear throttle cache for critical team state changes like disconnections
+            # Clear get_all_teams cache since it depends on LRU caches we just cleared
             _last_refresh_time = 0
             _cached_teams_result = None
             
-            # Clear dashboard update throttle caches
-            _last_team_update_time = 0
-            _last_full_update_time = 0
-            _cached_team_metrics = None
-            _cached_full_metrics = None
+            # FIXED: Reset throttling timers when cached teams data is removed to prevent inconsistent state
+            # When we remove cached teams data, we must also reset throttling to avoid serving
+            # empty teams list with stale metrics in subsequent throttled calls
+            if _cached_team_metrics is not None and 'cached_teams' in _cached_team_metrics:
+                # Reset team update throttling to ensure consistency
+                _last_team_update_time = 0
+                _cached_team_metrics = None
+                
+            if _cached_full_metrics is not None and 'cached_teams' in _cached_full_metrics:
+                # Reset full update throttling to ensure consistency
+                _last_full_update_time = 0
+                _cached_full_metrics = None
+            
+            logger.debug("Cleared LRU caches and reset throttling state to ensure data consistency")
             
         # Perform periodic cleanup of dashboard client data
         # Note: This is outside the main lock to prevent potential deadlocks
@@ -974,6 +983,39 @@ def clear_team_caches() -> None:
         
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
+
+def force_clear_all_caches() -> None:
+    """
+    Force clear ALL caches including throttling state. Use only when data integrity requires it.
+    This is more aggressive than clear_team_caches() and should be used sparingly.
+    """
+    global _last_refresh_time, _cached_teams_result
+    global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
+    
+    try:
+        with _safe_dashboard_operation():
+            # Clear LRU caches
+            compute_team_hashes.cache_clear()
+            compute_correlation_matrix.cache_clear()
+            compute_success_metrics.cache_clear()
+            _calculate_team_statistics.cache_clear()
+            _calculate_success_statistics.cache_clear()
+            _process_single_team.cache_clear()
+            
+            # Force clear ALL throttling state
+            _last_refresh_time = 0
+            _cached_teams_result = None
+            _last_team_update_time = 0
+            _last_full_update_time = 0
+            _cached_team_metrics = None
+            _cached_full_metrics = None
+            
+            logger.info("Force cleared all caches and throttling state")
+            
+        _periodic_cleanup_dashboard_clients()
+        
+    except Exception as e:
+        logger.error(f"Error in force_clear_all_caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update() -> None:
     """
@@ -997,18 +1039,16 @@ def emit_dashboard_team_update() -> None:
             current_time = time()
             time_since_last_update = current_time - _last_team_update_time
             
-            # Always get teams data first to ensure consistency
-            serialized_teams = get_all_teams()
-            
-            # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
-            # Metrics will sync within 0.5 seconds due to throttling, providing good balance
-            # between performance and consistency during rapid state changes.
+            # FIXED: Throttle the expensive get_all_teams call along with metrics
             if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
-                # Use cached metrics to avoid expensive calculations
+                # Use cached data for both teams and metrics to avoid expensive calculations
+                serialized_teams = _cached_team_metrics.get('cached_teams', [])
                 active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
                 ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
+                logger.debug("Using cached team data and metrics for team update")
             else:
-                # Calculate fresh metrics from the teams data we just fetched
+                # Calculate fresh data including expensive team computation
+                serialized_teams = get_all_teams()
                 active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
                 active_teams_count = len(active_teams)
                 ready_players_count = sum(
@@ -1016,12 +1056,14 @@ def emit_dashboard_team_update() -> None:
                     for team in active_teams
                 )
                 
-                # Cache only the expensive-to-calculate metrics
+                # Cache both the expensive teams data AND the calculated metrics
                 _cached_team_metrics = {
+                    'cached_teams': serialized_teams,  # Cache the expensive teams data
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
                 _last_team_update_time = current_time
+                logger.debug("Computed fresh team data and metrics for team update")
             
             # Separate clients by streaming preference (thread-safe read)
             streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
@@ -1077,18 +1119,18 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
             current_time = time()
             time_since_last_update = current_time - _last_full_update_time
             
-            # Always get teams data first to ensure consistency
-            all_teams_for_metrics = get_all_teams()
-            
-            # Use longer throttling for expensive operations (database queries)
-            # This prevents overwhelming the database during high activity periods
+            # FIXED: Throttle both expensive database queries AND team data computation
             if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
                 # Use cached data to avoid expensive operations
+                all_teams_for_metrics = _cached_full_metrics.get('cached_teams', [])
                 total_answers = _cached_full_metrics.get('total_answers', 0)
                 active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
                 ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
+                logger.debug("Using cached team data and full metrics for dashboard update")
             else:
-                # Calculate fresh data with expensive database query
+                # Calculate fresh data with expensive database query AND team computation
+                all_teams_for_metrics = get_all_teams()
+                
                 with app.app_context():
                     total_answers = Answers.query.count()
 
@@ -1101,13 +1143,15 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                     for team in active_teams
                 )
                 
-                # Cache the expensive-to-calculate metrics with longer TTL
+                # Cache the expensive-to-calculate data including teams
                 _cached_full_metrics = {
+                    'cached_teams': all_teams_for_metrics,  # Cache the expensive teams data
                     'total_answers': total_answers,
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
                 _last_full_update_time = current_time
+                logger.debug("Computed fresh team data and full metrics for dashboard update")
 
         base_update_data = {
             'total_answers_count': total_answers,
@@ -1282,8 +1326,8 @@ def on_restart_game() -> None:
             PairQuestionRounds.query.delete()
             Answers.query.delete()
             db.session.commit()
-            # Clear caches after successful database commit
-            clear_team_caches()
+            # Force clear all caches after successful database commit since this is a complete reset
+            force_clear_all_caches()
         except Exception as db_error:
             db.session.rollback()
             logger.error(f"Database error during game reset: {str(db_error)}", exc_info=True)
