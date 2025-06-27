@@ -24,10 +24,10 @@ numpy==1.26.2
 psutil==5.9.6
 
 # Development and testing (optional)
-pytest==7.4.3
+pytest==8.3.3
 pytest-asyncio==0.21.1
 black==24.3.0
-mypy==1.7.1
+mypy==1.16.1
 
 # Type hints
 typing-extensions==4.8.0
