@@ -172,8 +172,10 @@ class TestDynamicStatistics:
             {'A': {'true': 8, 'false': 2}, 'B': {'true': 5, 'false': 5}, 'X': {'true': 7, 'false': 3}, 'Y': {'true': 6, 'false': 4}}  # player_responses
         )
         
-        success_metrics_str = str(success_data)
-        result = _calculate_success_statistics(success_metrics_str)
+        # Mock the compute_success_metrics to return our test data
+        with patch('src.sockets.dashboard.compute_success_metrics') as mock_compute:
+            mock_compute.return_value = success_data
+            result = _calculate_success_statistics("test_team")
         
         assert isinstance(result, dict)
         assert 'trace_average_statistic' in result  # This should be overall_success_rate
@@ -255,8 +257,10 @@ class TestDynamicStatistics:
             }
         )
         
-        success_metrics_str = str(success_data)
-        result = _calculate_success_statistics(success_metrics_str)
+        # Mock the compute_success_metrics to return our test data
+        with patch('src.sockets.dashboard.compute_success_metrics') as mock_compute:
+            mock_compute.return_value = success_data
+            result = _calculate_success_statistics("test_team")
         
         # Expected individual balances:
         # A: min(8,2)/10 * 2 = 0.4
@@ -329,8 +333,10 @@ class TestDynamicStatistics:
             ]
             mock_answers_model.query = mock_answers_query
             
-            # Call the function
-            result = compute_success_metrics(team_id=1)
+            # Call the function with team name and mock the lookup
+            with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+                mock_get_id.return_value = 1
+                result = compute_success_metrics("test_team")
             
             # Verify return structure
             assert len(result) == 7

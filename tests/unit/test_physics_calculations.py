@@ -64,7 +64,12 @@ class TestPhysicsCalculations:
 
     def _calculate_team_statistics_by_team_name(self, team_name):
         """Helper method to call _calculate_team_statistics with team name"""
-        return _calculate_team_statistics(team_name)
+        # Mock compute_correlation_matrix to use the current test's correlation data
+        with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
+            # Get the result from the most recent compute_correlation_matrix call
+            result = self._compute_correlation_matrix_by_id(1)
+            mock_compute.return_value = result
+            return _calculate_team_statistics(team_name)
 
     def test_chsh_theoretical_maximum(self):
         """Test that CHSH value approaches theoretical quantum maximum (2√2 ≈ 2.828)"""
@@ -629,8 +634,7 @@ class TestPhysicsCalculations:
                 expected = 2 * math.sqrt(2)
                 assert abs(total_chsh - expected) < 0.1
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.1
 
     def test_chsh_random_correlations(self):
@@ -683,8 +687,7 @@ class TestPhysicsCalculations:
                 assert abs(total_chsh - expected) < 0.15
                 assert -4.0 <= total_chsh <= 4.0
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.15
 
     def test_chsh_classical_limit_exact(self):
@@ -734,8 +737,7 @@ class TestPhysicsCalculations:
                 expected = 2.0
                 assert abs(total_chsh - expected) < 0.01
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.01
 
     def test_chsh_negative_limit(self):
@@ -776,8 +778,7 @@ class TestPhysicsCalculations:
                 expected = -2.0
                 assert abs(total_chsh - expected) < 0.01
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.01
 
     def test_chsh_zero_correlation(self):
@@ -818,6 +819,5 @@ class TestPhysicsCalculations:
                 expected = 0.0
                 assert abs(total_chsh - expected) < 0.1
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.1
