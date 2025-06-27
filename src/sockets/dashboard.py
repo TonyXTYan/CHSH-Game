@@ -784,8 +784,8 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
             if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
                 # logger.debug("Returning cached team data")
                 return _cached_teams_result
-        # else:
-        #     logger.debug("Computing fresh team data")
+        
+        # logger.debug("Computing fresh team data")
         
         # Compute fresh data
         # Query all teams from database - eager loading will be done per team as needed

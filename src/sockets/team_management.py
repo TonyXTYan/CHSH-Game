@@ -501,6 +501,15 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'is_reactivated': True  # Flag to indicate this was a reactivation
             })  # type: ignore
             
+            # ADD THIS: Send team_status_update event to properly set team status
+            emit('team_status_update', {
+                'team_name': team_name,
+                'status': 'waiting_pair',
+                'members': get_team_members(team_name),
+                'game_started': state.game_started,
+                'disable_input': True  # Disable input when team is incomplete
+            }, to=team_name)  # type: ignore
+            
             socketio.emit('teams_updated', {
                 'teams': get_available_teams_list(),
                 'game_started': state.game_started
