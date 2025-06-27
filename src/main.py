@@ -3,6 +3,7 @@ import sys
 import signal
 import uuid
 import logging
+import time
 
 # Configure logging for main module
 logging.basicConfig(
@@ -20,6 +21,38 @@ from src.state import state
 
 # Unique ID for server instance
 server_instance_id = str(uuid.uuid4())
+
+# Store server instance ID for connection handlers
+from src.sockets.team_management import handle_connect
+handle_connect._server_instance_id = server_instance_id
+
+def cleanup_stale_connections():
+    """Periodic task to clean up stale connections"""
+    try:
+        stale_sids = state.get_stale_connections()
+        if stale_sids:
+            logger.info(f"Cleaning up {len(stale_sids)} stale connections")
+            for sid in stale_sids:
+                try:
+                    socketio.disconnect(sid, namespace='/')
+                    state.record_disconnection(sid)
+                except Exception as e:
+                    logger.debug(f"Error disconnecting stale client {sid}: {e}")
+    except Exception as e:
+        logger.error(f"Error in cleanup_stale_connections: {e}")
+
+# Schedule periodic cleanup every 30 seconds
+def start_periodic_cleanup():
+    """Start background task for connection cleanup"""
+    import threading
+    def periodic_task():
+        while True:
+            cleanup_stale_connections()
+            time.sleep(30)  # Run every 30 seconds
+    
+    cleanup_thread = threading.Thread(target=periodic_task, daemon=True)
+    cleanup_thread.start()
+    logger.info("Started periodic connection cleanup task")
 
 # Signal handler for graceful shutdown
 def handle_shutdown(signum, frame):
@@ -135,4 +168,8 @@ if __name__ == '__main__':
     # Register signal handlers
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)
+    
+    # Start periodic maintenance tasks
+    start_periodic_cleanup()
+    
     socketio.run(app, host='0.0.0.0', port=8080, debug=True, use_reloader=False)

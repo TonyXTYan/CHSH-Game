@@ -38,10 +38,11 @@ _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
 @socketio.on('keep_alive')
 def on_keep_alive() -> None:
+    """Legacy keep_alive handler - redirects to universal heartbeat system"""
     try:
         sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
-            dashboard_last_activity[sid] = time()
+            state.update_heartbeat(sid)
             emit('keep_alive_ack', to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_keep_alive: {str(e)}", exc_info=True)
@@ -940,9 +941,20 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
     try:
         sid = request.sid  # type: ignore
         
-        # Add to dashboard clients with teams streaming disabled by default (only for new clients)
+        # Check connection limits
+        if not state.can_accept_connection():
+            logger.warning(f'Dashboard connection rejected due to rate limit: {sid}')
+            if callback:
+                callback({
+                    'status': 'error',
+                    'message': 'Server is busy, please try again in a moment'
+                })
+            return
+        
+        # Record connection and add to dashboard clients
+        state.record_connection(sid)
         state.dashboard_clients.add(sid)
-        dashboard_last_activity[sid] = time()
+        
         if sid not in dashboard_teams_streaming:
             dashboard_teams_streaming[sid] = False  # Teams streaming off by default only for new clients
         logger.info(f"Dashboard client connected: {sid}")
@@ -981,6 +993,7 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
         
         # If callback provided, use it to return data directly
         if callback:
+            update_data['heartbeat_interval'] = 10  # Tell dashboard to send heartbeat every 10 seconds
             callback(update_data)
         else:
             # Send update to the joining client only once

@@ -157,10 +157,65 @@ def get_team_members(team_name: str) -> List[str]:
         logger.error(f"Error in get_team_members: {str(e)}", exc_info=True)
         return []
 
+@socketio.on('heartbeat')
+def on_heartbeat() -> None:
+    """Universal heartbeat handler for all clients (players and dashboard)"""
+    try:
+        sid = request.sid  # type: ignore
+        state.update_heartbeat(sid)
+        emit('heartbeat_ack', to=sid)  # type: ignore
+    except Exception as e:
+        logger.error(f"Error in on_heartbeat: {str(e)}", exc_info=True)
+
+@socketio.on('sync_request')
+def on_sync_request() -> None:
+    """Handle state synchronization requests from reconnecting clients"""
+    try:
+        sid = request.sid  # type: ignore
+        
+        # Update heartbeat first
+        state.update_heartbeat(sid)
+        
+        # Prepare synchronization data
+        sync_data = {
+            'game_started': state.game_started,
+            'game_paused': state.game_paused,
+            'game_mode': state.game_mode,
+            'available_teams': get_available_teams_list(),
+            'server_time': time.time()
+        }
+        
+        # Add team-specific data if client is in a team
+        if sid in state.player_to_team:
+            team_name = state.player_to_team[sid]
+            team_info = state.active_teams.get(team_name)
+            if team_info:
+                sync_data['team_status'] = {
+                    'team_name': team_name,
+                    'status': 'active' if len(team_info['players']) == 2 else 'waiting_pair',
+                    'members': team_info['players'],
+                    'current_round': team_info.get('current_round_number', 0)
+                }
+        
+        emit('state_sync', sync_data, to=sid)  # type: ignore
+        logger.info(f"Sent state sync to client: {sid}")
+        
+    except Exception as e:
+        logger.error(f"Error in on_sync_request: {str(e)}", exc_info=True)
+
 @socketio.on('connect')
 def handle_connect() -> None:
     try:
         sid = request.sid  # type: ignore
+        
+        # Connection rate limiting for load protection
+        if not state.can_accept_connection():
+            logger.warning(f'Connection rate limit exceeded, rejecting: {sid}')
+            emit('error', {'message': 'Server is busy, please try again in a moment'})  # type: ignore
+            return False  # Reject connection
+        
+        # Record connection and start heartbeat tracking
+        state.record_connection(sid)
         logger.info(f'Client connected: {sid}')
         
         # By default, treat all non-dashboard connections as players
@@ -169,11 +224,18 @@ def handle_connect() -> None:
             _, emit_dashboard_full_update, _, _ = _import_dashboard_functions()
             emit_dashboard_full_update()  # Use full update to refresh player count
         
+        # Send connection confirmation with heartbeat setup
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list(),
-            'game_mode': state.game_mode
+            'game_mode': state.game_mode,
+            'heartbeat_interval': 10,  # Client should send heartbeat every 10 seconds
+            'server_instance': getattr(handle_connect, '_server_instance_id', 'unknown')
         })  # type: ignore
+        
+        # Clear any previous reconnection attempts on successful connection
+        state.clear_reconnection_attempts(sid)
+        
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
 
@@ -182,14 +244,15 @@ def handle_disconnect() -> None:
     sid = request.sid  # type: ignore
     logger.info(f'Client disconnected: {sid}')
     try:
+        # Clean up connection tracking first
+        state.record_disconnection(sid)
+        
         # Handle dashboard client disconnection
         _, emit_dashboard_full_update, _, handle_dashboard_disconnect = _import_dashboard_functions()
         handle_dashboard_disconnect(sid)
 
-        # Remove from connected players list regardless of team status
-        if sid in state.connected_players:
-            state.connected_players.remove(sid)
-            emit_dashboard_full_update()  # Update dashboard with new player count
+        # Update dashboard with new player count (if needed)
+        emit_dashboard_full_update()
 
         # Handle team-related disconnection
         if sid in state.player_to_team:

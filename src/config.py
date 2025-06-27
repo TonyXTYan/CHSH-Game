@@ -18,7 +18,18 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///' + os.path.j
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=5, ping_interval=5)
+
+# Enhanced SocketIO configuration for stability and load handling
+socketio = SocketIO(
+    app, 
+    cors_allowed_origins="*", 
+    async_mode='eventlet',
+    ping_interval=5,        # Send ping every 5 seconds
+    ping_timeout=35,        # Wait 35 seconds for pong before disconnect
+    max_http_buffer_size=1e6,  # 1MB buffer for load spikes
+    allow_upgrades=True,
+    transports=['websocket', 'polling']  # Fallback for connection issues
+)
 
 # Import routes to register them
 from src.routes import static

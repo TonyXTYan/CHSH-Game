@@ -1,12 +1,35 @@
-// Initialize socket with ping timeout settings
+// Initialize socket with enhanced connection settings
 const socket = io(window.location.origin, {
-    pingTimeout: 60000, // Increase ping timeout to 60 seconds
-    pingInterval: 25000 // Ping every 25 seconds
+    pingTimeout: 40000,  // Align with server ping_timeout
+    pingInterval: 5000,  // Align with server ping_interval
+    transports: ['websocket', 'polling']  // Allow fallback
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
 // Game mode state
 let currentGameMode = 'new';
+let heartbeatInterval = null;
+let serverInstance = null;
+
+// Enhanced heartbeat system
+function startDashboardHeartbeat(interval = 10000) {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+    }
+    
+    heartbeatInterval = setInterval(() => {
+        if (socket.connected) {
+            socket.emit('heartbeat');
+        }
+    }, interval);
+}
+
+function stopDashboardHeartbeat() {
+    if (heartbeatInterval) {
+        clearInterval(heartbeatInterval);
+        heartbeatInterval = null;
+    }
+}
 
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
@@ -15,13 +38,6 @@ document.addEventListener('visibilitychange', () => {
         socket.emit('dashboard_join');
     }
 });
-
-// Keep socket alive and handle background state
-setInterval(() => {
-    if (socket.connected) {
-        socket.emit('keep_alive');
-    }
-}, 30000); // Send keep-alive ping every 30 seconds
 
 const activeTeamsCountEl = document.getElementById("active-teams-count");
 const readyPlayersCountEl = document.getElementById("ready-players-count");
@@ -226,35 +242,28 @@ socket.on("connect", async () => {
     connectionStatusDiv.textContent = "Connected to server";
     connectionStatusDiv.className = "status-connected";
     
-    try {
-        // Get server instance ID
-        const response = await fetch('/api/server/id');
-        const {instance_id} = await response.json();
-        
-        // Check against stored ID
-        const lastId = localStorage.getItem('server_instance_id');
-        if (lastId !== instance_id) {
-            // New server instance - clear UI
-            clearAllUITables();
-            localStorage.setItem('server_instance_id', instance_id);
-        }
-        
-        // Display full server ID at the bottom
-        const sessionInfo = document.getElementById('sessionInfo');
-        if (sessionInfo) {
-            const sessionIdSpan = sessionInfo.querySelector('.session-id');
-            if (sessionIdSpan) {
-                sessionIdSpan.textContent = instance_id;
-            }
-        }
-    } catch (error) {
-        console.error('Error checking server ID:', error);
-    }
-    
     // Reset game button state on reconnect
     const startBtn = document.getElementById("start-game-btn");
     resetButtonToInitialState(startBtn);
-    socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
+    
+    // Join dashboard with callback to get heartbeat settings
+    socket.emit("dashboard_join", null, (response) => {
+        if (response && response.heartbeat_interval) {
+            startDashboardHeartbeat(response.heartbeat_interval * 1000);
+        } else {
+            // Fallback to default heartbeat
+            startDashboardHeartbeat();
+        }
+        
+        // Check for server instance changes
+        if (response && response.server_instance) {
+            if (serverInstance && serverInstance !== response.server_instance) {
+                clearAllUITables();
+                connectionStatusDiv.textContent = "Server restarted - data refreshed";
+            }
+            serverInstance = response.server_instance;
+        }
+    });
 });
 
 function clearAllUITables() {
@@ -283,6 +292,7 @@ function clearAllUITables() {
 }
 
 socket.on("disconnect", () => {
+    stopDashboardHeartbeat();
     connectionStatusDiv.textContent = "Disconnected from server";
     connectionStatusDiv.className = "status-disconnected";
     // Clear current state
@@ -293,6 +303,16 @@ socket.on("disconnect", () => {
     connectedPlayersCountEl.textContent = "0";
     currentAnswersCount = 0;
     totalResponsesCountEl.textContent = "0";
+});
+
+// Add heartbeat acknowledgment handler
+socket.on('heartbeat_ack', () => {
+    // Optional: Could update connection quality indicator here
+});
+
+// Legacy keep_alive handler for backwards compatibility
+socket.on('keep_alive_ack', () => {
+    // Redirect to heartbeat system
 });
 
 socket.on("server_shutdown", () => {

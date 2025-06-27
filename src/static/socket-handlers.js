@@ -1,13 +1,39 @@
 // Socket event handlers
 function initializeSocketHandlers(socket, callbacks) {
+    let heartbeatInterval = null;
+    let serverInstance = null;
+    
+    // Start heartbeat system
+    function startHeartbeat(interval = 10000) { // Default 10 seconds
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+        }
+        
+        heartbeatInterval = setInterval(() => {
+            socket.emit('heartbeat');
+        }, interval);
+    }
+    
+    // Stop heartbeat system
+    function stopHeartbeat() {
+        if (heartbeatInterval) {
+            clearInterval(heartbeatInterval);
+            heartbeatInterval = null;
+        }
+    }
+    
     socket.on('connect', () => {
         callbacks.updateConnectionStatus('Connected to server!');
         callbacks.sessionId = socket.id;
         callbacks.updateSessionInfo(socket.id);
         callbacks.showStatus('Connected to server!', 'success');
+        
+        // Request state sync on every connection
+        socket.emit('sync_request');
     });
 
     socket.on('disconnect', () => {
+        stopHeartbeat();
         callbacks.updateConnectionStatus('Disconnected from server');
         // Call resetToInitialView to clear state and show appropriate message
         if (typeof callbacks.resetToInitialView === 'function') {
@@ -43,12 +69,64 @@ function initializeSocketHandlers(socket, callbacks) {
 
     socket.on('connection_established', (data) => {
         console.log('Connection established with game state:', data);
+        
+        // Start heartbeat if interval provided
+        if (data.heartbeat_interval) {
+            startHeartbeat(data.heartbeat_interval * 1000); // Convert to milliseconds
+        }
+        
+        // Track server instance for disconnect detection
+        if (data.server_instance && serverInstance && serverInstance !== data.server_instance) {
+            callbacks.showStatus('Server restarted, reconnecting...', 'warning');
+        }
+        serverInstance = data.server_instance;
+        
         if (callbacks.onConnectionEstablished) {
             callbacks.onConnectionEstablished(data);
         } else {
             // Fallback to direct calls if callback not available
             callbacks.updateGameState(data.game_started);
             callbacks.updateTeamsList(data.available_teams);
+        }
+    });
+    
+    // Heartbeat acknowledgment
+    socket.on('heartbeat_ack', () => {
+        // Optional: Could update connection quality indicator here
+    });
+    
+    // State synchronization response
+    socket.on('state_sync', (data) => {
+        console.log('Received state sync:', data);
+        
+        // Update game state
+        if (data.game_started !== undefined) {
+            callbacks.updateGameState(data.game_started);
+        }
+        
+        // Update game mode if provided
+        if (data.game_mode && callbacks.onGameModeChanged) {
+            callbacks.onGameModeChanged({ mode: data.game_mode });
+        }
+        
+        // Update teams list
+        if (data.available_teams) {
+            callbacks.updateTeamsList(data.available_teams);
+        }
+        
+        // Restore team state if client was in a team
+        if (data.team_status) {
+            const teamData = data.team_status;
+            if (callbacks.onTeamJoined) {
+                // Simulate team join to restore UI state
+                callbacks.onTeamJoined({
+                    team_name: teamData.team_name,
+                    message: 'Reconnected to team',
+                    game_started: data.game_started,
+                    team_status: teamData.status,
+                    is_reconnection: true
+                });
+            }
         }
     });
 
