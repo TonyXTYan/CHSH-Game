@@ -904,16 +904,16 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
         current_time = time()
         time_since_last_update = current_time - _last_team_update_time
         
-        if not force_refresh and time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
+        # Always get teams data first to ensure consistency
+        serialized_teams = get_all_teams(force_refresh=force_refresh)
+        
+        # Use the same throttling logic as get_all_teams to ensure metrics and teams data are synchronized
+        if not force_refresh and time_since_last_update < REFRESH_DELAY and _cached_team_metrics is not None:
             # Use cached metrics to avoid expensive calculations
             active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
             ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
-            serialized_teams = get_all_teams(force_refresh=False)  # Use cached teams
         else:
-            # Calculate fresh metrics
-            serialized_teams = get_all_teams(force_refresh=force_refresh)
-            
-            # Calculate metrics that all clients need (streaming and non-streaming)
+            # Calculate fresh metrics from the teams data we just fetched
             active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
             active_teams_count = len(active_teams)
             ready_players_count = sum(
@@ -974,21 +974,21 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         current_time = time()
         time_since_last_update = current_time - _last_full_update_time
         
-        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_full_metrics is not None:
+        # Always get teams data first to ensure consistency
+        all_teams_for_metrics = get_all_teams()
+        
+        # Use the same throttling logic as get_all_teams to ensure metrics and teams data are synchronized
+        if time_since_last_update < REFRESH_DELAY and _cached_full_metrics is not None:
             # Use cached data to avoid expensive operations
             total_answers = _cached_full_metrics.get('total_answers', 0)
             active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
             ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
-            all_teams_for_metrics = get_all_teams(force_refresh=False)  # Use cached teams
         else:
             # Calculate fresh data
             with app.app_context():
                 total_answers = Answers.query.count()
 
-            # Always get teams data for metrics calculation
-            all_teams_for_metrics = get_all_teams()
-            
-            # Calculate metrics that should always be sent
+            # Calculate metrics from the teams data we just fetched
             # Count teams that are active or waiting for a pair as "active" for metrics
             active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
             active_teams_count = len(active_teams)
