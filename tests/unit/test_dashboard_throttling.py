@@ -2,11 +2,13 @@ import pytest
 import time
 from unittest.mock import Mock, patch, MagicMock
 import logging
+import threading
 from src.sockets.dashboard import (
     emit_dashboard_team_update,
     emit_dashboard_full_update,
     clear_team_caches,
-    REFRESH_DELAY_QUICK
+    REFRESH_DELAY_QUICK,
+    REFRESH_DELAY_FULL
 )
 from src.state import state
 
@@ -77,6 +79,12 @@ def setup_dashboard_state():
 class TestDashboardThrottling:
     """Test dashboard update throttling functionality."""
     
+    def test_throttling_constants_exist(self):
+        """Test that both throttling constants exist and are properly configured."""
+        assert REFRESH_DELAY_QUICK == 0.5
+        assert REFRESH_DELAY_FULL == 1.0
+        assert REFRESH_DELAY_FULL > REFRESH_DELAY_QUICK
+    
     def test_emit_dashboard_team_update_fresh_calculation(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that fresh calculations work correctly."""
         clear_team_caches()  # Ensure clean state
@@ -117,7 +125,7 @@ class TestDashboardThrottling:
         assert len(state.connected_players) == 4  # 3 original + 1 new
     
     def test_emit_dashboard_team_update_throttling(self, mock_dashboard_dependencies, setup_dashboard_state):
-        """Test that throttling works correctly."""
+        """Test that team update throttling uses REFRESH_DELAY_QUICK."""
         clear_team_caches()
         
         # First call
@@ -167,7 +175,7 @@ class TestDashboardThrottling:
         assert len(state.connected_players) == 4  # 3 original + 1 new
     
     def test_emit_dashboard_full_update_throttling(self, mock_dashboard_dependencies, setup_dashboard_state):
-        """Test that throttling works correctly for full update."""
+        """Test that full update throttling uses REFRESH_DELAY_FULL."""
         clear_team_caches()
         
         # First call
@@ -180,6 +188,47 @@ class TestDashboardThrottling:
         
         # Database query should not be called again due to throttling
         assert mock_answers.query.count.call_count == first_db_call_count
+    
+    def test_different_throttling_delays(self, mock_dashboard_dependencies, setup_dashboard_state):
+        """Test that team updates and full updates have different throttling delays."""
+        clear_team_caches()
+        
+        # Test team update throttling with REFRESH_DELAY_QUICK
+        with patch('src.sockets.dashboard.time') as mock_time:
+            base_time = 1000.0
+            mock_time.return_value = base_time
+            
+            # First team update
+            emit_dashboard_team_update()
+            
+            # Immediate second call should be throttled
+            mock_time.return_value = base_time + REFRESH_DELAY_QUICK * 0.5
+            import src.sockets.dashboard as dashboard_module
+            initial_team_time = dashboard_module._last_team_update_time
+            
+            emit_dashboard_team_update()
+            
+            # Should still be using cache (time not updated)
+            assert dashboard_module._last_team_update_time == initial_team_time
+            
+        # Test full update throttling with REFRESH_DELAY_FULL
+        clear_team_caches()
+        mock_answers = mock_dashboard_dependencies['answers']
+        
+        with patch('src.sockets.dashboard.time') as mock_time:
+            base_time = 2000.0
+            mock_time.return_value = base_time
+            
+            # First full update
+            emit_dashboard_full_update()
+            first_db_count = mock_answers.query.count.call_count
+            
+            # Call within REFRESH_DELAY_FULL window should be throttled
+            mock_time.return_value = base_time + REFRESH_DELAY_FULL * 0.5
+            emit_dashboard_full_update()
+            
+            # Database should not be called again
+            assert mock_answers.query.count.call_count == first_db_count
     
     def test_separate_caches_no_interference(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that the separate caches don't interfere with each other."""
@@ -245,8 +294,8 @@ class TestDashboardThrottling:
         assert not mock_get_teams.called
         assert not mock_answers.query.count.called
     
-    def test_throttle_delay_timing(self, mock_dashboard_dependencies, setup_dashboard_state):
-        """Test that throttling respects the REFRESH_DELAY_QUICK timing."""
+    def test_throttle_delay_timing_team_updates(self, mock_dashboard_dependencies, setup_dashboard_state):
+        """Test that team update throttling respects the REFRESH_DELAY_QUICK timing."""
         clear_team_caches()
         
         # First call
@@ -267,6 +316,29 @@ class TestDashboardThrottling:
         # Third call should also call get_all_teams
         emit_dashboard_team_update()
         assert mock_get_teams.call_count >= initial_call_count + 2
+    
+    def test_throttle_delay_timing_full_updates(self, mock_dashboard_dependencies, setup_dashboard_state):
+        """Test that full update throttling respects the REFRESH_DELAY_FULL timing."""
+        clear_team_caches()
+        
+        # First call
+        emit_dashboard_full_update()
+        mock_answers = mock_dashboard_dependencies['answers']
+        initial_db_count = mock_answers.query.count.call_count
+        
+        # Wait less than REFRESH_DELAY_FULL
+        time.sleep(REFRESH_DELAY_FULL * 0.5)
+        
+        # Second call should be throttled
+        emit_dashboard_full_update()
+        assert mock_answers.query.count.call_count == initial_db_count
+        
+        # Wait longer than REFRESH_DELAY_FULL
+        time.sleep(REFRESH_DELAY_FULL * 1.1)
+        
+        # Third call should not be throttled
+        emit_dashboard_full_update()
+        assert mock_answers.query.count.call_count > initial_db_count
     
     @patch('src.sockets.dashboard.logger')
     def test_error_handling(self, mock_logger, mock_dashboard_dependencies, setup_dashboard_state):
@@ -333,3 +405,79 @@ class TestCacheMetrics:
         mock_socketio = mock_dashboard_dependencies['socketio']
         assert mock_socketio.emit.called
         assert len(state.connected_players) == 8  # 3 initial + 5 new
+
+
+class TestThreadSafety:
+    """Test thread safety of dashboard operations."""
+    
+    def test_concurrent_cache_operations(self, mock_dashboard_dependencies, setup_dashboard_state):
+        """Test that cache operations are thread-safe."""
+        import threading
+        
+        exceptions = []
+        
+        def cache_worker():
+            try:
+                for _ in range(10):
+                    clear_team_caches()
+                    emit_dashboard_team_update()
+                    emit_dashboard_full_update()
+                    time.sleep(0.001)
+            except Exception as e:
+                exceptions.append(e)
+        
+        # Start multiple threads
+        threads = []
+        for _ in range(3):
+            thread = threading.Thread(target=cache_worker)
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for completion
+        for thread in threads:
+            thread.join()
+        
+        # Should not have race condition exceptions
+        assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
+    
+    def test_memory_cleanup_thread_safety(self):
+        """Test that memory cleanup operations are thread-safe."""
+        from src.sockets.dashboard import _cleanup_dashboard_client_data, dashboard_last_activity, dashboard_teams_streaming
+        import threading
+        
+        # Setup test data
+        for i in range(100):
+            dashboard_last_activity[f'client_{i}'] = float(i)
+            dashboard_teams_streaming[f'client_{i}'] = i % 2 == 0
+        
+        exceptions = []
+        
+        def cleanup_worker():
+            try:
+                for i in range(50):
+                    _cleanup_dashboard_client_data(f'client_{i}')
+            except Exception as e:
+                exceptions.append(e)
+        
+        # Start multiple cleanup threads
+        threads = []
+        for _ in range(5):
+            thread = threading.Thread(target=cleanup_worker)
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for completion
+        for thread in threads:
+            thread.join()
+        
+        # Should not have race condition exceptions
+        assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
+        
+        # Cleanup remaining data
+        remaining_clients = list(dashboard_last_activity.keys()) + list(dashboard_teams_streaming.keys())
+        for client_id in remaining_clients:
+            _cleanup_dashboard_client_data(client_id)
+        
+        # Should be cleaned up
+        assert len(dashboard_last_activity) == 0
+        assert len(dashboard_teams_streaming) == 0

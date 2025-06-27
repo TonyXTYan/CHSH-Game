@@ -15,6 +15,7 @@ import hashlib
 import csv
 import io
 import logging
+import threading
 from datetime import datetime
 from typing import Dict, List, Tuple, Any, Optional, Union
 from flask import request
@@ -30,18 +31,25 @@ dashboard_teams_streaming: Dict[str, bool] = {}
 
 # Cache configuration and throttling constants
 CACHE_SIZE = 1024  # LRU cache size for team calculations
-REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate for all dashboard updates
+REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate for team updates and data fetching
+REFRESH_DELAY_FULL = 1.0  # seconds - maximum refresh rate for expensive full dashboard updates
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
+
+# Thread safety for cache operations
+_cache_lock = threading.RLock()
 
 # Global throttling state for get_all_teams function
 _last_refresh_time = 0
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
-# Global throttling state for dashboard update functions 
+# Global throttling state for dashboard update functions with differentiated timing
 _last_team_update_time = 0
 _last_full_update_time = 0
 _cached_team_metrics: Optional[Dict[str, int]] = None
 _cached_full_metrics: Optional[Dict[str, int]] = None
+
+# Cleanup tracking for dashboard client connections
+_cleanup_lock = threading.Lock()
 
 def _get_team_id_from_name(team_name: str) -> Optional[int]:
     """Helper function to resolve team_name to team_id from state or database."""
@@ -57,6 +65,39 @@ def _get_team_id_from_name(team_name: str) -> Optional[int]:
     except Exception as e:
         logger.error(f"Error getting team_id for team_name {team_name}: {str(e)}", exc_info=True)
         return None
+
+def _cleanup_dashboard_client_data(sid: str) -> None:
+    """
+    Thread-safe cleanup of dashboard client tracking data.
+    Prevents memory leaks from disconnected clients.
+    """
+    with _cleanup_lock:
+        dashboard_last_activity.pop(sid, None)
+        dashboard_teams_streaming.pop(sid, None)
+        logger.debug(f"Cleaned up dashboard client data for {sid}")
+
+def _periodic_cleanup_dashboard_clients() -> None:
+    """
+    Periodic cleanup of stale dashboard client data.
+    Removes tracking for clients not in active dashboard_clients set.
+    """
+    with _cleanup_lock:
+        # Get current active dashboard clients
+        active_clients = set(state.dashboard_clients)
+        
+        # Clean up tracking dictionaries
+        stale_activity_clients = set(dashboard_last_activity.keys()) - active_clients
+        stale_streaming_clients = set(dashboard_teams_streaming.keys()) - active_clients
+        
+        for sid in stale_activity_clients:
+            del dashboard_last_activity[sid]
+            
+        for sid in stale_streaming_clients:
+            del dashboard_teams_streaming[sid]
+            
+        if stale_activity_clients or stale_streaming_clients:
+            logger.info(f"Cleaned up {len(stale_activity_clients)} stale activity clients "
+                       f"and {len(stale_streaming_clients)} stale streaming clients")
 
 @socketio.on('keep_alive')
 def on_keep_alive() -> None:
@@ -809,79 +850,90 @@ def get_all_teams() -> List[Dict[str, Any]]:
     """
     Retrieve and serialize all team data with throttling for performance.
     Returns cached result if called within REFRESH_DELAY_QUICK seconds.
+    Thread-safe with proper locking for cache operations.
     """
     global _last_refresh_time, _cached_teams_result
     
     try:
-        # Check if we should throttle the request
-        current_time = time()
-        time_since_last_refresh = current_time - _last_refresh_time
-        
-        # Throttle all calls with REFRESH_DELAY_QUICK
-        if time_since_last_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
-            # logger.debug("Returning cached team data")
-            return _cached_teams_result
-        
-        # logger.debug("Computing fresh team data")
-        
-        # Compute fresh data
-        # Query all teams from database - eager loading will be done per team as needed
-        all_teams = Teams.query.all()
-        teams_list = []
-        
-        for team in all_teams:
-            # Get active team info from state if available
-            team_info = state.active_teams.get(team.team_name)
+        with _cache_lock:
+            # Check if we should throttle the request
+            current_time = time()
+            time_since_last_refresh = current_time - _last_refresh_time
             
-            # Get players from either active state or database
-            players = team_info['players'] if team_info else []
-            current_round = team_info.get('current_round_number', 0) if team_info else 0
+            # Throttle all calls with REFRESH_DELAY_QUICK
+            if time_since_last_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
+                # logger.debug("Returning cached team data")
+                return _cached_teams_result
             
-            # Use cached helper function for heavy computation
-            team_data = _process_single_team(
-                team.team_id,
-                team.team_name,
-                team.is_active,
-                team.created_at.isoformat() if team.created_at else None,
-                current_round,
-                players[0] if len(players) > 0 else None,
-                players[1] if len(players) > 1 else None
-            )
+            # logger.debug("Computing fresh team data")
             
-            if team_data:
-                teams_list.append(team_data)
-        
-        # Update cache and timestamp
-        _cached_teams_result = teams_list
-        _last_refresh_time = current_time
-        
-        return teams_list
+            # Compute fresh data
+            # Query all teams from database - eager loading will be done per team as needed
+            all_teams = Teams.query.all()
+            teams_list = []
+            
+            for team in all_teams:
+                # Get active team info from state if available
+                team_info = state.active_teams.get(team.team_name)
+                
+                # Get players from either active state or database
+                players = team_info['players'] if team_info else []
+                current_round = team_info.get('current_round_number', 0) if team_info else 0
+                
+                # Use cached helper function for heavy computation
+                team_data = _process_single_team(
+                    team.team_id,
+                    team.team_name,
+                    team.is_active,
+                    team.created_at.isoformat() if team.created_at else None,
+                    current_round,
+                    players[0] if len(players) > 0 else None,
+                    players[1] if len(players) > 1 else None
+                )
+                
+                if team_data:
+                    teams_list.append(team_data)
+            
+            # Update cache and timestamp
+            _cached_teams_result = teams_list
+            _last_refresh_time = current_time
+            
+            return teams_list
     except Exception as e:
         logger.error(f"Error in get_all_teams: {str(e)}", exc_info=True)
         return []
 
 def clear_team_caches() -> None:
-    """Clear all team-related LRU caches and throttling state to prevent stale data."""
+    """
+    Clear all team-related LRU caches and throttling state to prevent stale data.
+    Thread-safe operation to prevent race conditions during cache clearing.
+    """
     global _last_refresh_time, _cached_teams_result
     global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
     
     try:
-        compute_team_hashes.cache_clear()
-        compute_correlation_matrix.cache_clear()
-        compute_success_metrics.cache_clear()
-        _calculate_team_statistics.cache_clear()
-        _calculate_success_statistics.cache_clear()
-        _process_single_team.cache_clear()
+        with _cache_lock:
+            # Clear LRU caches atomically
+            compute_team_hashes.cache_clear()
+            compute_correlation_matrix.cache_clear()
+            compute_success_metrics.cache_clear()
+            _calculate_team_statistics.cache_clear()
+            _calculate_success_statistics.cache_clear()
+            _process_single_team.cache_clear()
+            
+            # Clear throttle cache for critical team state changes like disconnections
+            _last_refresh_time = 0
+            _cached_teams_result = None
+            
+            # Clear dashboard update throttle caches
+            _last_team_update_time = 0
+            _last_full_update_time = 0
+            _cached_team_metrics = None
+            _cached_full_metrics = None
+            
+        # Perform periodic cleanup of dashboard client data
+        _periodic_cleanup_dashboard_clients()
         
-        # Clear throttle cache for critical team state changes like disconnections
-        _last_refresh_time = 0
-        _cached_teams_result = None
-        
-        # Clear dashboard update throttle caches
-        _last_team_update_time = 0
-        _last_full_update_time = 0
-        _cached_team_metrics = None
-        _cached_full_metrics = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
@@ -889,6 +941,7 @@ def emit_dashboard_team_update() -> None:
     """
     Send team status updates to dashboard clients with throttled metrics calculation.
     Always sends fresh connected_players_count but throttles expensive metrics.
+    Uses REFRESH_DELAY_QUICK for frequent team status updates.
     """
     global _last_team_update_time, _cached_team_metrics
     
@@ -908,7 +961,7 @@ def emit_dashboard_team_update() -> None:
         serialized_teams = get_all_teams()
         
         # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
-        # Metrics will sync within 1-2 seconds due to throttling, providing good balance
+        # Metrics will sync within 0.5 seconds due to throttling, providing good balance
         # between performance and consistency during rapid state changes.
         if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
             # Use cached metrics to avoid expensive calculations
@@ -965,6 +1018,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
     """
     Send complete dashboard data to clients with throttled expensive operations.
     Supports targeting specific clients or excluding clients to prevent duplicates.
+    Uses REFRESH_DELAY_FULL for expensive operations like database queries.
     """
     global _last_full_update_time, _cached_full_metrics
     
@@ -976,23 +1030,22 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         # Always calculate connected_players_count fresh since it changes frequently
         connected_players_count = len(state.connected_players)
         
-        # Throttle full updates to prevent spam during mass connect/disconnect
+        # Throttle full updates with longer delay due to expensive operations
         current_time = time()
         time_since_last_update = current_time - _last_full_update_time
         
         # Always get teams data first to ensure consistency
         all_teams_for_metrics = get_all_teams()
         
-        # Note: Brief data inconsistency (fresh teams + cached metrics) is intended behavior.
-        # Metrics will sync within 1-2 seconds due to throttling, providing good balance
-        # between performance and consistency during rapid state changes.
-        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_full_metrics is not None:
+        # Use longer throttling for expensive operations (database queries)
+        # This prevents overwhelming the database during high activity periods
+        if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
             # Use cached data to avoid expensive operations
             total_answers = _cached_full_metrics.get('total_answers', 0)
             active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
             ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
         else:
-            # Calculate fresh data
+            # Calculate fresh data with expensive database query
             with app.app_context():
                 total_answers = Answers.query.count()
 
@@ -1005,7 +1058,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                 for team in active_teams
             )
             
-            # Cache only the expensive-to-calculate metrics
+            # Cache the expensive-to-calculate metrics with longer TTL
             _cached_full_metrics = {
                 'total_answers': total_answers,
                 'active_teams_count': active_teams_count,
@@ -1154,14 +1207,14 @@ def on_pause_game() -> None:
         emit('error', {'message': 'An error occurred while toggling game pause'})  # type: ignore
 
 def handle_dashboard_disconnect(sid: str) -> None:
-    """Handle disconnect logic for dashboard clients"""
+    """Handle disconnect logic for dashboard clients with proper cleanup"""
     try:
         if sid in state.dashboard_clients:
             state.dashboard_clients.remove(sid)
-            if sid in dashboard_last_activity:
-                del dashboard_last_activity[sid]
-            if sid in dashboard_teams_streaming:
-                del dashboard_teams_streaming[sid]
+            
+        # Clean up all dashboard client tracking data
+        _cleanup_dashboard_client_data(sid)
+        
     except Exception as e:
         logger.error(f"Error in handle_dashboard_disconnect: {str(e)}", exc_info=True)
 
