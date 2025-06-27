@@ -39,15 +39,16 @@ class ConnectionManager:
                         break
                     connection = self.connection_queue.popleft()
                 
-                # Connection is already handled by the normal flow, 
-                # this just ensures we don't queue indefinitely
+                # For now, just log and count the connection
+                # Actual processing happens in the main connection handler
+                # This prevents queue from growing indefinitely during load spikes
                 processed += 1
                 
         finally:
             self.processing_connections = False
     
     def create_reconnection_token(self, team_name: str, player_slot: int) -> str:
-        """Create a token for reconnection that survives server restarts"""
+        """Create a token for reconnection during the current server session"""
         import uuid
         token = str(uuid.uuid4())
         self.reconnection_tokens[token] = {
@@ -140,41 +141,63 @@ class AppState:
             # Get all active teams from database
             db_teams = Teams.query.filter_by(is_active=True).all()
             
-            # Update state to match database
+            # Update state to match database, but only for currently connected players
             for db_team in db_teams:
                 if db_team.team_name not in self.active_teams:
                     # Team exists in DB but not in memory - restore it
                     players = []
                     player_slots = {}
+                    stale_sessions_found = False
                     
-                    if db_team.player1_session_id:
+                    # Only restore players who are currently connected
+                    if db_team.player1_session_id and db_team.player1_session_id in self.connected_players:
                         players.append(db_team.player1_session_id)
                         player_slots[db_team.player1_session_id] = 1
-                    if db_team.player2_session_id:
+                    elif db_team.player1_session_id:
+                        stale_sessions_found = True
+                        
+                    if db_team.player2_session_id and db_team.player2_session_id in self.connected_players:
                         players.append(db_team.player2_session_id)
                         player_slots[db_team.player2_session_id] = 2
+                    elif db_team.player2_session_id:
+                        stale_sessions_found = True
                     
-                    # Determine current round number from database
-                    from src.models.quiz_models import PairQuestionRounds
-                    from sqlalchemy import func
-                    max_round_obj = db.session.query(func.max(PairQuestionRounds.round_number_for_team)) \
-                                        .filter_by(team_id=db_team.team_id).scalar()
-                    last_played_round_number = max_round_obj if max_round_obj is not None else 0
+                    # Clean up stale session IDs from database if found
+                    if stale_sessions_found:
+                        try:
+                            if db_team.player1_session_id and db_team.player1_session_id not in self.connected_players:
+                                db_team.player1_session_id = None
+                            if db_team.player2_session_id and db_team.player2_session_id not in self.connected_players:
+                                db_team.player2_session_id = None
+                            db.session.commit()
+                        except Exception as cleanup_error:
+                            import logging
+                            logger = logging.getLogger(__name__)
+                            logger.error(f"Error cleaning up stale session IDs: {str(cleanup_error)}")
                     
-                    self.active_teams[db_team.team_name] = {
-                        'players': players,
-                        'team_id': db_team.team_id,
-                        'current_round_number': last_played_round_number,
-                        'combo_tracker': {},
-                        'answered_current_round': {},
-                        'status': 'active' if len(players) == 2 else 'waiting_pair',
-                        'player_slots': player_slots
-                    }
-                    
-                    self.team_id_to_name[db_team.team_id] = db_team.team_name
-                    
-                    for player_sid in players:
-                        self.player_to_team[player_sid] = db_team.team_name
+                    # Only restore teams that have at least one connected player
+                    if players:
+                        # Determine current round number from database
+                        from src.models.quiz_models import PairQuestionRounds
+                        from sqlalchemy import func
+                        max_round_obj = db.session.query(func.max(PairQuestionRounds.round_number_for_team)) \
+                                            .filter_by(team_id=db_team.team_id).scalar()
+                        last_played_round_number = max_round_obj if max_round_obj is not None else 0
+                        
+                        self.active_teams[db_team.team_name] = {
+                            'players': players,
+                            'team_id': db_team.team_id,
+                            'current_round_number': last_played_round_number,
+                            'combo_tracker': {},
+                            'answered_current_round': {},
+                            'status': 'active' if len(players) == 2 else 'waiting_pair',
+                            'player_slots': player_slots
+                        }
+                        
+                        self.team_id_to_name[db_team.team_id] = db_team.team_name
+                        
+                        for player_sid in players:
+                            self.player_to_team[player_sid] = db_team.team_name
             
             # Track peak connections for monitoring
             current_count = len(self.connected_players)

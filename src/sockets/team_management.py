@@ -468,22 +468,38 @@ def on_reconnect_with_token(data: Dict[str, Any]) -> None:
         if len(team_info['players']) >= 2:
             emit('error', {'message': 'Team is now full'})  # type: ignore
             return
-            
-        # Add player back to team
-        team_info['players'].append(sid)
-        state.player_to_team[sid] = team_name
-        state.connected_players.add(sid)
-        join_room(team_name, sid=sid)  # type: ignore
         
-        # Update database
+        # Update database first to check slot availability
         db_team = db.session.get(Teams, team_info['team_id'])
-        if db_team:
-            if player_slot == 1:
-                db_team.player1_session_id = sid
-            elif player_slot == 2:
-                db_team.player2_session_id = sid
-            state.set_player_slot(team_name, sid, player_slot)
-            db.session.commit()
+        if not db_team:
+            emit('error', {'message': 'Team not found in database'})  # type: ignore
+            return
+            
+        # Check if the specific slot is available (avoid race conditions)
+        if player_slot == 1:
+            if db_team.player1_session_id is not None and db_team.player1_session_id != sid:
+                emit('error', {'message': 'Player slot 1 is already occupied'})  # type: ignore
+                return
+            db_team.player1_session_id = sid
+        elif player_slot == 2:
+            if db_team.player2_session_id is not None and db_team.player2_session_id != sid:
+                emit('error', {'message': 'Player slot 2 is already occupied'})  # type: ignore
+                return
+            db_team.player2_session_id = sid
+        else:
+            emit('error', {'message': 'Invalid player slot'})  # type: ignore
+            return
+            
+        # Add player back to team (avoid duplicates)
+        if sid not in team_info['players']:
+            team_info['players'].append(sid)
+        if sid not in state.player_to_team:
+            state.player_to_team[sid] = team_name
+        # Note: sid is already in connected_players from initial connection
+        
+        join_room(team_name, sid=sid)  # type: ignore
+        state.set_player_slot(team_name, sid, player_slot)
+        db.session.commit()
             
         # Clear disconnection tracking
         _clear_disconnected_player_tracking(team_name)
