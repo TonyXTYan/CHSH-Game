@@ -1,20 +1,51 @@
-// Socket event handlers
+// Socket event handlers with improved connection stability
 function initializeSocketHandlers(socket, callbacks) {
+    // Store connection state for stability
+    let connectionStable = false;
+    let reconnectionAttempts = 0;
+    let maxReconnectionAttempts = 10;
+    let reconnectionToken = null;
+    
+    // Store team info for reconnection
+    let lastTeamInfo = null;
+    
     socket.on('connect', () => {
+        reconnectionAttempts = 0;
         callbacks.updateConnectionStatus('Connected to server!');
         callbacks.sessionId = socket.id;
         callbacks.updateSessionInfo(socket.id);
         callbacks.showStatus('Connected to server!', 'success');
+        
+        // If we have a reconnection token, try to use it
+        if (reconnectionToken && lastTeamInfo) {
+            setTimeout(() => {
+                socket.emit('reconnect_with_token', { token: reconnectionToken });
+            }, 1000); // Small delay to ensure server is ready
+        }
     });
 
-    socket.on('disconnect', () => {
+    socket.on('disconnect', (reason) => {
+        connectionStable = false;
         callbacks.updateConnectionStatus('Disconnected from server');
-        // Call resetToInitialView to clear state and show appropriate message
-        if (typeof callbacks.resetToInitialView === 'function') {
-            callbacks.resetToInitialView();
+        
+        // Different handling based on disconnect reason
+        if (reason === 'io server disconnect') {
+            // Server initiated disconnect - likely deliberate
+            callbacks.showStatus('Server disconnected the connection. Please refresh.', 'error');
+        } else if (reason === 'transport close' || reason === 'transport error') {
+            // Network issues - try to reconnect gracefully
+            callbacks.showStatus('Connection lost. Attempting to reconnect...', 'warning');
         } else {
-            callbacks.showStatus('Disconnected, try refreshing the page.', 'error');
+            // Other reasons - generic handling
+            callbacks.showStatus('Disconnected from server. Reconnecting...', 'warning');
         }
+        
+        // Don't immediately reset view - wait for reconnection attempts
+        setTimeout(() => {
+            if (!socket.connected && typeof callbacks.resetToInitialView === 'function') {
+                callbacks.resetToInitialView();
+            }
+        }, 10000); // Wait 10 seconds before resetting view
     });
 
     socket.on('server_shutdown', () => {
@@ -28,21 +59,45 @@ function initializeSocketHandlers(socket, callbacks) {
         if (typeof callbacks.resetGameControls === 'function') {
             callbacks.resetGameControls();
         }
+        // Clear reconnection data
+        reconnectionToken = null;
+        lastTeamInfo = null;
     });
 
-    socket.on('reconnecting', () => {
-        callbacks.updateConnectionStatus('Reconnecting...');
-        callbacks.showStatus('Reconnecting to server...', 'warning');
+    socket.on('reconnecting', (attempt) => {
+        reconnectionAttempts = attempt;
+        callbacks.updateConnectionStatus(`Reconnecting... (attempt ${attempt}/${maxReconnectionAttempts})`);
+        
+        if (attempt <= 3) {
+            callbacks.showStatus('Reconnecting to server...', 'warning');
+        } else if (attempt <= 7) {
+            callbacks.showStatus('Connection issues detected. Still trying to reconnect...', 'warning');
+        } else {
+            callbacks.showStatus('Having trouble reconnecting. Please check your connection.', 'error');
+        }
     });
 
-    socket.on('reconnect', () => {
+    socket.on('reconnect', (attempt) => {
         callbacks.updateConnectionStatus('Connected to server!');
-        callbacks.showStatus('Reconnected to server! Please create or join a team.', 'success');
-        // No longer trying to restore session, player starts fresh.
+        callbacks.showStatus(`Reconnected after ${attempt} attempts!`, 'success');
+        reconnectionAttempts = 0;
+    });
+
+    socket.on('reconnect_failed', () => {
+        callbacks.updateConnectionStatus('Reconnection failed');
+        callbacks.showStatus('Could not reconnect to server. Please refresh the page.', 'error');
+        if (typeof callbacks.resetToInitialView === 'function') {
+            callbacks.resetToInitialView();
+        }
+        // Clear reconnection data
+        reconnectionToken = null;
+        lastTeamInfo = null;
     });
 
     socket.on('connection_established', (data) => {
         console.log('Connection established with game state:', data);
+        connectionStable = data.connection_stable !== false;
+        
         if (callbacks.onConnectionEstablished) {
             callbacks.onConnectionEstablished(data);
         } else {
@@ -50,17 +105,45 @@ function initializeSocketHandlers(socket, callbacks) {
             callbacks.updateGameState(data.game_started);
             callbacks.updateTeamsList(data.available_teams);
         }
+        
+        // Show connection stability status if needed
+        if (!connectionStable) {
+            callbacks.showStatus('Connection established but server may be under load.', 'warning');
+        }
     });
 
     socket.on('error', (data) => {
         callbacks.showStatus(data.message, 'error');
+        
+        // If reconnection failed, clear token
+        if (data.message.includes('reconnection') || data.message.includes('token')) {
+            reconnectionToken = null;
+            lastTeamInfo = null;
+        }
     });
 
     socket.on('team_created', (data) => {
+        // Store team info for potential reconnection
+        lastTeamInfo = {
+            team_name: data.team_name,
+            player_slot: data.player_slot
+        };
         callbacks.onTeamCreated(data);
     });
 
     socket.on('team_joined', (data) => {
+        // Store team info for potential reconnection
+        lastTeamInfo = {
+            team_name: data.team_name,
+            player_slot: data.player_slot,
+            is_reconnection: data.is_reconnection
+        };
+        
+        // If this was a successful reconnection, clear the token
+        if (data.is_reconnection) {
+            reconnectionToken = null;
+        }
+        
         callbacks.onTeamJoined(data);
     });
 
@@ -136,6 +219,9 @@ function initializeSocketHandlers(socket, callbacks) {
     });
 
     socket.on('left_team_success', (data) => {
+        // Clear team info when leaving team
+        lastTeamInfo = null;
+        reconnectionToken = null;
         callbacks.onLeftTeam(data);
     });
 
@@ -190,4 +276,21 @@ function initializeSocketHandlers(socket, callbacks) {
             callbacks.onGameModeChanged(data);
         }
     });
+    
+    // Add utility functions for connection management
+    window.socketConnectionUtils = {
+        isConnectionStable: () => connectionStable,
+        getReconnectionAttempts: () => reconnectionAttempts,
+        hasTeamInfo: () => lastTeamInfo !== null,
+        getTeamInfo: () => lastTeamInfo,
+        forceReconnect: () => {
+            if (socket && !socket.connected) {
+                socket.connect();
+            }
+        },
+        clearReconnectionData: () => {
+            reconnectionToken = null;
+            lastTeamInfo = null;
+        }
+    };
 }

@@ -163,19 +163,40 @@ def handle_connect() -> None:
         sid = request.sid  # type: ignore
         logger.info(f'Client connected: {sid}')
         
+        # Queue connection during high load to prevent overwhelming
+        state.connection_manager.queue_connection(sid)
+        
+        # Sync state with database on connection (handles server restarts)
+        state.sync_with_database()
+        
         # By default, treat all non-dashboard connections as players
         if sid not in state.dashboard_clients:
             state.connected_players.add(sid)
             _, emit_dashboard_full_update, _, _ = _import_dashboard_functions()
             emit_dashboard_full_update()  # Use full update to refresh player count
         
+        # Process any queued connections
+        state.connection_manager.process_connection_queue()
+        
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list(),
-            'game_mode': state.game_mode
+            'game_mode': state.game_mode,
+            'server_instance_id': getattr(state, 'server_instance_id', 'unknown'),
+            'connection_stable': True
         })  # type: ignore
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
+        # Still send basic connection response even if there's an error
+        try:
+            emit('connection_established', {
+                'game_started': False,
+                'available_teams': [],
+                'game_mode': 'new',
+                'connection_stable': False
+            })  # type: ignore
+        except:
+            pass
 
 @socketio.on('disconnect')
 def handle_disconnect() -> None:
@@ -196,76 +217,111 @@ def handle_disconnect() -> None:
             team_name = state.player_to_team[sid]
             team_info = state.active_teams.get(team_name)
             if team_info:
-                # Using Session.get() instead of Query.get()
-                db_team = db.session.get(Teams, team_info['team_id'])
-                if db_team:
-                    # Check if the team was full before this player disconnected
-                    was_full_team = len(team_info['players']) == 2
+                try:
+                    # Using Session.get() instead of Query.get()
+                    db_team = db.session.get(Teams, team_info['team_id'])
+                    if db_team:
+                        # Check if the team was full before this player disconnected
+                        was_full_team = len(team_info['players']) == 2
+                        player_slot = _get_player_slot_in_team(team_info, sid)
 
-                    # Remove player from team
-                    if sid in team_info['players']:
-                        # Track disconnected player for potential reconnection
-                        if was_full_team:
-                            _track_disconnected_player(team_name, sid, team_info)
-                        
-                        team_info['players'].remove(sid)
-                        
-                        # Update the database
-                        if db_team.player1_session_id == sid:
-                            db_team.player1_session_id = None
-                        elif db_team.player2_session_id == sid:
-                            db_team.player2_session_id = None
+                        # Create reconnection token for graceful reconnections
+                        if was_full_team and player_slot:
+                            reconnection_token = state.connection_manager.create_reconnection_token(
+                                team_name, player_slot
+                            )
+                            logger.info(f"Created reconnection token for {sid} in team {team_name}, slot {player_slot}")
+
+                        # Remove player from team
+                        if sid in team_info['players']:
+                            # Track disconnected player for potential reconnection
+                            if was_full_team:
+                                _track_disconnected_player(team_name, sid, team_info)
                             
-                        # Leave the team room BEFORE emitting to the team
-                        try:
-                            leave_room(team_name, sid=sid)
-                        except Exception as e:
-                            logger.error(f"Error leaving room: {str(e)}")
+                            team_info['players'].remove(sid)
                             
-                        # Notify remaining players and update team status
-                        remaining_players = team_info['players']
-                        if remaining_players:
-                            # Always update status to waiting_pair when there's only one player
-                            team_info['status'] = 'waiting_pair'
+                            # Update the database but don't immediately clear session IDs during load spikes
+                            # This helps with quick reconnections
+                            current_connection_count = len(state.connected_players)
+                            if current_connection_count < state.connection_count_peak * 0.7:  # Normal load
+                                if db_team.player1_session_id == sid:
+                                    db_team.player1_session_id = None
+                                elif db_team.player2_session_id == sid:
+                                    db_team.player2_session_id = None
+                            # Otherwise keep session IDs for faster reconnection during load spikes
+                                
+                            # Leave the team room BEFORE emitting to the team
+                            try:
+                                leave_room(team_name, sid=sid)
+                            except Exception as e:
+                                logger.error(f"Error leaving room: {str(e)}")
+                                
+                            # Notify remaining players and update team status
+                            remaining_players = team_info['players']
+                            if remaining_players:
+                                # Always update status to waiting_pair when there's only one player
+                                team_info['status'] = 'waiting_pair'
+                                
+                                try:
+                                    emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
+                                    # Keep team active with remaining player, but disable response input
+                                    emit('team_status_update', {
+                                        'team_name': team_name,
+                                        'status': 'waiting_pair',
+                                        'members': remaining_players,
+                                        'game_started': state.game_started,
+                                        'disable_input': True  # Disable response input when team is incomplete
+                                    }, to=team_name)  # type: ignore
+                                except Exception as e:
+                                    logger.error(f"Error notifying team of disconnection: {str(e)}")
+                            else:
+                                # If no players left, mark team as inactive and clear tracking
+                                _clear_disconnected_player_tracking(team_name)
+                                try:
+                                    existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
+                                    if existing_inactive:
+                                        db_team.team_name = f"{team_name}_{db_team.team_id}"
+                                    db_team.is_active = False
+                                    # Remove from active_teams state only if it exists
+                                    if team_name in state.active_teams:
+                                        del state.active_teams[team_name]
+                                    if team_info['team_id'] in state.team_id_to_name:
+                                        del state.team_id_to_name[team_info['team_id']]
+                                except Exception as e:
+                                    logger.error(f"Error marking team inactive: {str(e)}")
                             
-                            emit('player_left', {'message': 'A team member has disconnected.'}, to=team_name)  # type: ignore
-                            # Keep team active with remaining player, but disable response input
-                            emit('team_status_update', {
-                                'team_name': team_name,
-                                'status': 'waiting_pair',
-                                'members': remaining_players,
-                                'game_started': state.game_started,
-                                'disable_input': True  # Disable response input when team is incomplete
-                            }, to=team_name)  # type: ignore
-                        else:
-                            # If no players left, mark team as inactive and clear tracking
-                            _clear_disconnected_player_tracking(team_name)
-                            existing_inactive = Teams.query.filter_by(team_name=team_name, is_active=False).first()
-                            if existing_inactive:
-                                db_team.team_name = f"{team_name}_{db_team.team_id}"
-                            db_team.is_active = False
-                            # Remove from active_teams state only if it exists
-                            if team_name in state.active_teams:
-                                del state.active_teams[team_name]
-                            if team_info['team_id'] in state.team_id_to_name:
-                                del state.team_id_to_name[team_info['team_id']]
-                        
-                        db.session.commit()
-                        # Clear caches after team state change
-                        _, _, clear_team_caches, _ = _import_dashboard_functions()
-                        clear_team_caches()
-                        
+                            try:
+                                db.session.commit()
+                                # Clear caches after team state change
+                                _, _, clear_team_caches, _ = _import_dashboard_functions()
+                                clear_team_caches()
+                            except Exception as e:
+                                logger.error(f"Error committing database changes: {str(e)}")
+                                try:
+                                    db.session.rollback()
+                                except:
+                                    pass
+                            
+                            if sid in state.player_to_team:
+                                del state.player_to_team[sid]
+                            
+                            # Update all clients - with error handling to prevent cascading failures
+                            try:
+                                emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
+                                emit_dashboard_team_update(force_refresh=True)
+                                socketio.emit('teams_updated', {
+                                    'teams': get_available_teams_list(),
+                                    'game_started': state.game_started
+                                })  # type: ignore
+                            except Exception as e:
+                                logger.error(f"Error updating clients after disconnect: {str(e)}")
+                                
+                except Exception as e:
+                    logger.error(f"Error processing team disconnection: {str(e)}", exc_info=True)
+                    # Try to clean up player mapping even if team processing failed
+                    if sid in state.player_to_team:
                         del state.player_to_team[sid]
                         
-                        # Update all clients - this should happen regardless of whether team becomes inactive
-                        # Move dashboard update to end to ensure all state changes are committed
-                        # Force refresh for critical team state changes like disconnections
-                        emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
-                        emit_dashboard_team_update(force_refresh=True)
-                        socketio.emit('teams_updated', {
-                            'teams': get_available_teams_list(),
-                            'game_started': state.game_started
-                        })  # type: ignore
     except Exception as e:
         logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
@@ -359,6 +415,98 @@ def on_create_team(data: Dict[str, Any]) -> None:
     except Exception as e:
         logger.error(f"Error in on_create_team: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while creating the team'})  # type: ignore
+
+@socketio.on('reconnect_with_token')
+def on_reconnect_with_token(data: Dict[str, Any]) -> None:
+    """Handle reconnection using a reconnection token for better state sync"""
+    try:
+        token = data.get('token')
+        sid = request.sid  # type: ignore
+        
+        if not token:
+            emit('error', {'message': 'Reconnection token required'})  # type: ignore
+            return
+            
+        token_data = state.connection_manager.validate_reconnection_token(token)
+        if not token_data:
+            emit('error', {'message': 'Invalid or expired reconnection token'})  # type: ignore
+            return
+            
+        team_name = token_data['team_name']
+        player_slot = token_data['player_slot']
+        
+        # Sync state with database first
+        state.sync_with_database()
+        
+        # Check if team still exists and can accept reconnection
+        if team_name not in state.active_teams:
+            emit('error', {'message': 'Team no longer exists'})  # type: ignore
+            return
+            
+        team_info = state.active_teams[team_name]
+        
+        # Check if we can reconnect to this slot
+        if len(team_info['players']) >= 2:
+            emit('error', {'message': 'Team is now full'})  # type: ignore
+            return
+            
+        # Add player back to team
+        team_info['players'].append(sid)
+        state.player_to_team[sid] = team_name
+        state.connected_players.add(sid)
+        join_room(team_name, sid=sid)  # type: ignore
+        
+        # Update database
+        db_team = db.session.get(Teams, team_info['team_id'])
+        if db_team:
+            if player_slot == 1:
+                db_team.player1_session_id = sid
+            elif player_slot == 2:
+                db_team.player2_session_id = sid
+            state.set_player_slot(team_name, sid, player_slot)
+            db.session.commit()
+            
+        # Clear disconnection tracking
+        _clear_disconnected_player_tracking(team_name)
+        
+        # Update team status
+        team_is_now_full = len(team_info['players']) == 2
+        team_info['status'] = 'active' if team_is_now_full else 'waiting_pair'
+        
+        emit('team_joined', {
+            'team_name': team_name,
+            'message': f'Successfully reconnected to team {team_name}',
+            'game_started': state.game_started,
+            'team_status': 'full' if team_is_now_full else 'waiting_pair',
+            'is_reconnection': True,
+            'game_mode': state.game_mode,
+            'player_slot': player_slot
+        }, to=sid)  # type: ignore
+        
+        # Notify team members
+        emit('team_status_update', {
+            'team_name': team_name,
+            'status': 'full' if team_is_now_full else 'waiting_pair',
+            'members': get_team_members(team_name),
+            'game_started': state.game_started,
+            'disable_input': False if team_is_now_full else True
+        }, to=team_name)  # type: ignore
+        
+        # Update all clients
+        socketio.emit('teams_updated', {
+            'teams': get_available_teams_list(),
+            'game_started': state.game_started
+        })  # type: ignore
+        
+        # Update dashboard
+        emit_dashboard_team_update, _, _, _ = _import_dashboard_functions()
+        emit_dashboard_team_update(force_refresh=team_is_now_full)
+        
+        logger.info(f"Successful token reconnection: {sid} to team {team_name}, slot {player_slot}")
+        
+    except Exception as e:
+        logger.error(f"Error in on_reconnect_with_token: {str(e)}", exc_info=True)
+        emit('error', {'message': 'Reconnection failed'})  # type: ignore
 
 @socketio.on('join_team')
 def on_join_team(data: Dict[str, Any]) -> None:

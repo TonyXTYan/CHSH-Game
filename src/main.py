@@ -21,6 +21,9 @@ from src.state import state
 # Unique ID for server instance
 server_instance_id = str(uuid.uuid4())
 
+# Store server instance ID in state for connection tracking
+state.server_instance_id = server_instance_id
+
 # Signal handler for graceful shutdown
 def handle_shutdown(signum, frame):
     logger.info("Server shutting down gracefully...")
@@ -113,9 +116,39 @@ with app.app_context():
         # sys.exit(1)
         
     finally:
-        # Always clear memory state
+        # Always clear memory state but sync with database first
+        state.sync_with_database()
         state.reset()
         logger.info("Server initialization complete")
+
+# Background task for connection management and cleanup
+def background_cleanup_task():
+    """Background task to handle connection queue processing and token cleanup"""
+    import threading
+    import time
+    
+    def cleanup_worker():
+        while True:
+            try:
+                # Process connection queue
+                state.connection_manager.process_connection_queue()
+                
+                # Clean up expired tokens every 5 minutes
+                state.connection_manager.cleanup_expired_tokens()
+                
+                # Sleep for 30 seconds before next iteration
+                time.sleep(30)
+            except Exception as e:
+                logger.error(f"Error in background cleanup task: {str(e)}")
+                time.sleep(60)  # Wait longer if there's an error
+    
+    # Start background thread
+    cleanup_thread = threading.Thread(target=cleanup_worker, daemon=True)
+    cleanup_thread.start()
+    logger.info("Started background cleanup task")
+
+# Start background tasks
+background_cleanup_task()
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve
