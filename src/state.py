@@ -10,6 +10,8 @@ class ConnectionManager:
         self.processing_connections = False
         self.last_sync_time = time.time()
         self.reconnection_tokens: Dict[str, Dict[str, Any]] = {}  # {token: {team_name, player_slot, timestamp}}
+        # Store tokens by team and slot for easier retrieval
+        self.team_slot_tokens: Dict[str, Dict[int, str]] = {}  # {team_name: {player_slot: token}}
         self._lock = threading.Lock()
     
     def queue_connection(self, sid: str, connect_time: float = None):
@@ -51,12 +53,50 @@ class ConnectionManager:
         """Create a token for reconnection during the current server session"""
         import uuid
         token = str(uuid.uuid4())
+        timestamp = time.time()
+        
+        # Clear any existing token for this team/slot
+        self.clear_team_slot_token(team_name, player_slot)
+        
+        # Store the new token
         self.reconnection_tokens[token] = {
             'team_name': team_name,
             'player_slot': player_slot,
-            'timestamp': time.time()
+            'timestamp': timestamp
         }
+        
+        # Also store by team/slot for easier retrieval
+        if team_name not in self.team_slot_tokens:
+            self.team_slot_tokens[team_name] = {}
+        self.team_slot_tokens[team_name][player_slot] = token
+        
         return token
+    
+    def get_reconnection_token_for_team_slot(self, team_name: str, player_slot: int) -> Optional[str]:
+        """Get the reconnection token for a specific team and player slot"""
+        if team_name in self.team_slot_tokens:
+            token = self.team_slot_tokens[team_name].get(player_slot)
+            if token and token in self.reconnection_tokens:
+                # Check if token is still valid
+                token_data = self.reconnection_tokens[token]
+                if time.time() - token_data['timestamp'] < 3600:
+                    return token
+                else:
+                    # Token expired, clean it up
+                    self.clear_team_slot_token(team_name, player_slot)
+        return None
+    
+    def clear_team_slot_token(self, team_name: str, player_slot: int):
+        """Clear the reconnection token for a specific team and player slot"""
+        if team_name in self.team_slot_tokens and player_slot in self.team_slot_tokens[team_name]:
+            old_token = self.team_slot_tokens[team_name][player_slot]
+            if old_token in self.reconnection_tokens:
+                del self.reconnection_tokens[old_token]
+            del self.team_slot_tokens[team_name][player_slot]
+            
+            # Clean up empty team entries
+            if not self.team_slot_tokens[team_name]:
+                del self.team_slot_tokens[team_name]
     
     def validate_reconnection_token(self, token: str) -> Optional[Dict[str, Any]]:
         """Validate and consume a reconnection token"""
@@ -66,7 +106,10 @@ class ConnectionManager:
             if time.time() - token_data['timestamp'] < 3600:
                 return token_data
             else:
-                del self.reconnection_tokens[token]
+                # Clean up expired token
+                team_name = token_data['team_name']
+                player_slot = token_data['player_slot']
+                self.clear_team_slot_token(team_name, player_slot)
         return None
     
     def cleanup_expired_tokens(self):
@@ -77,7 +120,8 @@ class ConnectionManager:
             if current_time - data['timestamp'] > 3600
         ]
         for token in expired_tokens:
-            del self.reconnection_tokens[token]
+            token_data = self.reconnection_tokens[token]
+            self.clear_team_slot_token(token_data['team_name'], token_data['player_slot'])
 
 
 class AppState:
@@ -132,16 +176,27 @@ class AppState:
                 team_info['player_slots'] = {}
             team_info['player_slots'][sid] = slot
     
-    def sync_with_database(self):
-        """Synchronize in-memory state with database state for reconnections"""
+    def sync_with_database(self, preserve_sessions_during_startup=False):
+        """Synchronize in-memory state with database state for reconnections
+        
+        Args:
+            preserve_sessions_during_startup: If True, don't clear session IDs during server startup
+                                            when connected_players is empty
+        """
         try:
             from src.models.quiz_models import Teams
             from src.config import db
+            import logging
+            logger = logging.getLogger(__name__)
             
             # Get all active teams from database
             db_teams = Teams.query.filter_by(is_active=True).all()
             
-            # Update state to match database, but only for currently connected players
+            # Determine if we should clean up stale sessions
+            # Don't clean up during server startup when no clients are connected yet
+            should_cleanup_stale_sessions = not preserve_sessions_during_startup and len(self.connected_players) > 0
+            
+            # Update state to match database
             for db_team in db_teams:
                 if db_team.team_name not in self.active_teams:
                     # Team exists in DB but not in memory - restore it
@@ -149,33 +204,50 @@ class AppState:
                     player_slots = {}
                     stale_sessions_found = False
                     
-                    # Only restore players who are currently connected
-                    if db_team.player1_session_id and db_team.player1_session_id in self.connected_players:
-                        players.append(db_team.player1_session_id)
-                        player_slots[db_team.player1_session_id] = 1
-                    elif db_team.player1_session_id:
-                        stale_sessions_found = True
-                        
-                    if db_team.player2_session_id and db_team.player2_session_id in self.connected_players:
-                        players.append(db_team.player2_session_id)
-                        player_slots[db_team.player2_session_id] = 2
-                    elif db_team.player2_session_id:
-                        stale_sessions_found = True
+                    # Check session validity based on context
+                    if should_cleanup_stale_sessions:
+                        # Normal operation: only restore currently connected players
+                        if db_team.player1_session_id and db_team.player1_session_id in self.connected_players:
+                            players.append(db_team.player1_session_id)
+                            player_slots[db_team.player1_session_id] = 1
+                        elif db_team.player1_session_id:
+                            stale_sessions_found = True
+                            
+                        if db_team.player2_session_id and db_team.player2_session_id in self.connected_players:
+                            players.append(db_team.player2_session_id)
+                            player_slots[db_team.player2_session_id] = 2
+                        elif db_team.player2_session_id:
+                            stale_sessions_found = True
+                    else:
+                        # Server startup: preserve all session IDs for potential reconnection
+                        if db_team.player1_session_id:
+                            # Don't add to players list since they're not connected yet
+                            # but preserve the session ID in the database
+                            pass
+                        if db_team.player2_session_id:
+                            # Same for player 2
+                            pass
+                        logger.info(f"Preserving team {db_team.team_name} session IDs during startup for reconnection")
                     
-                    # Clean up stale session IDs from database if found
-                    if stale_sessions_found:
+                    # Clean up stale session IDs from database if appropriate
+                    if stale_sessions_found and should_cleanup_stale_sessions:
                         try:
+                            db.session.begin_nested()
                             if db_team.player1_session_id and db_team.player1_session_id not in self.connected_players:
+                                logger.info(f"Clearing stale player1 session ID {db_team.player1_session_id} from team {db_team.team_name}")
                                 db_team.player1_session_id = None
                             if db_team.player2_session_id and db_team.player2_session_id not in self.connected_players:
+                                logger.info(f"Clearing stale player2 session ID {db_team.player2_session_id} from team {db_team.team_name}")
                                 db_team.player2_session_id = None
                             db.session.commit()
                         except Exception as cleanup_error:
-                            import logging
-                            logger = logging.getLogger(__name__)
                             logger.error(f"Error cleaning up stale session IDs: {str(cleanup_error)}")
+                            try:
+                                db.session.rollback()
+                            except Exception as rollback_error:
+                                logger.error(f"Failed to rollback after cleanup error: {str(rollback_error)}")
                     
-                    # Only restore teams that have at least one connected player
+                    # Only restore teams to active memory if they have connected players
                     if players:
                         # Determine current round number from database
                         from src.models.quiz_models import PairQuestionRounds

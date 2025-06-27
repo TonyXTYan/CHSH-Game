@@ -21,6 +21,11 @@ function initializeSocketHandlers(socket, callbacks) {
             setTimeout(() => {
                 socket.emit('reconnect_with_token', { token: reconnectionToken });
             }, 1000); // Small delay to ensure server is ready
+        } else {
+            // Check for available reconnection tokens for this client
+            setTimeout(() => {
+                socket.emit('get_reconnectable_teams', {});
+            }, 500); // Small delay to ensure server is ready
         }
     });
 
@@ -225,21 +230,37 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onLeftTeam(data);
     });
 
-    socket.on('reconnection_token', (data) => {
-        console.log('Received reconnection token:', data);
-        reconnectionToken = data.token;
+    // Handle reconnectable teams response (includes tokens)
+    socket.on('reconnectable_teams', (data) => {
+        console.log('Received reconnectable teams:', data);
         
-        // Store token info for potential use
-        if (data.team_name && data.player_slot) {
+        // Check if there are any teams we can reconnect to with tokens
+        const teamsWithTokens = data.teams?.filter(team => team.has_token && team.reconnection_token);
+        
+        if (teamsWithTokens && teamsWithTokens.length > 0) {
+            // Store the first available token for automatic reconnection
+            const teamWithToken = teamsWithTokens[0];
+            reconnectionToken = teamWithToken.reconnection_token;
             lastTeamInfo = {
-                team_name: data.team_name,
-                player_slot: data.player_slot
+                team_name: teamWithToken.team_name,
+                player_slot: teamWithToken.player_slot
             };
+            
+            if (callbacks.showStatus) {
+                callbacks.showStatus(`You can reconnect to team ${teamWithToken.team_name}. Attempting automatic reconnection...`, 'info');
+            }
+            
+            // Attempt automatic reconnection with the token
+            if (socket.connected) {
+                setTimeout(() => {
+                    socket.emit('reconnect_with_token', { token: reconnectionToken });
+                }, 1000);
+            }
         }
         
-        // Notify user they have a reconnection token
-        if (callbacks.showStatus) {
-            callbacks.showStatus(`Disconnection detected. You can reconnect to ${data.team_name} for the next ${Math.floor(data.expires_in / 60)} minutes.`, 'info');
+        // Forward to callback if it exists
+        if (callbacks.onReconnectableTeams) {
+            callbacks.onReconnectableTeams(data);
         }
     });
 

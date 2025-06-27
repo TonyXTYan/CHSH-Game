@@ -119,7 +119,8 @@ with app.app_context():
         # Clear memory state first, then sync with database to restore relevant data
         state.reset()
         if hasattr(state, 'sync_with_database'):
-            state.sync_with_database()
+            # Preserve session IDs during startup to allow reconnections after server restart
+            state.sync_with_database(preserve_sessions_during_startup=True)
         logger.info("Server initialization complete")
 
 # Background task for connection management and cleanup

@@ -237,18 +237,11 @@ def handle_disconnect() -> None:
                             reconnection_token = state.connection_manager.create_reconnection_token(
                                 team_name, player_slot
                             )
-                            logger.info(f"Created reconnection token for {sid} in team {team_name}, slot {player_slot}")
+                            logger.info(f"Created reconnection token {reconnection_token} for {sid} in team {team_name}, slot {player_slot}")
                             
-                            # Send reconnection token to the disconnecting client
-                            try:
-                                emit('reconnection_token', {
-                                    'token': reconnection_token,
-                                    'team_name': team_name,
-                                    'player_slot': player_slot,
-                                    'expires_in': 3600  # 1 hour
-                                }, to=sid)  # type: ignore
-                            except Exception as e:
-                                logger.error(f"Error sending reconnection token to client: {str(e)}")
+                            # Note: We don't emit the token to the disconnecting client since the connection
+                            # is already closing. Instead, the token is stored and can be retrieved when
+                            # the client reconnects and requests available reconnection options.
 
                         # Remove player from team
                         if sid in team_info['players']:
@@ -709,7 +702,7 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
 
 @socketio.on('get_reconnectable_teams')
 def on_get_reconnectable_teams(data: Dict[str, Any]) -> None:
-    """Get list of teams that a player can reconnect to"""
+    """Get list of teams that a player can reconnect to with available tokens"""
     try:
         sid = request.sid  # type: ignore
         reconnectable_teams = []
@@ -720,12 +713,28 @@ def on_get_reconnectable_teams(data: Dict[str, Any]) -> None:
                 len(team_info['players']) == 1 and 
                 team_info.get('status') == 'waiting_pair'):
                 disconnected_info = state.disconnected_players[team_name]
-                reconnectable_teams.append({
+                player_slot = disconnected_info['player_slot']
+                
+                # Check if there's a valid reconnection token available for this slot
+                reconnection_token = None
+                if hasattr(state, 'connection_manager'):
+                    reconnection_token = state.connection_manager.get_reconnection_token_for_team_slot(
+                        team_name, player_slot
+                    )
+                
+                team_data = {
                     'team_name': team_name,
                     'team_id': team_info['team_id'],
                     'disconnect_time': disconnected_info['disconnect_time'],
-                    'player_slot': disconnected_info['player_slot']
-                })
+                    'player_slot': player_slot,
+                    'has_token': reconnection_token is not None
+                }
+                
+                # Include token if available (for reconnection)
+                if reconnection_token:
+                    team_data['reconnection_token'] = reconnection_token
+                
+                reconnectable_teams.append(team_data)
         
         emit('reconnectable_teams', {'teams': reconnectable_teams})  # type: ignore
         
