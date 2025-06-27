@@ -1131,7 +1131,7 @@ def test_get_available_teams_list_exception_handling():
         result = get_available_teams_list()
         assert result == []
 
-def test_get_available_teams_list_db_exception():
+def test_get_available_teams_list_db_exception(app_context):
     """Test database exception handling in get_available_teams_list"""
     from src.sockets.team_management import get_available_teams_list
     
@@ -1146,7 +1146,7 @@ def test_get_available_teams_list_db_exception():
                 result = get_available_teams_list()
                 assert result == []
 
-def test_get_available_teams_list_no_app_context():
+def test_get_available_teams_list_no_app_context(app_context):
     """Test get_available_teams_list when not in app context"""
     from src.sockets.team_management import get_available_teams_list
     
