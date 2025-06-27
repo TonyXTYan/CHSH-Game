@@ -200,19 +200,34 @@ def test_get_team_members(app_context, active_team):
 def test_handle_connect(mock_request_context):
     """Test client connection handling"""
     with patch('src.sockets.team_management.emit') as mock_emit, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_dashboard_update:
+         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_dashboard_update, \
+         patch('src.sockets.team_management.state') as mock_state:
+        
+        # Mock rate limiting to always allow connections
+        mock_state.can_accept_connection.return_value = True
+        mock_state.dashboard_clients = set()
+        
+        # Create a mock set for connected_players so we can track calls
+        mock_connected_players = MagicMock()
+        mock_state.connected_players = mock_connected_players
+        
         from src.sockets.team_management import handle_connect
         
         # Test regular player connection
         handle_connect()
         
-        assert 'test_sid' in state.connected_players
-        assert 'test_sid' not in state.dashboard_clients
+        # Verify connection was recorded and player added
+        mock_state.record_connection.assert_called_once_with('test_sid')
+        mock_state.clear_reconnection_attempts.assert_called_once_with('test_sid')
+        mock_connected_players.add.assert_called_once_with('test_sid')
         
+        # Verify connection established event was emitted
         mock_emit.assert_called_once_with('connection_established', {
-            'game_started': state.game_started,
+            'game_started': ANY,
             'available_teams': ANY,
-            'game_mode': state.game_mode
+            'game_mode': ANY,
+            'heartbeat_interval': 10,
+            'server_instance': ANY
         })
         mock_dashboard_update.assert_called_once()
 

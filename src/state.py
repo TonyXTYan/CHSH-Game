@@ -1,4 +1,5 @@
 import time
+import os
 from typing import Dict, Set, Any, Optional
 from collections import defaultdict, deque
 
@@ -23,8 +24,8 @@ class GameState:
         self.heartbeat_tracker: Dict[str, float] = {}
         self.reconnection_attempts: Dict[str, int] = defaultdict(int)
         
-        # Load protection settings
-        self.max_connections_per_minute = 60
+        # Load protection settings (more lenient during testing)
+        self.max_connections_per_minute = int(os.environ.get('MAX_CONNECTIONS_PER_MINUTE', '60'))
         self.max_reconnection_attempts = 5
         self.heartbeat_timeout = 40  # Slightly longer than ping_timeout
 

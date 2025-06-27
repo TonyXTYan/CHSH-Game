@@ -1,9 +1,9 @@
 import pytest
-from src.state import AppState
+from src.state import GameState
 
-def test_app_state_initialization():
-    """Test that AppState initializes with correct default values"""
-    state = AppState()
+def test_game_state_initialization():
+    """Test that GameState initializes with correct default values"""
+    state = GameState()
     
     assert isinstance(state.active_teams, dict)
     assert len(state.active_teams) == 0
@@ -24,9 +24,9 @@ def test_app_state_initialization():
     assert isinstance(state.team_id_to_name, dict)
     assert len(state.team_id_to_name) == 0
 
-def test_app_state_reset():
-    """Test that AppState.reset() properly clears all state"""
-    state = AppState()
+def test_game_state_reset():
+    """Test that GameState.reset() properly clears all state"""
+    state = GameState()
     
     # Set some state
     state.active_teams = {"team1": {"players": ["player1", "player2"]}}
@@ -51,9 +51,9 @@ def test_app_state_reset():
     assert state.game_paused is False
     assert len(state.team_id_to_name) == 0
 
-def test_app_state_team_tracking():
+def test_game_state_team_tracking():
     """Test adding and removing teams from state"""
-    state = AppState()
+    state = GameState()
     
     # Add a team
     team_name = "test_team"

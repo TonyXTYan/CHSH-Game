@@ -392,21 +392,21 @@ def test_dashboard_api_endpoint_error(test_client, mock_db_session):
 
 def test_on_keep_alive(mock_request, mock_state):
     """Test keep-alive functionality"""
-    from src.sockets.dashboard import on_keep_alive, dashboard_last_activity
+    from src.sockets.dashboard import on_keep_alive
     
-    # Clear the dictionary first
-    dashboard_last_activity.clear()
-    # Ensure client is authorized (already set in mock_state fixture)
-    assert 'test_dashboard_sid' in mock_state.dashboard_clients
-    
-    with patch('src.sockets.dashboard.emit') as mock_emit:
+    with patch('src.sockets.dashboard.emit') as mock_emit, \
+         patch('src.sockets.dashboard.state', mock_state) as mock_dashboard_state:
+        
+        # Ensure client is authorized
+        mock_dashboard_state.dashboard_clients = {'test_dashboard_sid'}
+        
         on_keep_alive()
         
         # Verify acknowledgment was sent
         mock_emit.assert_called_once_with('keep_alive_ack', to='test_dashboard_sid')
         
-        # Verify timestamp was updated (mock_time from mock_request fixture returns 12345.0)
-        assert dashboard_last_activity['test_dashboard_sid'] == 12345.0
+        # Verify heartbeat was updated via new system
+        mock_dashboard_state.update_heartbeat.assert_called_once_with('test_dashboard_sid')
 
 def test_handle_dashboard_disconnect(mock_request, mock_state):
     """Test dashboard disconnect handler"""
