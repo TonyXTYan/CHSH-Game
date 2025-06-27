@@ -116,9 +116,10 @@ with app.app_context():
         # sys.exit(1)
         
     finally:
-        # Always clear memory state but sync with database first
-        state.sync_with_database()
+        # Clear memory state first, then sync with database to restore relevant data
         state.reset()
+        if hasattr(state, 'sync_with_database'):
+            state.sync_with_database()
         logger.info("Server initialization complete")
 
 # Background task for connection management and cleanup

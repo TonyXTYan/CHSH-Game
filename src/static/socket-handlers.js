@@ -225,6 +225,24 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onLeftTeam(data);
     });
 
+    socket.on('reconnection_token', (data) => {
+        console.log('Received reconnection token:', data);
+        reconnectionToken = data.token;
+        
+        // Store token info for potential use
+        if (data.team_name && data.player_slot) {
+            lastTeamInfo = {
+                team_name: data.team_name,
+                player_slot: data.player_slot
+            };
+        }
+        
+        // Notify user they have a reconnection token
+        if (callbacks.showStatus) {
+            callbacks.showStatus(`Disconnection detected. You can reconnect to ${data.team_name} for the next ${Math.floor(data.expires_in / 60)} minutes.`, 'info');
+        }
+    });
+
     socket.on('game_reset', () => {
         // Reset client-side state
         callbacks.showStatus('Game has been reset. Ready to start new game.', 'info');
@@ -283,6 +301,16 @@ function initializeSocketHandlers(socket, callbacks) {
         getReconnectionAttempts: () => reconnectionAttempts,
         hasTeamInfo: () => lastTeamInfo !== null,
         getTeamInfo: () => lastTeamInfo,
+        hasReconnectionToken: () => reconnectionToken !== null,
+        getReconnectionToken: () => reconnectionToken,
+        attemptTokenReconnection: () => {
+            if (reconnectionToken && lastTeamInfo && socket) {
+                console.log('Attempting token-based reconnection...');
+                socket.emit('reconnect_with_token', { token: reconnectionToken });
+                return true;
+            }
+            return false;
+        },
         forceReconnect: () => {
             if (socket && !socket.connected) {
                 socket.connect();

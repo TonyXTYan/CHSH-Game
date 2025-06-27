@@ -212,7 +212,8 @@ def test_handle_connect(mock_request_context):
         mock_emit.assert_called_once_with('connection_established', {
             'game_started': state.game_started,
             'available_teams': ANY,
-            'game_mode': state.game_mode
+            'game_mode': state.game_mode,
+            'connection_stable': ANY
         })
         mock_dashboard_update.assert_called_once()
 

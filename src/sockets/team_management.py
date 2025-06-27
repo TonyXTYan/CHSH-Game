@@ -181,10 +181,16 @@ def handle_connect() -> None:
         if hasattr(state, 'connection_manager'):
             state.connection_manager.process_connection_queue()
         
+        # Determine connection stability based on current load
+        current_connections = len(state.connected_players)
+        peak_connections = getattr(state, 'connection_count_peak', 0)
+        connection_stable = peak_connections == 0 or current_connections < peak_connections * 0.8
+        
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list(),
-            'game_mode': state.game_mode
+            'game_mode': state.game_mode,
+            'connection_stable': connection_stable
         })  # type: ignore
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
@@ -193,9 +199,10 @@ def handle_connect() -> None:
             emit('connection_established', {
                 'game_started': False,
                 'available_teams': [],
-                'game_mode': 'new'
+                'game_mode': 'new',
+                'connection_stable': False
             })  # type: ignore
-        except:
+        except Exception:
             pass
 
 @socketio.on('disconnect')
@@ -231,6 +238,17 @@ def handle_disconnect() -> None:
                                 team_name, player_slot
                             )
                             logger.info(f"Created reconnection token for {sid} in team {team_name}, slot {player_slot}")
+                            
+                            # Send reconnection token to the disconnecting client
+                            try:
+                                emit('reconnection_token', {
+                                    'token': reconnection_token,
+                                    'team_name': team_name,
+                                    'player_slot': player_slot,
+                                    'expires_in': 3600  # 1 hour
+                                }, to=sid)  # type: ignore
+                            except Exception as e:
+                                logger.error(f"Error sending reconnection token to client: {str(e)}")
 
                         # Remove player from team
                         if sid in team_info['players']:
@@ -295,7 +313,7 @@ def handle_disconnect() -> None:
                                 logger.error(f"Error committing database changes: {str(e)}")
                                 try:
                                     db.session.rollback()
-                                except:
+                                except Exception:
                                     pass
                             
                             if sid in state.player_to_team:
