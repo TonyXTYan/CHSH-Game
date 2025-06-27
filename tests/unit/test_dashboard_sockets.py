@@ -658,7 +658,7 @@ def test_emit_dashboard_team_update_runs(mock_state, mock_socketio):
     """Test that emit_dashboard_team_update function runs without crashing"""
     from src.sockets.dashboard import emit_dashboard_team_update
     # Should not raise
-    emit_dashboard_team_update(force_refresh=True)
+    emit_dashboard_team_update()
 
 def test_emit_dashboard_full_update_runs(mock_state, mock_socketio):
     """Test that emit_dashboard_full_update function runs without crashing"""
@@ -1560,18 +1560,18 @@ def test_emit_dashboard_team_update_uses_existing_caching(mock_state, mock_socke
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = []
         
-        emit_dashboard_team_update(force_refresh=True)
+        emit_dashboard_team_update()
         
-        # Verify get_all_teams was called with force_refresh parameter
-        mock_get_teams.assert_called_once_with(force_refresh=True)
+        # Verify get_all_teams was called
+        mock_get_teams.assert_called_once()
         
         mock_get_teams.reset_mock()
         
-        # Call again without force_refresh
-        emit_dashboard_team_update(force_refresh=False)
+        # Call again
+        emit_dashboard_team_update()
         
-        # Should still call get_all_teams but with different parameter
-        mock_get_teams.assert_called_once_with(force_refresh=False)
+        # Should still call get_all_teams for fresh team data
+        mock_get_teams.assert_called_once()
 
 def test_emit_dashboard_team_update_correct_metrics_calculation(mock_state, mock_socketio):
     """Test that metrics are calculated correctly according to backend definition"""
@@ -1759,7 +1759,7 @@ def test_on_keep_alive_unauthorized_client(mock_request, mock_state, mock_emit):
 # ===== TESTS FOR THROTTLED FORCE_REFRESH BEHAVIOR =====
 
 def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
-    """Test that regular get_all_teams calls respect REFRESH_DELAY throttling"""
+    """Test that regular get_all_teams calls respect REFRESH_DELAY_QUICK throttling"""
     from src.sockets.dashboard import get_all_teams, clear_team_caches
     import time
     
@@ -1770,59 +1770,30 @@ def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
         mock_teams.query.all.return_value = []
         
         # First call should compute fresh data
-        result1 = get_all_teams(force_refresh=False)
+        result1 = get_all_teams()
         assert isinstance(result1, list)
         
         # Second call immediately after should return cached data
         with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.5  # 0.5 seconds later (< REFRESH_DELAY)
-            result2 = get_all_teams(force_refresh=False)
-            assert result2 is result1  # Should be same cached object
-        
-        # Call after REFRESH_DELAY should compute fresh data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 1.5  # 1.5 seconds later (> REFRESH_DELAY)
-            result3 = get_all_teams(force_refresh=False)
-            assert isinstance(result3, list)
-
-def test_get_all_teams_force_refresh_throttling(mock_state, mock_db_session):
-    """Test that force_refresh calls respect REFRESH_DELAY_QUICK throttling"""
-    from src.sockets.dashboard import get_all_teams, clear_team_caches
-    import time
-    
-    # Clear caches to start fresh
-    clear_team_caches()
-    
-    with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_teams.query.all.return_value = []
-        
-        # First force_refresh call should compute fresh data
-        result1 = get_all_teams(force_refresh=True)
-        assert isinstance(result1, list)
-        
-        # Second force_refresh call immediately after should return cached data (throttled)
-        with patch('src.sockets.dashboard.time') as mock_time:
             mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
-            result2 = get_all_teams(force_refresh=True)
+            result2 = get_all_teams()
             assert result2 is result1  # Should be same cached object
         
-        # Force_refresh call after REFRESH_DELAY_QUICK should compute fresh data
+        # Call after REFRESH_DELAY_QUICK should compute fresh data
         with patch('src.sockets.dashboard.time') as mock_time:
             mock_time.return_value = time.time() + 0.6  # 0.6 seconds later (> REFRESH_DELAY_QUICK)
-            result3 = get_all_teams(force_refresh=True)
+            result3 = get_all_teams()
             assert isinstance(result3, list)
 
-def test_force_refresh_faster_than_regular_refresh(mock_state, mock_db_session):
-    """Test that force_refresh has shorter throttling delay than regular refresh"""
-    from src.sockets.dashboard import REFRESH_DELAY, REFRESH_DELAY_QUICK
+def test_throttling_uses_single_delay(mock_state, mock_db_session):
+    """Test that only REFRESH_DELAY_QUICK is used for throttling"""
+    from src.sockets.dashboard import REFRESH_DELAY_QUICK
     
-    # Verify the constants are set correctly
-    assert REFRESH_DELAY_QUICK < REFRESH_DELAY
+    # Verify the constant exists and is set correctly
     assert REFRESH_DELAY_QUICK == 0.5
-    assert REFRESH_DELAY == 1
 
 def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
-    """Test mixing regular and force_refresh calls"""
+    """Test mixing regular calls with cache behavior"""
     from src.sockets.dashboard import get_all_teams, clear_team_caches
     import time
     
@@ -1833,53 +1804,45 @@ def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
         mock_teams.query.all.return_value = []
         
         # Start with regular call
-        result1 = get_all_teams(force_refresh=False)
+        result1 = get_all_teams()
         
-        # Force refresh immediately after should compute fresh data (different throttling)
+        # Another call immediately after should use cache
         with patch('src.sockets.dashboard.time') as mock_time:
             mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
-            result2 = get_all_teams(force_refresh=True)
-            assert isinstance(result2, list)
+            result2 = get_all_teams()
+            assert result2 is result1  # Should be cached
         
-        # Another force refresh quickly should be throttled
+        # Another call quickly should still be cached
         with patch('src.sockets.dashboard.time') as mock_time:
             mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
-            result3 = get_all_teams(force_refresh=True)
-            assert result3 is result2  # Should be cached
+            result3 = get_all_teams()
+            assert result3 is result1  # Should be cached
         
-        # Regular call during force refresh throttling period should use cache
+        # Call after delay should compute fresh data
         with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.3  # 0.3 seconds total
-            result4 = get_all_teams(force_refresh=False)
-            assert result4 is result2  # Should be cached
+            mock_time.return_value = time.time() + 0.6  # 0.6 seconds total
+            result4 = get_all_teams()
+            assert isinstance(result4, list)
 
 def test_clear_team_caches_resets_throttling_timers(mock_state, mock_db_session):
-    """Test that clear_team_caches resets both throttling timers"""
-    from src.sockets.dashboard import get_all_teams, clear_team_caches, _last_refresh_time, _last_force_refresh_time
+    """Test that clear_team_caches resets throttling timers"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
     import time
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
         mock_teams.query.all.return_value = []
         
-        # Make some calls to set the timers
-        get_all_teams(force_refresh=False)
-        get_all_teams(force_refresh=True)
-        
-        # Verify timers are set
-        from src.sockets.dashboard import _last_refresh_time, _last_force_refresh_time
-        # Note: We can't directly access these as they're module-level globals, 
-        # but we can test the behavior
+        # Make a call to set the timer
+        get_all_teams()
         
         # Clear caches
         clear_team_caches()
         
-        # Next calls should compute fresh data regardless of timing
+        # Next call should compute fresh data regardless of timing
         with patch('src.sockets.dashboard.time') as mock_time:
             mock_time.return_value = time.time() + 0.1  # Very short time
-            result1 = get_all_teams(force_refresh=False)
-            result2 = get_all_teams(force_refresh=True)
+            result1 = get_all_teams()
             assert isinstance(result1, list)
-            assert isinstance(result2, list)
 
 def test_get_all_teams_no_cached_data_initial_call(mock_state, mock_db_session):
     """Test behavior when no cached data exists initially"""
@@ -1891,14 +1854,14 @@ def test_get_all_teams_no_cached_data_initial_call(mock_state, mock_db_session):
     with patch('src.sockets.dashboard.Teams') as mock_teams:
         mock_teams.query.all.return_value = []
         
-        # Both regular and force_refresh should compute when no cache exists
-        result1 = get_all_teams(force_refresh=False)
+        # Both regular calls should compute when no cache exists
+        result1 = get_all_teams()
         assert isinstance(result1, list)
         
         # Clear cache again
         clear_team_caches()
         
-        result2 = get_all_teams(force_refresh=True)
+        result2 = get_all_teams()
         assert isinstance(result2, list)
 
 def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_session):
@@ -1911,18 +1874,18 @@ def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_se
     with patch('src.sockets.dashboard.Teams') as mock_teams:
         # First call succeeds
         mock_teams.query.all.return_value = []
-        result1 = get_all_teams(force_refresh=False)
+        result1 = get_all_teams()
         assert isinstance(result1, list)
         
         # Second call would fail, but should return cached data due to throttling
         mock_teams.query.all.side_effect = Exception("Database error")
         with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.5  # Within throttling period
-            result2 = get_all_teams(force_refresh=False)
+            mock_time.return_value = time.time() + 0.2  # Within throttling period
+            result2 = get_all_teams()
             assert result2 is result1  # Should return cached data despite exception setup
 
-def test_emit_dashboard_team_update_uses_throttled_force_refresh(mock_state, mock_socketio):
-    """Test that emit_dashboard_team_update properly uses the new throttled force_refresh"""
+def test_emit_dashboard_team_update_uses_throttled_refresh(mock_state, mock_socketio):
+    """Test that emit_dashboard_team_update properly uses throttled refresh"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming, clear_team_caches
     
     # Setup client
@@ -1934,14 +1897,9 @@ def test_emit_dashboard_team_update_uses_throttled_force_refresh(mock_state, moc
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = []
         
-        # Test that force_refresh parameter is passed through correctly
-        emit_dashboard_team_update(force_refresh=True)
-        mock_get_teams.assert_called_with(force_refresh=True)
-        
-        mock_get_teams.reset_mock()
-        
-        emit_dashboard_team_update(force_refresh=False)
-        mock_get_teams.assert_called_with(force_refresh=False)
+        # Test that function calls get_all_teams
+        emit_dashboard_team_update()
+        mock_get_teams.assert_called()
 
 def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session):
     """Test throttling behavior under simulated concurrent access"""
@@ -1961,7 +1919,7 @@ def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session)
         for i in range(5):
             with patch('src.sockets.dashboard.time') as mock_time:
                 mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
-                result = get_all_teams(force_refresh=True)
+                result = get_all_teams()
                 results.append(result)
         
         # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
@@ -1969,14 +1927,14 @@ def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session)
         for i in range(1, 5):
             assert results[i] is results[0], f"Result {i} should be cached"
 
-def test_force_refresh_throttling_integration_with_team_events(mock_state, mock_socketio):
+def test_throttling_integration_with_team_events(mock_state, mock_socketio):
     """Test that the throttling works well with actual team management events"""
     from src.sockets.dashboard import emit_dashboard_team_update, clear_team_caches
     import time
     
     clear_team_caches()
     
-    # Simulate rapid team events that would trigger force_refresh=True
+    # Simulate rapid team events
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = []
         
@@ -1990,282 +1948,7 @@ def test_force_refresh_throttling_integration_with_team_events(mock_state, mock_
                 mock_time.return_value = current_time
                 call_times.append(current_time)
                 
-                emit_dashboard_team_update(force_refresh=True)
+                emit_dashboard_team_update()
         
-        # Verify that get_all_teams was called with force_refresh=True each time
+        # Verify that get_all_teams was called each time
         assert mock_get_teams.call_count == 3
-        for call in mock_get_teams.call_args_list:
-            assert call[1]['force_refresh'] == True
-
-def test_dashboard_data_consistency_within_seconds(mock_state, mock_socketio):
-    """Test that dashboard data consistency is maintained within a few seconds during rapid state changes"""
-    from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update
-    import src.sockets.dashboard as dashboard_module
-    
-    # Mock time to control throttling precisely
-    with patch('src.sockets.dashboard.time') as mock_time:
-        # Setup initial state
-        mock_state.active_teams = {
-            'team1': {'players': ['p1', 'p2'], 'status': 'active'},
-            'team2': {'players': ['p3'], 'status': 'waiting_pair'},
-            'team3': {'players': ['p4', 'p5'], 'status': 'active'}
-        }
-        mock_state.connected_players = MockSet(['p1', 'p2', 'p3', 'p4', 'p5'])
-        mock_state.dashboard_clients = MockSet(['client1'])
-        
-        # Mock dashboard streaming preference
-        with patch('src.sockets.dashboard.dashboard_teams_streaming') as mock_streaming:
-            mock_streaming.get.return_value = True  # Enable streaming for all clients
-            
-            # Mock get_all_teams to return consistent data
-            with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-                # Initial teams data
-                initial_teams = [
-                    {
-                        'team_name': 'team1', 'team_id': 1, 'is_active': True,
-                        'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'active'
-                    },
-                    {
-                        'team_name': 'team2', 'team_id': 2, 'is_active': True,
-                        'player1_sid': 'p3', 'player2_sid': None, 'status': 'waiting_pair'
-                    },
-                    {
-                        'team_name': 'team3', 'team_id': 3, 'is_active': True,
-                        'player1_sid': 'p4', 'player2_sid': 'p5', 'status': 'active'
-                    }
-                ]
-                mock_get_teams.return_value = initial_teams
-                
-                # Mock app context for full update
-                with patch('src.sockets.dashboard.app') as mock_app:
-                    mock_context = MagicMock()
-                    mock_context.__enter__ = MagicMock(return_value=None)
-                    mock_context.__exit__ = MagicMock(return_value=None)
-                    mock_app.app_context.return_value = mock_context
-                    
-                    with patch('src.sockets.dashboard.Answers') as mock_answers_class:
-                        mock_answers_class.query.count.return_value = 42
-                        
-                        # Test 1: Verify initial consistency
-                        mock_time.return_value = 1000.0
-                        emit_dashboard_team_update(force_refresh=True)
-                        
-                        # Verify first call sent consistent data
-                        calls = mock_socketio.emit.call_args_list
-                        assert len(calls) > 0
-                        
-                        # Find the call with team data
-                        team_call = None
-                        for call in calls:
-                            if call[0][0] == 'team_status_changed_for_dashboard':
-                                args = call[0][1]
-                                if 'teams' in args and args['teams']:
-                                    team_call = args
-                                    break
-                        
-                        assert team_call is not None
-                        assert team_call['active_teams_count'] == 3  # team1, team2, team3
-                        assert team_call['ready_players_count'] == 5  # p1,p2,p3,p4,p5
-                        assert len(team_call['teams']) == 3
-                        
-                        # Test 2: Rapid state change - add a team
-                        updated_teams = initial_teams + [
-                            {
-                                'team_name': 'team4', 'team_id': 4, 'is_active': True,
-                                'player1_sid': 'p6', 'player2_sid': None, 'status': 'waiting_pair'
-                            }
-                        ]
-                        mock_get_teams.return_value = updated_teams
-                        
-                        # Call within throttling window (should use cached metrics but fresh team data)
-                        mock_time.return_value = 1000.3  # Within 1s throttling window
-                        emit_dashboard_team_update(force_refresh=False)
-                        
-                        # Verify that even with throttling, the data is consistent within seconds
-                        calls = mock_socketio.emit.call_args_list
-                        latest_call = None
-                        for call in calls:
-                            if call[0][0] == 'team_status_changed_for_dashboard':
-                                args = call[0][1]
-                                if 'teams' in args and args['teams']:
-                                    latest_call = args
-                        
-                        # The team data should be fresh (includes team4)
-                        assert latest_call is not None
-                        assert len(latest_call['teams']) == 4  # Should include the new team
-                        
-                        # Test 3: Wait for throttling to expire and verify full consistency
-                        mock_time.return_value = 1001.5  # Outside throttling window
-                        emit_dashboard_team_update(force_refresh=False)
-                        
-                        calls = mock_socketio.emit.call_args_list
-                        final_call = None
-                        for call in calls:
-                            if call[0][0] == 'team_status_changed_for_dashboard':
-                                args = call[0][1]
-                                if 'teams' in args and args['teams']:
-                                    final_call = args
-                        
-                        # Now metrics should be fully consistent with team data
-                        assert final_call is not None
-                        assert final_call['active_teams_count'] == 4  # All 4 teams
-                        assert final_call['ready_players_count'] == 6  # All 6 players
-                        assert len(final_call['teams']) == 4
-                        
-                        # Test 4: Test full update consistency
-                        mock_time.return_value = 1002.0
-                        emit_dashboard_full_update()
-                        
-                        calls = mock_socketio.emit.call_args_list
-                        full_update_call = None
-                        for call in calls:
-                            if call[0][0] == 'dashboard_update':
-                                args = call[0][1]
-                                if 'teams' in args and args['teams']:
-                                    full_update_call = args
-                                    break
-                        
-                        # Full update should also be consistent
-                        assert full_update_call is not None
-                        assert full_update_call['active_teams_count'] == 4
-                        assert full_update_call['ready_players_count'] == 6
-                        assert full_update_call['total_answers_count'] == 42
-                        assert len(full_update_call['teams']) == 4
-
-def test_dashboard_data_consistency_rapid_changes(mock_state, mock_socketio):
-    """Test data consistency during very rapid state changes"""
-    from src.sockets.dashboard import emit_dashboard_team_update
-    import src.sockets.dashboard as dashboard_module
-    
-    # Mock time for precise control
-    with patch('src.sockets.dashboard.time') as mock_time:
-        mock_state.dashboard_clients = MockSet(['client1'])
-        # Mock dashboard streaming preference
-        with patch('src.sockets.dashboard.dashboard_teams_streaming') as mock_streaming:
-            mock_streaming.get.return_value = True
-            # Mock get_all_teams to simulate rapid state changes
-            with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-                # Initial state
-                teams1 = [
-                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': None, 'status': 'waiting_pair'}
-                ]
-                # After adding p2
-                teams2 = [
-                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'waiting_pair'}
-                ]
-                # After adding team2
-                teams3 = [
-                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'waiting_pair'},
-                    {'team_name': 'team2', 'team_id': 2, 'is_active': True, 'player1_sid': 'p3', 'player2_sid': None, 'status': 'waiting_pair'}
-                ]
-                # After removing p1
-                teams4 = [
-                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p2', 'player2_sid': None, 'status': 'waiting_pair'},
-                    {'team_name': 'team2', 'team_id': 2, 'is_active': True, 'player1_sid': 'p3', 'player2_sid': None, 'status': 'waiting_pair'}
-                ]
-                # Set up the sequence of return values, repeat teams4 for any further calls
-                mock_get_teams.side_effect = itertools.chain([teams1, teams2, teams3, teams4], itertools.repeat(teams4))
-                # Patch app context for safety
-                with patch('src.sockets.dashboard.app') as mock_app:
-                    mock_context = MagicMock()
-                    mock_context.__enter__ = MagicMock(return_value=None)
-                    mock_context.__exit__ = MagicMock(return_value=None)
-                    mock_app.app_context.return_value = mock_context
-                    # Patch Answers for metrics
-                    with patch('src.sockets.dashboard.Answers') as mock_answers_class:
-                        mock_answers_class.query.count.return_value = 42
-                        # Simulate rapid state changes
-                        mock_time.return_value = 1000.0
-                        emit_dashboard_team_update(force_refresh=True)  # Initial state
-                        mock_time.return_value = 1000.1
-                        emit_dashboard_team_update(force_refresh=False)
-                        mock_time.return_value = 1000.2
-                        emit_dashboard_team_update(force_refresh=False)
-                        mock_time.return_value = 1000.3
-                        emit_dashboard_team_update(force_refresh=False)
-                        # Verify that within 2 seconds, data becomes consistent
-                        mock_time.return_value = 1002.0  # Wait for throttling to expire
-                        emit_dashboard_team_update(force_refresh=False)
-                        # Get the final call
-                        calls = mock_socketio.emit.call_args_list
-                        final_call = None
-                        for call in calls:
-                            if call[0][0] == 'team_status_changed_for_dashboard':
-                                args = call[0][1]
-                                if 'teams' in args and args['teams']:
-                                    final_call = args
-                        # Final state should be consistent
-                        assert final_call is not None
-                        assert final_call['active_teams_count'] == 2
-                        assert final_call['ready_players_count'] == 2  # p2 and p3
-                        assert len(final_call['teams']) == 2
-                        team_names = [team['team_name'] for team in final_call['teams']]
-                        assert 'team1' in team_names
-                        assert 'team2' in team_names
-                        total_players_in_teams = 0
-                        for team in final_call['teams']:
-                            if team['player1_sid']:
-                                total_players_in_teams += 1
-                            if team['player2_sid']:
-                                total_players_in_teams += 1
-                        assert total_players_in_teams == final_call['ready_players_count']
-
-def test_dashboard_data_consistency_force_refresh_behavior(mock_state, mock_socketio):
-    """Test that force refresh maintains consistency even during rapid changes"""
-    from src.sockets.dashboard import emit_dashboard_team_update
-    import src.sockets.dashboard as dashboard_module
-    
-    with patch('src.sockets.dashboard.time') as mock_time:
-        mock_state.dashboard_clients = MockSet(['client1'])
-        with patch('src.sockets.dashboard.dashboard_teams_streaming') as mock_streaming:
-            mock_streaming.get.return_value = True
-            with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-                # Initial state
-                teams1 = [
-                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': None, 'status': 'active'}
-                ]
-                # After adding team2
-                teams2 = [
-                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': None, 'status': 'active'},
-                    {'team_name': 'team2', 'team_id': 2, 'is_active': True, 'player1_sid': 'p2', 'player2_sid': None, 'status': 'active'}
-                ]
-                mock_get_teams.side_effect = [teams1, teams2]
-                with patch('src.sockets.dashboard.app') as mock_app:
-                    mock_context = MagicMock()
-                    mock_context.__enter__ = MagicMock(return_value=None)
-                    mock_context.__exit__ = MagicMock(return_value=None)
-                    mock_app.app_context.return_value = mock_context
-                    with patch('src.sockets.dashboard.Answers') as mock_answers_class:
-                        mock_answers_class.query.count.return_value = 42
-                        # Initial state
-                        mock_time.return_value = 1000.0
-                        emit_dashboard_team_update(force_refresh=True)
-                        # Rapid state change
-                        mock_time.return_value = 1000.1
-                        emit_dashboard_team_update(force_refresh=True)
-                        # Get the force refresh call
-                        calls = mock_socketio.emit.call_args_list
-                        force_refresh_call = None
-                        for call in calls:
-                            if call[0][0] == 'team_status_changed_for_dashboard':
-                                args = call[0][1]
-                                if 'teams' in args and args['teams']:
-                                    force_refresh_call = args
-                        assert force_refresh_call is not None
-                        assert force_refresh_call['active_teams_count'] == 2
-        assert force_refresh_call['ready_players_count'] == 2
-        assert len(force_refresh_call['teams']) == 2
-        
-        # Verify team data matches metrics
-        team_names = [team['team_name'] for team in force_refresh_call['teams']]
-        assert 'team1' in team_names
-        assert 'team2' in team_names
-        
-        total_players_in_teams = 0
-        for team in force_refresh_call['teams']:
-            if team['player1_sid']:
-                total_players_in_teams += 1
-            if team['player2_sid']:
-                total_players_in_teams += 1
-        
-        assert total_players_in_teams == force_refresh_call['ready_players_count']

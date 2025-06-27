@@ -82,15 +82,15 @@ class TestDashboardThrottling:
         clear_team_caches()  # Ensure clean state
         
         # Call function
-        emit_dashboard_team_update(force_refresh=True)
+        emit_dashboard_team_update()
         
         # Verify socketio.emit was called for streaming and non-streaming clients
         mock_socketio = mock_dashboard_dependencies['socketio']
         assert mock_socketio.emit.called
         
-        # Verify get_all_teams was called with force_refresh=True
+        # Verify get_all_teams was called
         mock_get_teams = mock_dashboard_dependencies['get_teams']
-        mock_get_teams.assert_called_with(force_refresh=True)
+        mock_get_teams.assert_called()
     
     def test_emit_dashboard_team_update_connected_players_always_fresh(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that connected_players_count is always calculated fresh."""
@@ -128,9 +128,8 @@ class TestDashboardThrottling:
         # Second call immediately (within throttle window)
         emit_dashboard_team_update()
         
-        # get_all_teams should be called with force_refresh=False for cached data
+        # get_all_teams should be called again for fresh team data
         assert mock_get_teams.call_count == first_call_count + 1
-        mock_get_teams.assert_called_with(force_refresh=False)
     
     def test_emit_dashboard_full_update_fresh_calculation(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that fresh calculations work correctly for full update."""
@@ -202,7 +201,7 @@ class TestDashboardThrottling:
         mock_get_teams = mock_dashboard_dependencies['get_teams']
         mock_answers = mock_dashboard_dependencies['answers']
         
-        # get_all_teams should be called for initial calls and throttled calls
+        # get_all_teams should be called for initial calls and for fresh team data
         assert mock_get_teams.call_count >= 2
         
         # Database query should only be called once (during initial full update)
@@ -231,22 +230,6 @@ class TestDashboardThrottling:
         assert mock_get_teams.call_count >= 4  # 2 initial + 2 after clear
         assert mock_answers.query.count.call_count >= 2  # 1 initial + 1 after clear
     
-    def test_force_refresh_bypasses_throttling(self, mock_dashboard_dependencies, setup_dashboard_state):
-        """Test that force_refresh bypasses throttling."""
-        clear_team_caches()
-        
-        # First call to populate cache
-        emit_dashboard_team_update()
-        mock_get_teams = mock_dashboard_dependencies['get_teams']
-        initial_call_count = mock_get_teams.call_count
-        
-        # Force refresh should bypass cache
-        emit_dashboard_team_update(force_refresh=True)
-        
-        # Should have made a fresh call
-        assert mock_get_teams.call_count == initial_call_count + 1
-        mock_get_teams.assert_called_with(force_refresh=True)
-    
     def test_no_dashboard_clients_early_return(self, mock_dashboard_dependencies):
         """Test that functions return early when no dashboard clients are connected."""
         state.dashboard_clients.clear()
@@ -274,16 +257,16 @@ class TestDashboardThrottling:
         # Wait less than REFRESH_DELAY_QUICK
         time.sleep(REFRESH_DELAY_QUICK * 0.5)
         
-        # Second call should be throttled
+        # Second call should still call get_all_teams for fresh team data
         emit_dashboard_team_update()
-        assert mock_get_teams.call_count == initial_call_count + 1  # Only one more call for cached data
+        assert mock_get_teams.call_count == initial_call_count + 1
         
         # Wait longer than REFRESH_DELAY_QUICK
         time.sleep(REFRESH_DELAY_QUICK * 1.1)
         
-        # Third call should not be throttled
+        # Third call should also call get_all_teams
         emit_dashboard_team_update()
-        assert mock_get_teams.call_count >= initial_call_count + 2  # Should make fresh call
+        assert mock_get_teams.call_count >= initial_call_count + 2
     
     @patch('src.sockets.dashboard.logger')
     def test_error_handling(self, mock_logger, mock_dashboard_dependencies, setup_dashboard_state):
@@ -314,13 +297,11 @@ class TestCacheMetrics:
         mock_get_teams = mock_dashboard_dependencies['get_teams']
         first_call_count = mock_get_teams.call_count
         
-        # Second call immediately should use cache (throttled)
+        # Second call immediately should call get_all_teams for fresh team data
         emit_dashboard_team_update()
         
-        # Should have made one additional call for cached data
+        # Should have made one additional call for fresh team data
         assert mock_get_teams.call_count == first_call_count + 1
-        # The last call should have been with force_refresh=False
-        mock_get_teams.assert_called_with(force_refresh=False)
     
     def test_full_update_cache_behavior(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that full update cache behaves correctly."""

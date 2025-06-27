@@ -22,28 +22,29 @@ from flask import request
 # Configure logging
 logger = logging.getLogger(__name__)
 
-# Store last activity time for each dashboard client
+# Dashboard client activity tracking for keep-alive functionality
 dashboard_last_activity: Dict[str, float] = {}
 
-# Store teams streaming preference for each dashboard client
+# Per-client preference for teams data streaming (enabled/disabled)
 dashboard_teams_streaming: Dict[str, bool] = {}
 
-CACHE_SIZE = 1024  # Adjust cache size as needed
-REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate
+# Cache configuration and throttling constants
+CACHE_SIZE = 1024  # LRU cache size for team calculations
+REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate for all dashboard updates
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
-# Throttling variables for get_all_teams
+# Global throttling state for get_all_teams function
 _last_refresh_time = 0
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 
-# Throttling variables for dashboard updates
+# Global throttling state for dashboard update functions 
 _last_team_update_time = 0
 _last_full_update_time = 0
 _cached_team_metrics: Optional[Dict[str, int]] = None
 _cached_full_metrics: Optional[Dict[str, int]] = None
 
 def _get_team_id_from_name(team_name: str) -> Optional[int]:
-    """Helper function to get team_id from team_name."""
+    """Helper function to resolve team_name to team_id from state or database."""
     try:
         # First check active teams
         team_info = state.active_teams.get(team_name)
@@ -59,6 +60,7 @@ def _get_team_id_from_name(team_name: str) -> Optional[int]:
 
 @socketio.on('keep_alive')
 def on_keep_alive() -> None:
+    """Handle dashboard client keep-alive ping to maintain connection tracking."""
     try:
         sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
@@ -69,6 +71,7 @@ def on_keep_alive() -> None:
 
 @socketio.on('set_teams_streaming')
 def on_set_teams_streaming(data: Dict[str, Any]) -> None:
+    """Handle dashboard client preference for teams data streaming on/off."""
     try:
         sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
@@ -80,6 +83,7 @@ def on_set_teams_streaming(data: Dict[str, Any]) -> None:
 
 @socketio.on('request_teams_update')
 def on_request_teams_update() -> None:
+    """Handle explicit request for teams data from streaming-enabled clients."""
     try:
         sid = request.sid  # type: ignore
         if sid in state.dashboard_clients and dashboard_teams_streaming.get(sid, False):
@@ -91,7 +95,7 @@ def on_request_teams_update() -> None:
 
 @socketio.on('toggle_game_mode')
 def on_toggle_game_mode() -> None:
-    """Toggle between 'classic' and 'new' game modes"""
+    """Toggle between 'classic' and 'new' game modes with cache invalidation."""
     try:
         sid = request.sid  # type: ignore
         if sid not in state.dashboard_clients:
@@ -118,6 +122,7 @@ def on_toggle_game_mode() -> None:
 
 @lru_cache(maxsize=CACHE_SIZE)
 def compute_team_hashes(team_name: str) -> Tuple[str, str]:
+    """Generate unique history hashes for team data consistency checking."""
     try:
         # Get team_id from team_name
         team_id = _get_team_id_from_name(team_name)
@@ -801,6 +806,10 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         return None
 
 def get_all_teams() -> List[Dict[str, Any]]:
+    """
+    Retrieve and serialize all team data with throttling for performance.
+    Returns cached result if called within REFRESH_DELAY_QUICK seconds.
+    """
     global _last_refresh_time, _cached_teams_result
     
     try:
@@ -852,7 +861,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
         return []
 
 def clear_team_caches() -> None:
-    """Clear all team-related LRU caches to prevent stale data."""
+    """Clear all team-related LRU caches and throttling state to prevent stale data."""
     global _last_refresh_time, _cached_teams_result
     global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
     
@@ -877,6 +886,10 @@ def clear_team_caches() -> None:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update() -> None:
+    """
+    Send team status updates to dashboard clients with throttled metrics calculation.
+    Always sends fresh connected_players_count but throttles expensive metrics.
+    """
     global _last_team_update_time, _cached_team_metrics
     
     try:
@@ -949,6 +962,10 @@ def emit_dashboard_team_update() -> None:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
 def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Optional[str] = None) -> None:
+    """
+    Send complete dashboard data to clients with throttled expensive operations.
+    Supports targeting specific clients or excluding clients to prevent duplicates.
+    """
     global _last_full_update_time, _cached_full_metrics
     
     try:
