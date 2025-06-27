@@ -1366,20 +1366,31 @@ class TestPlayerInteraction:
         return None
 
     def simulate_disconnect(self, client):
-        """Simulate client disconnect by calling leave_team event directly."""
-        # In integration tests we can't force actual disconnects, 
-        # but we can trigger the same state changes
+        """Simulate client disconnect and trigger cache clearing for dashboard updates."""
+        # In integration tests we can't force actual disconnects that trigger server-side handlers,
+        # but we can simulate the key effects: client disconnect + cache clearing
         try:
             client.disconnect()
         except:
             pass  # Client may already be disconnected
+        
+        # Force cache clearing to ensure dashboard sees updated state
+        # This simulates the cache clearing that would happen during real disconnect handling
+        try:
+            from src.sockets.dashboard import clear_team_caches
+            clear_team_caches()
+            eventlet.sleep(0.1)  # Allow time for cache clearing to take effect
+        except ImportError:
+            pass  # Function may not be available in test environment
 
     def force_fresh_dashboard_update(self, dashboard_client):
         """Force the dashboard to get fresh, non-throttled data by clearing server caches."""
         # Import the server function to force cache clearing
         try:
-            from src.sockets.dashboard import force_clear_all_caches
-            force_clear_all_caches()
+            from src.sockets.dashboard import clear_team_caches
+            # Use clear_team_caches instead of force_clear_all_caches 
+            # since it now properly maintains cache consistency
+            clear_team_caches()
             eventlet.sleep(0.1)  # Allow time for cache clearing
         except ImportError:
             pass  # Function may not be available in test environment

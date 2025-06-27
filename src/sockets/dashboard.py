@@ -958,18 +958,24 @@ def clear_team_caches() -> None:
             _calculate_success_statistics.cache_clear()
             _process_single_team.cache_clear()
             
-            # FIXED: Only clear throttling caches when truly necessary
             # Clear get_all_teams cache since it depends on LRU caches we just cleared
             _last_refresh_time = 0
             _cached_teams_result = None
             
-            # Clear cached team data in emit functions since it may now be stale
-            if _cached_team_metrics is not None:
-                _cached_team_metrics.pop('cached_teams', None)  # Remove stale teams data but keep timestamps
-            if _cached_full_metrics is not None:
-                _cached_full_metrics.pop('cached_teams', None)  # Remove stale teams data but keep timestamps
+            # FIXED: Reset throttling timers when cached teams data is removed to prevent inconsistent state
+            # When we remove cached teams data, we must also reset throttling to avoid serving
+            # empty teams list with stale metrics in subsequent throttled calls
+            if _cached_team_metrics is not None and 'cached_teams' in _cached_team_metrics:
+                # Reset team update throttling to ensure consistency
+                _last_team_update_time = 0
+                _cached_team_metrics = None
+                
+            if _cached_full_metrics is not None and 'cached_teams' in _cached_full_metrics:
+                # Reset full update throttling to ensure consistency
+                _last_full_update_time = 0
+                _cached_full_metrics = None
             
-            logger.debug("Cleared LRU caches and stale cached teams data, preserved throttling timers")
+            logger.debug("Cleared LRU caches and reset throttling state to ensure data consistency")
             
         # Perform periodic cleanup of dashboard client data
         # Note: This is outside the main lock to prevent potential deadlocks
