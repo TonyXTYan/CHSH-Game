@@ -20,6 +20,7 @@ from datetime import datetime, UTC
 from datetime import datetime, UTC
 from typing import Dict, Any, List
 import time
+import itertools
 
 class MockQuestionItem(Enum):
     A = 'A'
@@ -1995,3 +1996,276 @@ def test_force_refresh_throttling_integration_with_team_events(mock_state, mock_
         assert mock_get_teams.call_count == 3
         for call in mock_get_teams.call_args_list:
             assert call[1]['force_refresh'] == True
+
+def test_dashboard_data_consistency_within_seconds(mock_state, mock_socketio):
+    """Test that dashboard data consistency is maintained within a few seconds during rapid state changes"""
+    from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update
+    import src.sockets.dashboard as dashboard_module
+    
+    # Mock time to control throttling precisely
+    with patch('src.sockets.dashboard.time') as mock_time:
+        # Setup initial state
+        mock_state.active_teams = {
+            'team1': {'players': ['p1', 'p2'], 'status': 'active'},
+            'team2': {'players': ['p3'], 'status': 'waiting_pair'},
+            'team3': {'players': ['p4', 'p5'], 'status': 'active'}
+        }
+        mock_state.connected_players = MockSet(['p1', 'p2', 'p3', 'p4', 'p5'])
+        mock_state.dashboard_clients = MockSet(['client1'])
+        
+        # Mock dashboard streaming preference
+        with patch('src.sockets.dashboard.dashboard_teams_streaming') as mock_streaming:
+            mock_streaming.get.return_value = True  # Enable streaming for all clients
+            
+            # Mock get_all_teams to return consistent data
+            with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+                # Initial teams data
+                initial_teams = [
+                    {
+                        'team_name': 'team1', 'team_id': 1, 'is_active': True,
+                        'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'active'
+                    },
+                    {
+                        'team_name': 'team2', 'team_id': 2, 'is_active': True,
+                        'player1_sid': 'p3', 'player2_sid': None, 'status': 'waiting_pair'
+                    },
+                    {
+                        'team_name': 'team3', 'team_id': 3, 'is_active': True,
+                        'player1_sid': 'p4', 'player2_sid': 'p5', 'status': 'active'
+                    }
+                ]
+                mock_get_teams.return_value = initial_teams
+                
+                # Mock app context for full update
+                with patch('src.sockets.dashboard.app') as mock_app:
+                    mock_context = MagicMock()
+                    mock_context.__enter__ = MagicMock(return_value=None)
+                    mock_context.__exit__ = MagicMock(return_value=None)
+                    mock_app.app_context.return_value = mock_context
+                    
+                    with patch('src.sockets.dashboard.Answers') as mock_answers_class:
+                        mock_answers_class.query.count.return_value = 42
+                        
+                        # Test 1: Verify initial consistency
+                        mock_time.return_value = 1000.0
+                        emit_dashboard_team_update(force_refresh=True)
+                        
+                        # Verify first call sent consistent data
+                        calls = mock_socketio.emit.call_args_list
+                        assert len(calls) > 0
+                        
+                        # Find the call with team data
+                        team_call = None
+                        for call in calls:
+                            if call[0][0] == 'team_status_changed_for_dashboard':
+                                args = call[0][1]
+                                if 'teams' in args and args['teams']:
+                                    team_call = args
+                                    break
+                        
+                        assert team_call is not None
+                        assert team_call['active_teams_count'] == 3  # team1, team2, team3
+                        assert team_call['ready_players_count'] == 5  # p1,p2,p3,p4,p5
+                        assert len(team_call['teams']) == 3
+                        
+                        # Test 2: Rapid state change - add a team
+                        updated_teams = initial_teams + [
+                            {
+                                'team_name': 'team4', 'team_id': 4, 'is_active': True,
+                                'player1_sid': 'p6', 'player2_sid': None, 'status': 'waiting_pair'
+                            }
+                        ]
+                        mock_get_teams.return_value = updated_teams
+                        
+                        # Call within throttling window (should use cached metrics but fresh team data)
+                        mock_time.return_value = 1000.3  # Within 1s throttling window
+                        emit_dashboard_team_update(force_refresh=False)
+                        
+                        # Verify that even with throttling, the data is consistent within seconds
+                        calls = mock_socketio.emit.call_args_list
+                        latest_call = None
+                        for call in calls:
+                            if call[0][0] == 'team_status_changed_for_dashboard':
+                                args = call[0][1]
+                                if 'teams' in args and args['teams']:
+                                    latest_call = args
+                        
+                        # The team data should be fresh (includes team4)
+                        assert latest_call is not None
+                        assert len(latest_call['teams']) == 4  # Should include the new team
+                        
+                        # Test 3: Wait for throttling to expire and verify full consistency
+                        mock_time.return_value = 1001.5  # Outside throttling window
+                        emit_dashboard_team_update(force_refresh=False)
+                        
+                        calls = mock_socketio.emit.call_args_list
+                        final_call = None
+                        for call in calls:
+                            if call[0][0] == 'team_status_changed_for_dashboard':
+                                args = call[0][1]
+                                if 'teams' in args and args['teams']:
+                                    final_call = args
+                        
+                        # Now metrics should be fully consistent with team data
+                        assert final_call is not None
+                        assert final_call['active_teams_count'] == 4  # All 4 teams
+                        assert final_call['ready_players_count'] == 6  # All 6 players
+                        assert len(final_call['teams']) == 4
+                        
+                        # Test 4: Test full update consistency
+                        mock_time.return_value = 1002.0
+                        emit_dashboard_full_update()
+                        
+                        calls = mock_socketio.emit.call_args_list
+                        full_update_call = None
+                        for call in calls:
+                            if call[0][0] == 'dashboard_update':
+                                args = call[0][1]
+                                if 'teams' in args and args['teams']:
+                                    full_update_call = args
+                                    break
+                        
+                        # Full update should also be consistent
+                        assert full_update_call is not None
+                        assert full_update_call['active_teams_count'] == 4
+                        assert full_update_call['ready_players_count'] == 6
+                        assert full_update_call['total_answers_count'] == 42
+                        assert len(full_update_call['teams']) == 4
+
+def test_dashboard_data_consistency_rapid_changes(mock_state, mock_socketio):
+    """Test data consistency during very rapid state changes"""
+    from src.sockets.dashboard import emit_dashboard_team_update
+    import src.sockets.dashboard as dashboard_module
+    
+    # Mock time for precise control
+    with patch('src.sockets.dashboard.time') as mock_time:
+        mock_state.dashboard_clients = MockSet(['client1'])
+        # Mock dashboard streaming preference
+        with patch('src.sockets.dashboard.dashboard_teams_streaming') as mock_streaming:
+            mock_streaming.get.return_value = True
+            # Mock get_all_teams to simulate rapid state changes
+            with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+                # Initial state
+                teams1 = [
+                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': None, 'status': 'waiting_pair'}
+                ]
+                # After adding p2
+                teams2 = [
+                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'waiting_pair'}
+                ]
+                # After adding team2
+                teams3 = [
+                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'waiting_pair'},
+                    {'team_name': 'team2', 'team_id': 2, 'is_active': True, 'player1_sid': 'p3', 'player2_sid': None, 'status': 'waiting_pair'}
+                ]
+                # After removing p1
+                teams4 = [
+                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p2', 'player2_sid': None, 'status': 'waiting_pair'},
+                    {'team_name': 'team2', 'team_id': 2, 'is_active': True, 'player1_sid': 'p3', 'player2_sid': None, 'status': 'waiting_pair'}
+                ]
+                # Set up the sequence of return values, repeat teams4 for any further calls
+                mock_get_teams.side_effect = itertools.chain([teams1, teams2, teams3, teams4], itertools.repeat(teams4))
+                # Patch app context for safety
+                with patch('src.sockets.dashboard.app') as mock_app:
+                    mock_context = MagicMock()
+                    mock_context.__enter__ = MagicMock(return_value=None)
+                    mock_context.__exit__ = MagicMock(return_value=None)
+                    mock_app.app_context.return_value = mock_context
+                    # Patch Answers for metrics
+                    with patch('src.sockets.dashboard.Answers') as mock_answers_class:
+                        mock_answers_class.query.count.return_value = 42
+                        # Simulate rapid state changes
+                        mock_time.return_value = 1000.0
+                        emit_dashboard_team_update(force_refresh=True)  # Initial state
+                        mock_time.return_value = 1000.1
+                        emit_dashboard_team_update(force_refresh=False)
+                        mock_time.return_value = 1000.2
+                        emit_dashboard_team_update(force_refresh=False)
+                        mock_time.return_value = 1000.3
+                        emit_dashboard_team_update(force_refresh=False)
+                        # Verify that within 2 seconds, data becomes consistent
+                        mock_time.return_value = 1002.0  # Wait for throttling to expire
+                        emit_dashboard_team_update(force_refresh=False)
+                        # Get the final call
+                        calls = mock_socketio.emit.call_args_list
+                        final_call = None
+                        for call in calls:
+                            if call[0][0] == 'team_status_changed_for_dashboard':
+                                args = call[0][1]
+                                if 'teams' in args and args['teams']:
+                                    final_call = args
+                        # Final state should be consistent
+                        assert final_call is not None
+                        assert final_call['active_teams_count'] == 2
+                        assert final_call['ready_players_count'] == 2  # p2 and p3
+                        assert len(final_call['teams']) == 2
+                        team_names = [team['team_name'] for team in final_call['teams']]
+                        assert 'team1' in team_names
+                        assert 'team2' in team_names
+                        total_players_in_teams = 0
+                        for team in final_call['teams']:
+                            if team['player1_sid']:
+                                total_players_in_teams += 1
+                            if team['player2_sid']:
+                                total_players_in_teams += 1
+                        assert total_players_in_teams == final_call['ready_players_count']
+
+def test_dashboard_data_consistency_force_refresh_behavior(mock_state, mock_socketio):
+    """Test that force refresh maintains consistency even during rapid changes"""
+    from src.sockets.dashboard import emit_dashboard_team_update
+    import src.sockets.dashboard as dashboard_module
+    
+    with patch('src.sockets.dashboard.time') as mock_time:
+        mock_state.dashboard_clients = MockSet(['client1'])
+        with patch('src.sockets.dashboard.dashboard_teams_streaming') as mock_streaming:
+            mock_streaming.get.return_value = True
+            with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+                # Initial state
+                teams1 = [
+                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': None, 'status': 'active'}
+                ]
+                # After adding team2
+                teams2 = [
+                    {'team_name': 'team1', 'team_id': 1, 'is_active': True, 'player1_sid': 'p1', 'player2_sid': None, 'status': 'active'},
+                    {'team_name': 'team2', 'team_id': 2, 'is_active': True, 'player1_sid': 'p2', 'player2_sid': None, 'status': 'active'}
+                ]
+                mock_get_teams.side_effect = [teams1, teams2]
+                with patch('src.sockets.dashboard.app') as mock_app:
+                    mock_context = MagicMock()
+                    mock_context.__enter__ = MagicMock(return_value=None)
+                    mock_context.__exit__ = MagicMock(return_value=None)
+                    mock_app.app_context.return_value = mock_context
+                    with patch('src.sockets.dashboard.Answers') as mock_answers_class:
+                        mock_answers_class.query.count.return_value = 42
+                        # Initial state
+                        mock_time.return_value = 1000.0
+                        emit_dashboard_team_update(force_refresh=True)
+                        # Rapid state change
+                        mock_time.return_value = 1000.1
+                        emit_dashboard_team_update(force_refresh=True)
+                        # Get the force refresh call
+                        calls = mock_socketio.emit.call_args_list
+                        force_refresh_call = None
+                        for call in calls:
+                            if call[0][0] == 'team_status_changed_for_dashboard':
+                                args = call[0][1]
+                                if 'teams' in args and args['teams']:
+                                    force_refresh_call = args
+                        assert force_refresh_call is not None
+                        assert force_refresh_call['active_teams_count'] == 2
+        assert force_refresh_call['ready_players_count'] == 2
+        assert len(force_refresh_call['teams']) == 2
+        
+        # Verify team data matches metrics
+        team_names = [team['team_name'] for team in force_refresh_call['teams']]
+        assert 'team1' in team_names
+        assert 'team2' in team_names
+        
+        total_players_in_teams = 0
+        for team in force_refresh_call['teams']:
+            if team['player1_sid']:
+                total_players_in_teams += 1
+            if team['player2_sid']:
+                total_players_in_teams += 1
+        
+        assert total_players_in_teams == force_refresh_call['ready_players_count']
