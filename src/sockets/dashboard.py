@@ -41,7 +41,8 @@ _cached_teams_result: Optional[List[Dict[str, Any]]] = None
 # Throttling variables for dashboard updates
 _last_team_update_time = 0
 _last_full_update_time = 0
-_cached_metrics: Optional[Dict[str, int]] = None
+_cached_team_metrics: Optional[Dict[str, int]] = None
+_cached_full_metrics: Optional[Dict[str, int]] = None
 
 def _get_team_id_from_name(team_name: str) -> Optional[int]:
     """Helper function to get team_id from team_name."""
@@ -865,7 +866,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
     global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
-    global _last_team_update_time, _last_full_update_time, _cached_metrics
+    global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
     
     try:
         compute_team_hashes.cache_clear()
@@ -880,30 +881,33 @@ def clear_team_caches() -> None:
         _last_force_refresh_time = 0
         _cached_teams_result = None
         
-        # Clear dashboard update throttle cache
+        # Clear dashboard update throttle caches
         _last_team_update_time = 0
         _last_full_update_time = 0
-        _cached_metrics = None
+        _cached_team_metrics = None
+        _cached_full_metrics = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)
 
 def emit_dashboard_team_update(force_refresh: bool = False) -> None:
-    global _last_team_update_time, _cached_metrics
+    global _last_team_update_time, _cached_team_metrics
     
     try:
         # Always compute teams data and metrics for all dashboard clients
         if not state.dashboard_clients:
             return  # No dashboard clients at all
         
+        # Always calculate connected_players_count fresh since it changes frequently
+        connected_players_count = len(state.connected_players)
+        
         # Throttle team updates to prevent spam during mass connect/disconnect
         current_time = time()
         time_since_last_update = current_time - _last_team_update_time
         
-        if not force_refresh and time_since_last_update < REFRESH_DELAY_QUICK and _cached_metrics is not None:
+        if not force_refresh and time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
             # Use cached metrics to avoid expensive calculations
-            active_teams_count = _cached_metrics.get('active_teams_count', 0)
-            ready_players_count = _cached_metrics.get('ready_players_count', 0)
-            connected_players_count = _cached_metrics.get('connected_players_count', 0)
+            active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
+            ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
             serialized_teams = get_all_teams(force_refresh=False)  # Use cached teams
         else:
             # Calculate fresh metrics
@@ -916,13 +920,11 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
                 (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
                 for team in active_teams
             )
-            connected_players_count = len(state.connected_players)
             
-            # Cache the metrics
-            _cached_metrics = {
+            # Cache only the expensive-to-calculate metrics
+            _cached_team_metrics = {
                 'active_teams_count': active_teams_count,
                 'ready_players_count': ready_players_count,
-                'connected_players_count': connected_players_count
             }
             _last_team_update_time = current_time
         
@@ -958,18 +960,25 @@ def emit_dashboard_team_update(force_refresh: bool = False) -> None:
         logger.error(f"Error in emit_dashboard_team_update: {str(e)}", exc_info=True)
 
 def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Optional[str] = None) -> None:
-    global _last_full_update_time, _cached_metrics
+    global _last_full_update_time, _cached_full_metrics
     
     try:
+        # Check if there are any dashboard clients to send updates to
+        if not state.dashboard_clients:
+            return  # No dashboard clients at all
+        
+        # Always calculate connected_players_count fresh since it changes frequently
+        connected_players_count = len(state.connected_players)
+        
         # Throttle full updates to prevent spam during mass connect/disconnect
         current_time = time()
         time_since_last_update = current_time - _last_full_update_time
         
-        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_metrics is not None:
+        if time_since_last_update < REFRESH_DELAY_QUICK and _cached_full_metrics is not None:
             # Use cached data to avoid expensive operations
-            total_answers = _cached_metrics.get('total_answers', 0)
-            active_teams_count = _cached_metrics.get('active_teams_count', 0)
-            ready_players_count = _cached_metrics.get('ready_players_count', 0)
+            total_answers = _cached_full_metrics.get('total_answers', 0)
+            active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
+            ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
             all_teams_for_metrics = get_all_teams(force_refresh=False)  # Use cached teams
         else:
             # Calculate fresh data
@@ -988,18 +997,17 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                 for team in active_teams
             )
             
-            # Update cached metrics with total_answers
-            _cached_metrics = {
+            # Cache only the expensive-to-calculate metrics
+            _cached_full_metrics = {
                 'total_answers': total_answers,
                 'active_teams_count': active_teams_count,
                 'ready_players_count': ready_players_count,
-                'connected_players_count': len(state.connected_players)
             }
             _last_full_update_time = current_time
 
         base_update_data = {
             'total_answers_count': total_answers,
-            'connected_players_count': len(state.connected_players),
+            'connected_players_count': connected_players_count,
             'active_teams_count': active_teams_count,  # Always send metrics
             'ready_players_count': ready_players_count,  # Always send metrics
             'game_state': {
