@@ -17,9 +17,10 @@ import io
 import logging
 import threading
 from datetime import datetime
-from typing import Dict, List, Tuple, Any, Optional, Union
+from typing import Dict, List, Tuple, Any, Optional, Union, Set
 from flask import request
 from contextlib import contextmanager
+import weakref
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -32,8 +33,8 @@ dashboard_teams_streaming: Dict[str, bool] = {}
 
 # Cache configuration and throttling constants
 CACHE_SIZE = 1024  # LRU cache size for team calculations
-REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate for team updates and data fetching
-REFRESH_DELAY_FULL = 1.0  # seconds - maximum refresh rate for expensive full dashboard updates
+REFRESH_DELAY_QUICK = 1.0  # seconds - maximum refresh rate for team updates and data fetching
+REFRESH_DELAY_FULL = 2.0  # seconds - maximum refresh rate for expensive full dashboard updates
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
 # Single lock for all dashboard operations to prevent deadlocks
@@ -52,6 +53,142 @@ _last_team_update_time = 0
 _last_full_update_time = 0
 _cached_team_metrics: Optional[Dict[str, int]] = None
 _cached_full_metrics: Optional[Dict[str, int]] = None
+
+# --- SELECTIVE CACHE INVALIDATION SYSTEM ---
+
+class SelectiveCache:
+    """
+    Custom cache that supports selective invalidation by team name.
+    Preserves cached results for unchanged teams while allowing targeted invalidation.
+    """
+    def __init__(self, maxsize: int = CACHE_SIZE):
+        self.maxsize = maxsize
+        self._cache: Dict[str, Any] = {}
+        self._access_order: List[str] = []  # LRU tracking
+        self._lock = threading.RLock()
+    
+    def get(self, key: str) -> Optional[Any]:
+        """Get cached value for key, updating LRU order."""
+        with self._lock:
+            if key in self._cache:
+                # Move to end (most recently used)
+                self._access_order.remove(key)
+                self._access_order.append(key)
+                return self._cache[key]
+            return None
+    
+    def set(self, key: str, value: Any) -> None:
+        """Set cached value for key, evicting LRU items if needed."""
+        with self._lock:
+            if key in self._cache:
+                # Update existing, move to end
+                self._access_order.remove(key)
+            elif len(self._cache) >= self.maxsize:
+                # Evict least recently used
+                lru_key = self._access_order.pop(0)
+                del self._cache[lru_key]
+            
+            self._cache[key] = value
+            self._access_order.append(key)
+    
+    def invalidate_by_team(self, team_name: str) -> int:
+        """
+        Invalidate all cache entries for a specific team.
+        Returns number of entries invalidated.
+        """
+        with self._lock:
+            invalidated_count = 0
+            keys_to_remove = []
+            
+            for key in self._cache.keys():
+                # Check if this cache key is for the specified team
+                if self._is_team_key(key, team_name):
+                    keys_to_remove.append(key)
+            
+            for key in keys_to_remove:
+                del self._cache[key]
+                self._access_order.remove(key)
+                invalidated_count += 1
+            
+            return invalidated_count
+    
+    def clear_all(self) -> None:
+        """Clear all cached entries."""
+        with self._lock:
+            self._cache.clear()
+            self._access_order.clear()
+    
+    def _is_team_key(self, cache_key: str, team_name: str) -> bool:
+        """
+        Check if a cache key belongs to a specific team.
+        Uses precise matching to avoid false positives from substring matches.
+        """
+        # For simple team_name keys (exact match)
+        if cache_key == team_name:
+            return True
+        
+        # For function cache keys in format: (arg1, arg2, ...)
+        # team_name appears as repr(team_name) which is 'team_name'
+        team_name_repr = repr(team_name)
+        
+        # Check if this is a function cache key starting with (team_name, ...)
+        if cache_key.startswith(f"({team_name_repr},") or cache_key == f"({team_name_repr})":
+            return True
+        
+        # Check for team_name as any parameter in the function call
+        # Use regex to match team_name_repr as a complete parameter
+        import re
+        # Pattern matches 'team_name' that is:
+        # - after opening paren: ('team_name'
+        # - after comma and optional space: , 'team_name' or ,  'team_name'
+        # - and followed by comma, closing paren, or end: 'team_name', or 'team_name')
+        pattern = rf"(\(|,\s*){re.escape(team_name_repr)}(\s*,|\s*\)|$)"
+        return bool(re.search(pattern, cache_key))
+
+# Global selective caches
+_hash_cache = SelectiveCache()
+_correlation_cache = SelectiveCache()
+_success_cache = SelectiveCache()
+_classic_stats_cache = SelectiveCache()
+_new_stats_cache = SelectiveCache()
+_team_process_cache = SelectiveCache()
+
+def _make_cache_key(*args, **kwargs) -> str:
+    """Create a consistent cache key from function arguments."""
+    key_parts = []
+    for arg in args:
+        key_parts.append(repr(arg))
+    for k, v in sorted(kwargs.items()):
+        key_parts.append(f"{k}={repr(v)}")
+    return f"({', '.join(key_parts)})"
+
+def selective_cache(cache_instance: SelectiveCache):
+    """
+    Decorator for selective caching that supports team-specific invalidation.
+    """
+    def decorator(func):
+        def wrapper(*args, **kwargs):
+            cache_key = _make_cache_key(*args, **kwargs)
+            
+            # Try to get from cache
+            cached_result = cache_instance.get(cache_key)
+            if cached_result is not None:
+                return cached_result
+            
+            # Compute and cache result
+            result = func(*args, **kwargs)
+            cache_instance.set(cache_key, result)
+            return result
+        
+        # Add cache management methods to function
+        wrapper.cache_clear = cache_instance.clear_all
+        wrapper.cache_invalidate_team = cache_instance.invalidate_by_team
+        wrapper.cache_info = lambda: f"Cache entries: {len(cache_instance._cache)}"
+        
+        return wrapper
+    return decorator
+
+# --- END SELECTIVE CACHE SYSTEM ---
 
 @contextmanager
 def _safe_dashboard_operation():
@@ -198,7 +335,7 @@ def on_toggle_game_mode() -> None:
         logger.error(f"Error in on_toggle_game_mode: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while toggling game mode'})  # type: ignore
 
-@lru_cache(maxsize=CACHE_SIZE)
+@selective_cache(_hash_cache)
 def compute_team_hashes(team_name: str) -> Tuple[str, str]:
     """Generate unique history hashes for team data consistency checking."""
     try:
@@ -234,7 +371,7 @@ def compute_team_hashes(team_name: str) -> Tuple[str, str]:
         logger.error(f"Error computing team hashes: {str(e)}")
         return "ERROR", "ERROR"
 
-@lru_cache(maxsize=CACHE_SIZE)
+@selective_cache(_success_cache)
 def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """
     Compute success metrics for new mode instead of correlation matrix.
@@ -359,7 +496,7 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
         logger.error(f"Error computing success metrics: {str(e)}", exc_info=True)
         return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
 
-@lru_cache(maxsize=CACHE_SIZE)
+@selective_cache(_correlation_cache)
 def compute_correlation_matrix(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
     try:
         # Get team_id from team_name
@@ -548,7 +685,7 @@ def compute_correlation_stats(team_name: str) -> Tuple[float, float, float]: # N
         return 0.0, 0.0, 0.0
 
 
-@lru_cache(maxsize=CACHE_SIZE)
+@selective_cache(_classic_stats_cache)
 def _calculate_team_statistics(team_name: str) -> Dict[str, Optional[float]]:
     """Calculate ufloat statistics from correlation matrix for the given team."""
     try:
@@ -686,7 +823,7 @@ def _calculate_team_statistics(team_name: str) -> Dict[str, Optional[float]]:
             'same_item_balance_uncertainty': None
         }
 
-@lru_cache(maxsize=CACHE_SIZE)
+@selective_cache(_new_stats_cache)
 def _calculate_success_statistics(team_name: str) -> Dict[str, Optional[float]]:
     """Calculate success statistics for new mode from success metrics for the given team."""
     try:
@@ -795,7 +932,7 @@ def _calculate_success_statistics(team_name: str) -> Dict[str, Optional[float]]:
             'same_item_balance_uncertainty': None
         }
 
-@lru_cache(maxsize=CACHE_SIZE)
+@selective_cache(_team_process_cache)
 def _process_single_team(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str]) -> Optional[Dict[str, Any]]:
     """Process all heavy computation for a single team."""
     try:
@@ -940,17 +1077,69 @@ def get_all_teams() -> List[Dict[str, Any]]:
         logger.error(f"Error in get_all_teams: {str(e)}", exc_info=True)
         return []
 
+def invalidate_team_caches(team_name: str) -> None:
+    """
+    Selectively invalidate caches for a specific team only.
+    Preserves cached results for all other teams.
+    Thread-safe operation with proper error handling.
+    """
+    global _cached_teams_result, _cached_team_metrics, _cached_full_metrics
+    
+    try:
+        with _safe_dashboard_operation():
+            # Selectively invalidate team-specific caches
+            total_invalidated = 0
+            total_invalidated += compute_team_hashes.cache_invalidate_team(team_name)
+            total_invalidated += compute_correlation_matrix.cache_invalidate_team(team_name)
+            total_invalidated += compute_success_metrics.cache_invalidate_team(team_name)
+            total_invalidated += _calculate_team_statistics.cache_invalidate_team(team_name)
+            total_invalidated += _calculate_success_statistics.cache_invalidate_team(team_name)
+            total_invalidated += _process_single_team.cache_invalidate_team(team_name)
+            
+            # Invalidate global throttling caches that may contain this team's data
+            # but preserve caches that don't contain this team
+            if _cached_teams_result is not None:
+                # Check if this team is in the cached result
+                team_in_cache = any(team.get('team_name') == team_name for team in _cached_teams_result)
+                if team_in_cache:
+                    _cached_teams_result = None
+                    _last_refresh_time = 0
+                    logger.debug(f"Cleared get_all_teams cache containing team {team_name}")
+            
+            # Clear throttling caches if they contained this team's data
+            if _cached_team_metrics is not None and 'cached_teams' in _cached_team_metrics:
+                cached_teams = _cached_team_metrics.get('cached_teams', [])
+                if any(team.get('team_name') == team_name for team in cached_teams):
+                    _cached_team_metrics = None
+                    _last_team_update_time = 0
+                    logger.debug(f"Cleared team metrics cache containing team {team_name}")
+            
+            if _cached_full_metrics is not None and 'cached_teams' in _cached_full_metrics:
+                cached_teams = _cached_full_metrics.get('cached_teams', [])
+                if any(team.get('team_name') == team_name for team in cached_teams):
+                    _cached_full_metrics = None
+                    _last_full_update_time = 0
+                    logger.debug(f"Cleared full metrics cache containing team {team_name}")
+            
+            logger.debug(f"Selectively invalidated {total_invalidated} cache entries for team {team_name}")
+            
+    except Exception as e:
+        logger.error(f"Error invalidating team caches for {team_name}: {str(e)}", exc_info=True)
+
 def clear_team_caches() -> None:
     """
-    Clear all team-related LRU caches and throttling state to prevent stale data.
+    Clear all team-related caches and throttling state to prevent stale data.
     Thread-safe operation with proper error handling to prevent lock issues.
+    
+    Note: This function now clears ALL caches. For selective invalidation of
+    specific teams, use invalidate_team_caches(team_name) instead.
     """
     global _last_refresh_time, _cached_teams_result
     global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
     
     try:
         with _safe_dashboard_operation():
-            # Clear LRU caches atomically
+            # Clear all selective caches
             compute_team_hashes.cache_clear()
             compute_correlation_matrix.cache_clear()
             compute_success_metrics.cache_clear()
@@ -958,7 +1147,7 @@ def clear_team_caches() -> None:
             _calculate_success_statistics.cache_clear()
             _process_single_team.cache_clear()
             
-            # Clear get_all_teams cache since it depends on LRU caches we just cleared
+            # Clear get_all_teams cache since it depends on caches we just cleared
             _last_refresh_time = 0
             _cached_teams_result = None
             
@@ -975,7 +1164,7 @@ def clear_team_caches() -> None:
                 _last_full_update_time = 0
                 _cached_full_metrics = None
             
-            logger.debug("Cleared LRU caches and reset throttling state to ensure data consistency")
+            logger.debug("Cleared all team caches and reset throttling state to ensure data consistency")
             
         # Perform periodic cleanup of dashboard client data
         # Note: This is outside the main lock to prevent potential deadlocks
@@ -994,7 +1183,7 @@ def force_clear_all_caches() -> None:
     
     try:
         with _safe_dashboard_operation():
-            # Clear LRU caches
+            # Clear all selective caches
             compute_team_hashes.cache_clear()
             compute_correlation_matrix.cache_clear()
             compute_success_metrics.cache_clear()
@@ -1035,39 +1224,62 @@ def emit_dashboard_team_update() -> None:
         connected_players_count = len(state.connected_players)
         
         with _safe_dashboard_operation():
+            # Check if any clients need teams streaming
+            streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
+            non_streaming_clients = [sid for sid in state.dashboard_clients if not dashboard_teams_streaming.get(sid, False)]
+            
             # Throttle team updates to prevent spam during mass connect/disconnect
             current_time = time()
             time_since_last_update = current_time - _last_team_update_time
             
-            # FIXED: Throttle the expensive get_all_teams call along with metrics
-            if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
-                # Use cached data for both teams and metrics to avoid expensive calculations
-                serialized_teams = _cached_team_metrics.get('cached_teams', [])
-                active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
-                ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
-                logger.debug("Using cached team data and metrics for team update")
+            # Only compute expensive teams data if there are streaming clients
+            if streaming_clients:
+                if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
+                    # Use cached data for both teams and metrics to avoid expensive calculations
+                    serialized_teams = _cached_team_metrics.get('cached_teams', [])
+                    active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
+                    ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
+                    logger.debug("Using cached team data and metrics for team update")
+                else:
+                    # Calculate fresh data including expensive team computation
+                    serialized_teams = get_all_teams()
+                    active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+                    active_teams_count = len(active_teams)
+                    ready_players_count = sum(
+                        (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                        for team in active_teams
+                    )
+                    
+                    # Cache both the expensive teams data AND the calculated metrics
+                    _cached_team_metrics = {
+                        'cached_teams': serialized_teams,
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_team_update_time = current_time
+                    logger.debug("Computed fresh team data and metrics for team update")
             else:
-                # Calculate fresh data including expensive team computation
-                serialized_teams = get_all_teams()
-                active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
-                active_teams_count = len(active_teams)
-                ready_players_count = sum(
-                    (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
-                    for team in active_teams
-                )
-                
-                # Cache both the expensive teams data AND the calculated metrics
-                _cached_team_metrics = {
-                    'cached_teams': serialized_teams,  # Cache the expensive teams data
-                    'active_teams_count': active_teams_count,
-                    'ready_players_count': ready_players_count,
-                }
-                _last_team_update_time = current_time
-                logger.debug("Computed fresh team data and metrics for team update")
-            
-            # Separate clients by streaming preference (thread-safe read)
-            streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
-            non_streaming_clients = [sid for sid in state.dashboard_clients if not dashboard_teams_streaming.get(sid, False)]
+                # No streaming clients - compute lightweight metrics only
+                serialized_teams = []
+                if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
+                    active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
+                    ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
+                    logger.debug("Using cached metrics for non-streaming team update")
+                else:
+                    # Calculate lightweight metrics from state without expensive team processing
+                    active_teams = [team_info for team_info in state.active_teams.values() 
+                                  if team_info.get('status') in ['active', 'waiting_pair']]
+                    active_teams_count = len(active_teams)
+                    ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
+                    
+                    # Cache just the lightweight metrics
+                    _cached_team_metrics = {
+                        'cached_teams': [],  # No teams data cached for non-streaming updates
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_team_update_time = current_time
+                    logger.debug("Computed lightweight metrics for non-streaming team update")
         
         # Send updates outside the lock to prevent blocking
         # Send full teams data to streaming clients
@@ -1115,43 +1327,79 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         connected_players_count = len(state.connected_players)
         
         with _safe_dashboard_operation():
+            # Determine which clients need teams data
+            if client_sid:
+                clients_needing_teams = [client_sid] if dashboard_teams_streaming.get(client_sid, False) else []
+            else:
+                clients_needing_teams = [sid for sid in state.dashboard_clients 
+                                       if dashboard_teams_streaming.get(sid, False) and sid != exclude_sid]
+            
             # Throttle full updates with longer delay due to expensive operations
             current_time = time()
             time_since_last_update = current_time - _last_full_update_time
             
-            # FIXED: Throttle both expensive database queries AND team data computation
-            if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
-                # Use cached data to avoid expensive operations
-                all_teams_for_metrics = _cached_full_metrics.get('cached_teams', [])
-                total_answers = _cached_full_metrics.get('total_answers', 0)
-                active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
-                ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
-                logger.debug("Using cached team data and full metrics for dashboard update")
-            else:
-                # Calculate fresh data with expensive database query AND team computation
-                all_teams_for_metrics = get_all_teams()
-                
-                with app.app_context():
-                    total_answers = Answers.query.count()
+            # Only compute expensive teams data if clients need it
+            if clients_needing_teams:
+                if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
+                    # Use cached data to avoid expensive operations
+                    all_teams_for_metrics = _cached_full_metrics.get('cached_teams', [])
+                    total_answers = _cached_full_metrics.get('total_answers', 0)
+                    active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
+                    ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
+                    logger.debug("Using cached team data and full metrics for dashboard update")
+                else:
+                    # Calculate fresh data with expensive database query AND team computation
+                    all_teams_for_metrics = get_all_teams()
+                    
+                    with app.app_context():
+                        total_answers = Answers.query.count()
 
-                # Calculate metrics from the teams data we just fetched
-                # Count teams that are active or waiting for a pair as "active" for metrics
-                active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
-                active_teams_count = len(active_teams)
-                ready_players_count = sum(
-                    (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
-                    for team in active_teams
-                )
-                
-                # Cache the expensive-to-calculate data including teams
-                _cached_full_metrics = {
-                    'cached_teams': all_teams_for_metrics,  # Cache the expensive teams data
-                    'total_answers': total_answers,
-                    'active_teams_count': active_teams_count,
-                    'ready_players_count': ready_players_count,
-                }
-                _last_full_update_time = current_time
-                logger.debug("Computed fresh team data and full metrics for dashboard update")
+                    # Calculate metrics from the teams data we just fetched
+                    # Count teams that are active or waiting for a pair as "active" for metrics
+                    active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+                    active_teams_count = len(active_teams)
+                    ready_players_count = sum(
+                        (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                        for team in active_teams
+                    )
+                    
+                    # Cache the expensive-to-calculate data including teams
+                    _cached_full_metrics = {
+                        'cached_teams': all_teams_for_metrics,
+                        'total_answers': total_answers,
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_full_update_time = current_time
+                    logger.debug("Computed fresh team data and full metrics for dashboard update")
+            else:
+                # No clients need teams data - compute lightweight metrics only
+                all_teams_for_metrics = []
+                if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
+                    total_answers = _cached_full_metrics.get('total_answers', 0)
+                    active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
+                    ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
+                    logger.debug("Using cached metrics for non-streaming dashboard update")
+                else:
+                    # Calculate lightweight metrics and database query only
+                    with app.app_context():
+                        total_answers = Answers.query.count()
+                    
+                    # Calculate lightweight metrics from state without expensive team processing
+                    active_teams = [team_info for team_info in state.active_teams.values() 
+                                  if team_info.get('status') in ['active', 'waiting_pair']]
+                    active_teams_count = len(active_teams)
+                    ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
+                    
+                    # Cache just the lightweight metrics
+                    _cached_full_metrics = {
+                        'cached_teams': [],  # No teams data cached for non-streaming updates
+                        'total_answers': total_answers,
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_full_update_time = current_time
+                    logger.debug("Computed lightweight metrics for non-streaming dashboard update")
 
         base_update_data = {
             'total_answers_count': total_answers,
@@ -1210,17 +1458,23 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
         with app.app_context():
             total_answers = Answers.query.count()
             
-        # Always get teams data for metrics calculation
-        all_teams_for_metrics = get_all_teams()
-        
-        # Calculate metrics that should always be sent
-        # Count teams that are active or waiting for a pair as "active" for metrics
-        active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
-        active_teams_count = len(active_teams)
-        ready_players_count = sum(
-            (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
-            for team in active_teams
-        )
+        # Only get expensive teams data if this client has streaming enabled
+        if dashboard_teams_streaming.get(sid, False):
+            all_teams_for_metrics = get_all_teams()
+            # Calculate metrics from the teams data we just fetched
+            active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+            active_teams_count = len(active_teams)
+            ready_players_count = sum(
+                (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                for team in active_teams
+            )
+        else:
+            # Calculate lightweight metrics from state without expensive team processing
+            all_teams_for_metrics = []
+            active_teams = [team_info for team_info in state.active_teams.values() 
+                          if team_info.get('status') in ['active', 'waiting_pair']]
+            active_teams_count = len(active_teams)
+            ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
         
         update_data = {
             'teams': all_teams_for_metrics if dashboard_teams_streaming.get(sid, False) else [],  # Respect client's streaming preference

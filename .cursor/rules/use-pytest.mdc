@@ -1,0 +1,6 @@
+---
+description: 
+globs: 
+alwaysApply: false
+---
+Make sure any changes is covered by pytest and all pytest passes by the end.
