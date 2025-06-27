@@ -30,11 +30,28 @@ dashboard_teams_streaming: Dict[str, bool] = {}
 
 CACHE_SIZE = 1024  # Adjust cache size as needed
 REFRESH_DELAY = 1 # seconds
+REFRESH_DELAY_QUICK = 0.5  # seconds - for throttled force_refresh calls
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
 # Throttling variables for get_all_teams
 _last_refresh_time = 0
+_last_force_refresh_time = 0  # Separate tracking for force_refresh calls
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
+
+def _get_team_id_from_name(team_name: str) -> Optional[int]:
+    """Helper function to get team_id from team_name."""
+    try:
+        # First check active teams
+        team_info = state.active_teams.get(team_name)
+        if team_info and 'team_id' in team_info:
+            return team_info['team_id']
+        
+        # Fall back to database lookup
+        team = Teams.query.filter_by(team_name=team_name).first()
+        return team.team_id if team else None
+    except Exception as e:
+        logger.error(f"Error getting team_id for team_name {team_name}: {str(e)}", exc_info=True)
+        return None
 
 @socketio.on('keep_alive')
 def on_keep_alive() -> None:
@@ -96,8 +113,14 @@ def on_toggle_game_mode() -> None:
         emit('error', {'message': 'An error occurred while toggling game mode'})  # type: ignore
 
 @lru_cache(maxsize=CACHE_SIZE)
-def compute_team_hashes(team_id: int) -> Tuple[str, str]:
+def compute_team_hashes(team_name: str) -> Tuple[str, str]:
     try:
+        # Get team_id from team_name
+        team_id = _get_team_id_from_name(team_name)
+        if team_id is None:
+            logger.warning(f"Could not find team_id for team_name: {team_name}")
+            return "NO_TEAM", "NO_TEAM"
+        
         # Get all rounds and answers for this team in chronological order
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
         answers = Answers.query.filter_by(team_id=team_id).order_by(Answers.timestamp).all()
@@ -125,12 +148,18 @@ def compute_team_hashes(team_id: int) -> Tuple[str, str]:
         return "ERROR", "ERROR"
 
 @lru_cache(maxsize=CACHE_SIZE)
-def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
+def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """
     Compute success metrics for new mode instead of correlation matrix.
     Returns success rate matrix, overall success metrics, and individual player balance data.
     """
     try:
+        # Get team_id from team_name
+        team_id = _get_team_id_from_name(team_name)
+        if team_id is None:
+            logger.warning(f"Could not find team_id for team_name: {team_name}")
+            return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
+        
         # Get all rounds and their corresponding answers for this team
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
         round_map = {round.round_id: round for round in rounds}
@@ -244,8 +273,14 @@ def compute_success_metrics(team_id: int) -> Tuple[List[List[Tuple[int, int]]], 
         return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
 
 @lru_cache(maxsize=CACHE_SIZE)
-def compute_correlation_matrix(team_id: int) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
+def compute_correlation_matrix(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
     try:
+        # Get team_id from team_name
+        team_id = _get_team_id_from_name(team_name)
+        if team_id is None:
+            logger.warning(f"Could not find team_id for team_name: {team_name}")
+            return ([[ (0,0) for _ in range(4) ] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
+        
         # Get all rounds and their corresponding answers for this team
         # Use separate optimized queries with proper indexing
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
@@ -375,22 +410,22 @@ def compute_correlation_matrix(team_id: int) -> Tuple[List[List[Tuple[int, int]]
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
-def compute_correlation_stats(team_id: int) -> Tuple[float, float, float]: # NOT USED
+def compute_correlation_stats(team_name: str) -> Tuple[float, float, float]: # NOT USED
     try:
         # Get the correlation matrix and new metrics  
-        result = compute_correlation_matrix(team_id)  # type: ignore
+        result = compute_correlation_matrix(team_name)  # type: ignore
         corr_matrix, item_values = result[0], result[1]
         same_item_balance_avg = result[2]
         
         # Validate matrix dimensions and contents
         if not all(isinstance(row, list) and len(row) == 4 for row in corr_matrix) or len(corr_matrix) != 4:
-            logger.error(f"Invalid correlation matrix dimensions for team_id {team_id}")
+            logger.error(f"Invalid correlation matrix dimensions for team_name {team_name}")
             return 0.0, 0.0, 0.0
             
         # Validate expected item values
         expected_items = ['A', 'B', 'X', 'Y']
         if not all(item in item_values for item in expected_items):
-            logger.error(f"Missing expected items in correlation matrix for team_id {team_id}")
+            logger.error(f"Missing expected items in correlation matrix for team_name {team_name}")
             return 0.0, 0.0, 0.0
             
         # Calculate first statistic: Trace(corr_matrix) / 4
@@ -427,12 +462,14 @@ def compute_correlation_stats(team_id: int) -> Tuple[float, float, float]: # NOT
 
 
 @lru_cache(maxsize=CACHE_SIZE)
-def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, Optional[float]]:
-    """Calculate ufloat statistics from correlation matrix string representation."""
+def _calculate_team_statistics(team_name: str) -> Dict[str, Optional[float]]:
+    """Calculate ufloat statistics from correlation matrix for the given team."""
     try:
-        # Parse the correlation matrix from string back to tuple format
-        import ast
-        corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts = ast.literal_eval(correlation_matrix_tuple_str)
+        # Get correlation matrix data for this team
+        correlation_result = compute_correlation_matrix(team_name)
+        (corr_matrix_tuples, item_values,
+         same_item_balance_avg, same_item_balance, same_item_responses,
+         correlation_sums, pair_counts) = correlation_result
         
         # --- Calculate statistics with uncertainties using ufloat ---
 
@@ -563,12 +600,13 @@ def _calculate_team_statistics(correlation_matrix_tuple_str: str) -> Dict[str, O
         }
 
 @lru_cache(maxsize=CACHE_SIZE)
-def _calculate_success_statistics(success_metrics_tuple_str: str) -> Dict[str, Optional[float]]:
-    """Calculate success statistics for new mode from success metrics string representation."""
+def _calculate_success_statistics(team_name: str) -> Dict[str, Optional[float]]:
+    """Calculate success statistics for new mode from success metrics for the given team."""
     try:
-        # Parse the success metrics from string back to tuple format
-        import ast
-        success_matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, success_counts, pair_counts, player_responses = ast.literal_eval(success_metrics_tuple_str)
+        # Get success metrics data for this team
+        success_result = compute_success_metrics(team_name)
+        (success_matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, 
+         success_counts, pair_counts, player_responses) = success_result
         
         # Calculate success statistics with uncertainties using ufloat
         # Replace trace_average_statistic with overall_success_rate
@@ -695,26 +733,22 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         players = team_info['players'] if team_info else []
 
         # Compute hashes for the team
-        hash1, hash2 = compute_team_hashes(team_id)
+        hash1, hash2 = compute_team_hashes(team_name)
         
         # ALWAYS compute both classic and new statistics for details modal
-        # Compute classic mode statistics
-        correlation_result = compute_correlation_matrix(team_id)  # type: ignore
+        # Get correlation matrix and success metrics data (cached by team name)
+        correlation_result = compute_correlation_matrix(team_name)  # type: ignore
         (corr_matrix_tuples, item_values,
          same_item_balance_avg, same_item_balance, same_item_responses,
          correlation_sums, pair_counts) = correlation_result
         
-        correlation_data = (corr_matrix_tuples, item_values, same_item_responses, correlation_sums, pair_counts)
-        correlation_matrix_str = str(correlation_data)
-        classic_stats = _calculate_team_statistics(correlation_matrix_str)
+        success_result = compute_success_metrics(team_name)  # type: ignore
+        (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, 
+         success_counts, success_pair_counts, player_responses) = success_result
         
-        # Compute new mode statistics
-        success_result = compute_success_metrics(team_id)  # type: ignore
-        (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts, player_responses) = success_result
-        
-        success_data = (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, success_counts, success_pair_counts, player_responses)
-        success_metrics_str = str(success_data)
-        new_stats = _calculate_success_statistics(success_metrics_str)
+        # Calculate statistics (cached by team name)
+        classic_stats = _calculate_team_statistics(team_name)
+        new_stats = _calculate_success_statistics(team_name)
         
         # Determine which matrix and stats to use for the main display based on game mode
         if state.game_mode == 'new':
@@ -763,20 +797,27 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         return None
 
 def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
-    global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
     
     try:
         # Check if we should throttle the request
         current_time = time()
         time_since_last_refresh = current_time - _last_refresh_time
+        time_since_last_force_refresh = current_time - _last_force_refresh_time
         
-        # If within refresh delay and we have cached data, return cached result
-        # UNLESS force_refresh is True (for critical updates like disconnections)
-        if not force_refresh and time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
-            # logger.debug("Returning cached team data")
-            return _cached_teams_result
-        # else:
-        #     logger.debug("Computing fresh team data")
+        # Throttle logic with separate handling for force_refresh
+        if force_refresh:
+            # Throttle force_refresh calls with REFRESH_DELAY_QUICK
+            if time_since_last_force_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
+                # logger.debug("Returning cached team data (force_refresh throttled)")
+                return _cached_teams_result
+        else:
+            # Regular throttling for non-force_refresh calls
+            if time_since_last_refresh < REFRESH_DELAY and _cached_teams_result is not None:
+                # logger.debug("Returning cached team data")
+                return _cached_teams_result
+        
+        # logger.debug("Computing fresh team data")
         
         # Compute fresh data
         # Query all teams from database - eager loading will be done per team as needed
@@ -808,6 +849,8 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
         # Update cache and timestamp
         _cached_teams_result = teams_list
         _last_refresh_time = current_time
+        if force_refresh:
+            _last_force_refresh_time = current_time
         
         return teams_list
     except Exception as e:
@@ -816,7 +859,7 @@ def get_all_teams(force_refresh: bool = False) -> List[Dict[str, Any]]:
 
 def clear_team_caches() -> None:
     """Clear all team-related LRU caches to prevent stale data."""
-    global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _last_force_refresh_time, _cached_teams_result
     
     try:
         compute_team_hashes.cache_clear()
@@ -828,6 +871,7 @@ def clear_team_caches() -> None:
         
         # Clear throttle cache for critical team state changes like disconnections
         _last_refresh_time = 0
+        _last_force_refresh_time = 0
         _cached_teams_result = None
     except Exception as e:
         logger.error(f"Error clearing team caches: {str(e)}", exc_info=True)

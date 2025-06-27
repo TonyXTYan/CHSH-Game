@@ -51,10 +51,25 @@ class TestPhysicsCalculations:
 
     @pytest.fixture(autouse=True)
     def clear_caches_before_test(self):
-        """Clear all caches before each test"""
+        """Clear all caches before each test to ensure isolation"""
         clear_team_caches()
         yield
         clear_team_caches()
+
+    def _compute_correlation_matrix_by_id(self, team_id):
+        """Helper method to call compute_correlation_matrix with team_id for backward compatibility"""
+        with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+            mock_get_id.return_value = team_id
+            return compute_correlation_matrix(f"test_team_{team_id}")
+
+    def _calculate_team_statistics_by_team_name(self, team_name):
+        """Helper method to call _calculate_team_statistics with team name"""
+        # Mock compute_correlation_matrix to use the current test's correlation data
+        with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
+            # Get the result from the most recent compute_correlation_matrix call
+            result = self._compute_correlation_matrix_by_id(1)
+            mock_compute.return_value = result
+            return _calculate_team_statistics(team_name)
 
     def test_chsh_theoretical_maximum(self):
         """Test that CHSH value approaches theoretical quantum maximum (2√2 ≈ 2.828)"""
@@ -105,7 +120,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, correlation_sums, pair_counts = result
                 
                 # Calculate cross-term CHSH manually
@@ -173,7 +188,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, correlation_sums, pair_counts = result
                 
                 # Calculate CHSH value
@@ -218,7 +233,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                corr_matrix, item_values, _, _, _, _, _ = compute_correlation_matrix(1)
+                corr_matrix, item_values, _, _, _, _, _ = self._compute_correlation_matrix_by_id(1)
                 
                 # Find indices
                 a_idx = item_values.index('A')
@@ -254,12 +269,9 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                result = compute_correlation_matrix(1)
-                correlation_data = (result[0], result[1], result[4], result[5], result[6])
-                correlation_matrix_str = str(correlation_data)
-                
+                result = self._compute_correlation_matrix_by_id(1)
                 try:
-                    stats = _calculate_team_statistics(correlation_matrix_str)
+                    stats = self._calculate_team_statistics_by_team_name("test_team_1")
                     
                     # Check if uncertainty calculation exists
                     if 'trace_average_statistic_uncertainty' in stats and stats['trace_average_statistic_uncertainty'] is not None:
@@ -296,7 +308,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                _, _, avg_balance, balance_dict, same_item_responses, _, _ = compute_correlation_matrix(1)
+                _, _, avg_balance, balance_dict, same_item_responses, _, _ = self._compute_correlation_matrix_by_id(1)
                 
                 # Should have 4 True and 4 False responses
                 assert same_item_responses['A']['true'] == 4
@@ -320,7 +332,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                _, _, avg_balance, balance_dict, same_item_responses, _, _ = compute_correlation_matrix(1)
+                _, _, avg_balance, balance_dict, same_item_responses, _, _ = self._compute_correlation_matrix_by_id(1)
                 
                 # Should detect extreme bias
                 assert same_item_responses['A']['true'] == 4
@@ -358,7 +370,7 @@ class TestPhysicsCalculations:
                 with patch('src.sockets.dashboard.Answers') as mock_answers:
                     mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                     
-                    corr_matrix, item_values, _, _, _, _, _ = compute_correlation_matrix(1)
+                    corr_matrix, item_values, _, _, _, _, _ = self._compute_correlation_matrix_by_id(1)
                     
                     a_idx = item_values.index('A')
                     x_idx = item_values.index('X')
@@ -382,7 +394,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
                 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
                 
                 # Should return valid default structure
@@ -487,7 +499,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                _, _, _, _, _, correlation_sums, pair_counts = compute_correlation_matrix(1)
+                _, _, _, _, _, correlation_sums, pair_counts = self._compute_correlation_matrix_by_id(1)
                 
                 # Check mathematical consistency
                 ax_count = pair_counts.get(('A', 'X'), 0)
@@ -528,7 +540,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, correlation_sums, pair_counts = result
                 
                 # Should handle large numbers without overflow
@@ -539,8 +551,7 @@ class TestPhysicsCalculations:
                 assert abs(ax_sum) <= ax_count, "Correlation sum magnitude should not exceed count"
                 
                 # Uncertainty should decrease with sample size  
-                correlation_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(correlation_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 
                 expected_uncertainty = 1.0 / math.sqrt(n_large)
                 actual_uncertainty = stats.get('cross_term_combination_statistic_uncertainty', float('inf'))
@@ -605,7 +616,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, corr_sums, pair_counts = result
 
                 chsh_terms = [
@@ -623,8 +634,7 @@ class TestPhysicsCalculations:
                 expected = 2 * math.sqrt(2)
                 assert abs(total_chsh - expected) < 0.1
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.1
 
     def test_chsh_random_correlations(self):
@@ -652,7 +662,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, corr_sums, pair_counts = result
 
                 chsh_terms = [
@@ -677,8 +687,7 @@ class TestPhysicsCalculations:
                 assert abs(total_chsh - expected) < 0.15
                 assert -4.0 <= total_chsh <= 4.0
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.15
 
     def test_chsh_classical_limit_exact(self):
@@ -710,7 +719,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, corr_sums, pair_counts = result
 
                 chsh_terms = [
@@ -728,8 +737,7 @@ class TestPhysicsCalculations:
                 expected = 2.0
                 assert abs(total_chsh - expected) < 0.01
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.01
 
     def test_chsh_negative_limit(self):
@@ -752,7 +760,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, corr_sums, pair_counts = result
 
                 chsh_terms = [
@@ -770,8 +778,7 @@ class TestPhysicsCalculations:
                 expected = -2.0
                 assert abs(total_chsh - expected) < 0.01
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.01
 
     def test_chsh_zero_correlation(self):
@@ -794,7 +801,7 @@ class TestPhysicsCalculations:
             with patch('src.sockets.dashboard.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
-                result = compute_correlation_matrix(1)
+                result = self._compute_correlation_matrix_by_id(1)
                 _, _, _, _, _, corr_sums, pair_counts = result
 
                 chsh_terms = [
@@ -812,6 +819,5 @@ class TestPhysicsCalculations:
                 expected = 0.0
                 assert abs(total_chsh - expected) < 0.1
 
-                corr_data = (result[0], result[1], result[4], result[5], result[6])
-                stats = _calculate_team_statistics(str(corr_data))
+                stats = self._calculate_team_statistics_by_team_name("test_team_1")
                 assert abs(stats['chsh_value_statistic'] - expected) < 0.1

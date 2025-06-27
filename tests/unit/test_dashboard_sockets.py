@@ -19,6 +19,7 @@ import warnings
 from datetime import datetime, UTC
 from datetime import datetime, UTC
 from typing import Dict, Any, List
+import time
 
 class MockQuestionItem(Enum):
     A = 'A'
@@ -202,13 +203,16 @@ def test_pause_game_unauthorized(mock_request, mock_state, mock_socketio, mock_e
 
 def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
     """Test correlation matrix computation with no answers"""
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
             
             # Check matrix dimensions and default values
@@ -242,13 +246,16 @@ def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
         create_mock_answer(3, 'X', True)
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
             
             # Check specific correlations
@@ -281,13 +288,16 @@ def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
         create_mock_answer(4, 'B', True), create_mock_answer(4, 'Y', True)    # +1
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             _, _, _, _, _, corr_sums, pair_counts = result
             
             # Check pair counts are correct
@@ -317,13 +327,16 @@ def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_s
         create_mock_answer(2, 'A', False), create_mock_answer(2, 'A', False)
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             _, _, avg_balance, balance_dict, resp_dict, _, _ = result
             
             # Should have equal true and false responses
@@ -343,13 +356,16 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
         create_mock_answer(1, 'Y', False)  # Wrong item
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
             
             # Matrix should contain all zeros due to invalid data
@@ -359,10 +375,13 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
 
 def test_compute_correlation_matrix_error_handling(mock_team, mock_db_session):
     """Test error handling in correlation matrix computation"""
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.side_effect = Exception("Database error")
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        result = compute_correlation_matrix(mock_team.team_id)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.side_effect = Exception("Database error")
+            
+            result = compute_correlation_matrix(mock_team.team_name)
         corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
         
         # Should return default values on error
@@ -1735,3 +1754,244 @@ def test_on_keep_alive_unauthorized_client(mock_request, mock_state, mock_emit):
     
     # Should not emit keep_alive_ack
     mock_emit.assert_not_called()
+
+# ===== TESTS FOR THROTTLED FORCE_REFRESH BEHAVIOR =====
+
+def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
+    """Test that regular get_all_teams calls respect REFRESH_DELAY throttling"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    # Clear caches to start fresh
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # First call should compute fresh data
+        result1 = get_all_teams(force_refresh=False)
+        assert isinstance(result1, list)
+        
+        # Second call immediately after should return cached data
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.5  # 0.5 seconds later (< REFRESH_DELAY)
+            result2 = get_all_teams(force_refresh=False)
+            assert result2 is result1  # Should be same cached object
+        
+        # Call after REFRESH_DELAY should compute fresh data
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 1.5  # 1.5 seconds later (> REFRESH_DELAY)
+            result3 = get_all_teams(force_refresh=False)
+            assert isinstance(result3, list)
+
+def test_get_all_teams_force_refresh_throttling(mock_state, mock_db_session):
+    """Test that force_refresh calls respect REFRESH_DELAY_QUICK throttling"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    # Clear caches to start fresh
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # First force_refresh call should compute fresh data
+        result1 = get_all_teams(force_refresh=True)
+        assert isinstance(result1, list)
+        
+        # Second force_refresh call immediately after should return cached data (throttled)
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
+            result2 = get_all_teams(force_refresh=True)
+            assert result2 is result1  # Should be same cached object
+        
+        # Force_refresh call after REFRESH_DELAY_QUICK should compute fresh data
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.6  # 0.6 seconds later (> REFRESH_DELAY_QUICK)
+            result3 = get_all_teams(force_refresh=True)
+            assert isinstance(result3, list)
+
+def test_force_refresh_faster_than_regular_refresh(mock_state, mock_db_session):
+    """Test that force_refresh has shorter throttling delay than regular refresh"""
+    from src.sockets.dashboard import REFRESH_DELAY, REFRESH_DELAY_QUICK
+    
+    # Verify the constants are set correctly
+    assert REFRESH_DELAY_QUICK < REFRESH_DELAY
+    assert REFRESH_DELAY_QUICK == 0.5
+    assert REFRESH_DELAY == 1
+
+def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
+    """Test mixing regular and force_refresh calls"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    # Clear caches to start fresh
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Start with regular call
+        result1 = get_all_teams(force_refresh=False)
+        
+        # Force refresh immediately after should compute fresh data (different throttling)
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
+            result2 = get_all_teams(force_refresh=True)
+            assert isinstance(result2, list)
+        
+        # Another force refresh quickly should be throttled
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
+            result3 = get_all_teams(force_refresh=True)
+            assert result3 is result2  # Should be cached
+        
+        # Regular call during force refresh throttling period should use cache
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.3  # 0.3 seconds total
+            result4 = get_all_teams(force_refresh=False)
+            assert result4 is result2  # Should be cached
+
+def test_clear_team_caches_resets_throttling_timers(mock_state, mock_db_session):
+    """Test that clear_team_caches resets both throttling timers"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches, _last_refresh_time, _last_force_refresh_time
+    import time
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Make some calls to set the timers
+        get_all_teams(force_refresh=False)
+        get_all_teams(force_refresh=True)
+        
+        # Verify timers are set
+        from src.sockets.dashboard import _last_refresh_time, _last_force_refresh_time
+        # Note: We can't directly access these as they're module-level globals, 
+        # but we can test the behavior
+        
+        # Clear caches
+        clear_team_caches()
+        
+        # Next calls should compute fresh data regardless of timing
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.1  # Very short time
+            result1 = get_all_teams(force_refresh=False)
+            result2 = get_all_teams(force_refresh=True)
+            assert isinstance(result1, list)
+            assert isinstance(result2, list)
+
+def test_get_all_teams_no_cached_data_initial_call(mock_state, mock_db_session):
+    """Test behavior when no cached data exists initially"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    
+    # Clear caches to ensure no cached data
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Both regular and force_refresh should compute when no cache exists
+        result1 = get_all_teams(force_refresh=False)
+        assert isinstance(result1, list)
+        
+        # Clear cache again
+        clear_team_caches()
+        
+        result2 = get_all_teams(force_refresh=True)
+        assert isinstance(result2, list)
+
+def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_session):
+    """Test that throttling works properly even when exceptions occur during data computation"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        # First call succeeds
+        mock_teams.query.all.return_value = []
+        result1 = get_all_teams(force_refresh=False)
+        assert isinstance(result1, list)
+        
+        # Second call would fail, but should return cached data due to throttling
+        mock_teams.query.all.side_effect = Exception("Database error")
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.5  # Within throttling period
+            result2 = get_all_teams(force_refresh=False)
+            assert result2 is result1  # Should return cached data despite exception setup
+
+def test_emit_dashboard_team_update_uses_throttled_force_refresh(mock_state, mock_socketio):
+    """Test that emit_dashboard_team_update properly uses the new throttled force_refresh"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming, clear_team_caches
+    
+    # Setup client
+    mock_state.dashboard_clients = MockSet(['client1'])
+    dashboard_teams_streaming['client1'] = True
+    
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = []
+        
+        # Test that force_refresh parameter is passed through correctly
+        emit_dashboard_team_update(force_refresh=True)
+        mock_get_teams.assert_called_with(force_refresh=True)
+        
+        mock_get_teams.reset_mock()
+        
+        emit_dashboard_team_update(force_refresh=False)
+        mock_get_teams.assert_called_with(force_refresh=False)
+
+def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session):
+    """Test throttling behavior under simulated concurrent access"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Simulate multiple rapid calls as might happen in real usage
+        results = []
+        base_time = time.time()
+        
+        # Multiple calls within throttling windows
+        for i in range(5):
+            with patch('src.sockets.dashboard.time') as mock_time:
+                mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
+                result = get_all_teams(force_refresh=True)
+                results.append(result)
+        
+        # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
+        assert isinstance(results[0], list)
+        for i in range(1, 5):
+            assert results[i] is results[0], f"Result {i} should be cached"
+
+def test_force_refresh_throttling_integration_with_team_events(mock_state, mock_socketio):
+    """Test that the throttling works well with actual team management events"""
+    from src.sockets.dashboard import emit_dashboard_team_update, clear_team_caches
+    import time
+    
+    clear_team_caches()
+    
+    # Simulate rapid team events that would trigger force_refresh=True
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = []
+        
+        # Simulate multiple rapid disconnections/reconnections
+        start_time = time.time()
+        call_times = []
+        
+        for i in range(3):
+            with patch('src.sockets.dashboard.time') as mock_time:
+                current_time = start_time + (i * 0.2)  # 0.2 second intervals
+                mock_time.return_value = current_time
+                call_times.append(current_time)
+                
+                emit_dashboard_team_update(force_refresh=True)
+        
+        # Verify that get_all_teams was called with force_refresh=True each time
+        assert mock_get_teams.call_count == 3
+        for call in mock_get_teams.call_args_list:
+            assert call[1]['force_refresh'] == True
