@@ -203,13 +203,16 @@ def test_pause_game_unauthorized(mock_request, mock_state, mock_socketio, mock_e
 
 def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
     """Test correlation matrix computation with no answers"""
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
             
             # Check matrix dimensions and default values
@@ -243,13 +246,16 @@ def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
         create_mock_answer(3, 'X', True)
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
             
             # Check specific correlations
@@ -282,13 +288,16 @@ def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
         create_mock_answer(4, 'B', True), create_mock_answer(4, 'Y', True)    # +1
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             _, _, _, _, _, corr_sums, pair_counts = result
             
             # Check pair counts are correct
@@ -318,13 +327,16 @@ def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_s
         create_mock_answer(2, 'A', False), create_mock_answer(2, 'A', False)
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             _, _, avg_balance, balance_dict, resp_dict, _, _ = result
             
             # Should have equal true and false responses
@@ -344,13 +356,16 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
         create_mock_answer(1, 'Y', False)  # Wrong item
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
             
             # Matrix should contain all zeros due to invalid data
@@ -360,10 +375,13 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
 
 def test_compute_correlation_matrix_error_handling(mock_team, mock_db_session):
     """Test error handling in correlation matrix computation"""
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.side_effect = Exception("Database error")
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        result = compute_correlation_matrix(mock_team.team_id)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.side_effect = Exception("Database error")
+            
+            result = compute_correlation_matrix(mock_team.team_name)
         corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
         
         # Should return default values on error
