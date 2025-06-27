@@ -1757,7 +1757,7 @@ def test_on_keep_alive_unauthorized_client(mock_request, mock_state, mock_emit):
     # Should not emit keep_alive_ack
     mock_emit.assert_not_called()
 
-# ===== TESTS FOR THROTTLED FORCE_REFRESH BEHAVIOR =====
+# ===== TESTS FOR COMPREHENSIVE THROTTLING BEHAVIOR =====
 
 def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
     """Test that regular get_all_teams calls respect REFRESH_DELAY_QUICK throttling"""
@@ -2027,8 +2027,8 @@ def test_get_all_teams_thread_safety(mock_state, mock_db_session):
     assert all(result == 0 for result in results), f"Inconsistent results: {results}"
 
 def test_dashboard_client_cleanup_thread_safety():
-    """Test that dashboard client cleanup is thread-safe"""
-    from src.sockets.dashboard import _cleanup_dashboard_client_data, dashboard_last_activity, dashboard_teams_streaming
+    """Test that dashboard client cleanup is thread-safe with atomic operations"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
     import threading
     
     # Setup test data
@@ -2042,7 +2042,7 @@ def test_dashboard_client_cleanup_thread_safety():
     def cleanup_worker(sid):
         try:
             for _ in range(10):
-                _cleanup_dashboard_client_data(sid)
+                _atomic_client_update(sid, remove=True)
         except Exception as e:
             exceptions.append(e)
     
@@ -2163,18 +2163,95 @@ def test_different_throttling_delays_are_independent(mock_state, mock_socketio):
                 assert mock_get_teams.call_count >= 2  # Called by both functions
                 assert mock_answers.query.count.call_count == 1  # Called by full update
 
+# ===== TESTS FOR ATOMIC CLIENT OPERATIONS =====
+
+def test_atomic_client_update_add_activity():
+    """Test atomic client update for activity tracking"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Start with clean state
+    dashboard_last_activity.clear()
+    dashboard_teams_streaming.clear()
+    
+    # Update activity time atomically
+    _atomic_client_update('test_client', activity_time=123.0)
+    
+    # Should be added
+    assert dashboard_last_activity['test_client'] == 123.0
+    assert 'test_client' not in dashboard_teams_streaming  # Should not be affected
+
+def test_atomic_client_update_add_streaming():
+    """Test atomic client update for streaming preference"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Start with clean state
+    dashboard_last_activity.clear()
+    dashboard_teams_streaming.clear()
+    
+    # Update streaming preference atomically
+    _atomic_client_update('test_client', streaming_enabled=True)
+    
+    # Should be added
+    assert dashboard_teams_streaming['test_client'] is True
+    assert 'test_client' not in dashboard_last_activity  # Should not be affected
+
+def test_atomic_client_update_both():
+    """Test atomic client update for both activity and streaming"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Start with clean state
+    dashboard_last_activity.clear()
+    dashboard_teams_streaming.clear()
+    
+    # Update both atomically
+    _atomic_client_update('test_client', activity_time=456.0, streaming_enabled=False)
+    
+    # Both should be updated
+    assert dashboard_last_activity['test_client'] == 456.0
+    assert dashboard_teams_streaming['test_client'] is False
+
+def test_atomic_client_update_remove():
+    """Test atomic client removal"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Setup test data
+    dashboard_last_activity['test_client'] = 789.0
+    dashboard_teams_streaming['test_client'] = True
+    
+    # Remove atomically
+    _atomic_client_update('test_client', remove=True)
+    
+    # Both should be removed
+    assert 'test_client' not in dashboard_last_activity
+    assert 'test_client' not in dashboard_teams_streaming
+
+def test_atomic_client_update_partial_data():
+    """Test atomic update with existing partial data"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Setup existing data
+    dashboard_last_activity['test_client'] = 100.0
+    # No streaming preference initially
+    
+    # Update just streaming preference
+    _atomic_client_update('test_client', streaming_enabled=True)
+    
+    # Should preserve existing activity, add streaming
+    assert dashboard_last_activity['test_client'] == 100.0
+    assert dashboard_teams_streaming['test_client'] is True
+
 # ===== TESTS FOR MEMORY LEAK PREVENTION =====
 
 def test_cleanup_dashboard_client_data():
-    """Test that _cleanup_dashboard_client_data removes client data"""
-    from src.sockets.dashboard import _cleanup_dashboard_client_data, dashboard_last_activity, dashboard_teams_streaming
+    """Test that atomic client update removes client data properly"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
     
     # Setup test data
     dashboard_last_activity['test_client'] = 123.0
     dashboard_teams_streaming['test_client'] = True
     
-    # Cleanup
-    _cleanup_dashboard_client_data('test_client')
+    # Cleanup using atomic operation
+    _atomic_client_update('test_client', remove=True)
     
     # Data should be removed
     assert 'test_client' not in dashboard_last_activity
@@ -2182,10 +2259,10 @@ def test_cleanup_dashboard_client_data():
 
 def test_cleanup_dashboard_client_data_nonexistent_client():
     """Test that cleanup handles nonexistent clients gracefully"""
-    from src.sockets.dashboard import _cleanup_dashboard_client_data
+    from src.sockets.dashboard import _atomic_client_update
     
     # Should not raise exception for nonexistent client
-    _cleanup_dashboard_client_data('nonexistent_client')
+    _atomic_client_update('nonexistent_client', remove=True)
 
 def test_periodic_cleanup_dashboard_clients(mock_state):
     """Test that periodic cleanup removes stale client data"""
@@ -2319,28 +2396,56 @@ def test_concurrent_cache_clear_and_get_teams(mock_state, mock_db_session):
 
 def test_memory_usage_stress_test():
     """Test that repeated operations don't cause memory leaks"""
-    from src.sockets.dashboard import dashboard_last_activity, dashboard_teams_streaming, _cleanup_dashboard_client_data
+    from src.sockets.dashboard import dashboard_last_activity, dashboard_teams_streaming, _atomic_client_update
     
     # Simulate many client connections and disconnections
     for i in range(1000):
         client_id = f'client_{i}'
         
-        # Add client data
-        dashboard_last_activity[client_id] = float(i)
-        dashboard_teams_streaming[client_id] = i % 2 == 0
+        # Add client data atomically
+        _atomic_client_update(client_id, activity_time=float(i), streaming_enabled=(i % 2 == 0))
         
         # Clean up every 100 clients to simulate periodic cleanup
         if i % 100 == 0:
             # Clean up first 50 clients
             for j in range(max(0, i - 50), i):
                 cleanup_id = f'client_{j}'
-                _cleanup_dashboard_client_data(cleanup_id)
+                _atomic_client_update(cleanup_id, remove=True)
     
     # Final cleanup
     remaining_clients = list(dashboard_last_activity.keys()) + list(dashboard_teams_streaming.keys())
-    for client_id in remaining_clients:
-        _cleanup_dashboard_client_data(client_id)
+    for client_id in set(remaining_clients):  # Use set to avoid duplicates
+        _atomic_client_update(client_id, remove=True)
     
     # Memory should be cleaned up
     assert len(dashboard_last_activity) == 0
     assert len(dashboard_teams_streaming) == 0
+
+# ===== TESTS FOR ERROR HANDLING IN THREAD-SAFE OPERATIONS =====
+
+def test_safe_dashboard_operation_error_handling():
+    """Test that _safe_dashboard_operation handles errors properly"""
+    from src.sockets.dashboard import _safe_dashboard_operation
+    
+    # Test that exceptions are properly re-raised
+    with pytest.raises(ValueError):
+        with _safe_dashboard_operation():
+            raise ValueError("Test error")
+
+def test_atomic_client_update_error_resilience():
+    """Test that atomic client update is resilient to errors"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Should handle empty/None client IDs gracefully
+    try:
+        _atomic_client_update('', activity_time=123.0)
+        _atomic_client_update(None, remove=True)  # This might raise, but shouldn't crash
+    except Exception:
+        pass  # Expected behavior for invalid input
+    
+    # Normal operations should still work
+    _atomic_client_update('valid_client', activity_time=456.0)
+    assert dashboard_last_activity.get('valid_client') == 456.0
+    
+    # Cleanup
+    _atomic_client_update('valid_client', remove=True)

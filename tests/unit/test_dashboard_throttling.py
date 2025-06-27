@@ -442,7 +442,7 @@ class TestThreadSafety:
     
     def test_memory_cleanup_thread_safety(self):
         """Test that memory cleanup operations are thread-safe."""
-        from src.sockets.dashboard import _cleanup_dashboard_client_data, dashboard_last_activity, dashboard_teams_streaming
+        from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
         import threading
         
         # Setup test data
@@ -455,7 +455,7 @@ class TestThreadSafety:
         def cleanup_worker():
             try:
                 for i in range(50):
-                    _cleanup_dashboard_client_data(f'client_{i}')
+                    _atomic_client_update(f'client_{i}', remove=True)
             except Exception as e:
                 exceptions.append(e)
         
@@ -475,9 +475,79 @@ class TestThreadSafety:
         
         # Cleanup remaining data
         remaining_clients = list(dashboard_last_activity.keys()) + list(dashboard_teams_streaming.keys())
-        for client_id in remaining_clients:
-            _cleanup_dashboard_client_data(client_id)
+        for client_id in set(remaining_clients):  # Use set to avoid duplicates
+            _atomic_client_update(client_id, remove=True)
         
         # Should be cleaned up
         assert len(dashboard_last_activity) == 0
         assert len(dashboard_teams_streaming) == 0
+
+    def test_single_lock_prevents_deadlocks(self, mock_dashboard_dependencies, setup_dashboard_state):
+        """Test that using a single lock prevents deadlock scenarios."""
+        import threading
+        
+        exceptions = []
+        operations_completed = []
+        
+        def mixed_operations_worker():
+            try:
+                for i in range(5):
+                    # Mix different dashboard operations that all use the same lock
+                    clear_team_caches()
+                    emit_dashboard_team_update()
+                    emit_dashboard_full_update()
+                    
+                    # Simulate client operations
+                    from src.sockets.dashboard import _atomic_client_update
+                    _atomic_client_update(f'test_client_{i}', activity_time=time.time())
+                    _atomic_client_update(f'test_client_{i}', streaming_enabled=True)
+                    _atomic_client_update(f'test_client_{i}', remove=True)
+                    
+                    operations_completed.append(i)
+                    time.sleep(0.001)
+            except Exception as e:
+                exceptions.append(e)
+        
+        # Start multiple threads doing mixed operations
+        threads = []
+        for _ in range(4):
+            thread = threading.Thread(target=mixed_operations_worker)
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for completion with timeout to detect deadlocks
+        for thread in threads:
+            thread.join(timeout=10.0)
+            if thread.is_alive():
+                pytest.fail("Thread didn't complete - possible deadlock detected")
+        
+        # Should not have deadlock exceptions
+        assert len(exceptions) == 0, f"Deadlock or thread safety violations: {exceptions}"
+        
+        # All operations should have completed
+        assert len(operations_completed) > 0, "No operations completed - possible deadlock"
+
+    def test_error_handling_preserves_lock_state(self, mock_dashboard_dependencies, setup_dashboard_state):
+        """Test that exceptions in thread-safe operations don't leave locks in bad state."""
+        from src.sockets.dashboard import _safe_dashboard_operation
+        
+        # Force an exception in a safe operation
+        try:
+            with _safe_dashboard_operation():
+                raise ValueError("Test exception")
+        except ValueError:
+            pass  # Expected
+        
+        # Lock should be released and subsequent operations should work
+        try:
+            with _safe_dashboard_operation():
+                pass  # Should not hang or raise lock-related errors
+        except Exception as e:
+            pytest.fail(f"Lock not properly released after exception: {e}")
+        
+        # Regular dashboard operations should still work
+        emit_dashboard_team_update()
+        emit_dashboard_full_update()
+        
+        # Should complete without hanging
+        assert True
