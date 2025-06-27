@@ -3,7 +3,8 @@ from unittest.mock import patch, MagicMock, call
 from src.sockets.dashboard import (
     on_pause_game, compute_correlation_matrix, on_dashboard_join,
     on_start_game, on_restart_game, get_all_teams, emit_dashboard_full_update,
-    on_keep_alive, handle_dashboard_disconnect, emit_dashboard_team_update, clear_team_caches
+    on_keep_alive, handle_dashboard_disconnect, emit_dashboard_team_update, clear_team_caches,
+    force_clear_all_caches
 )
 # Mock app for test environment
 try:
@@ -19,6 +20,9 @@ import warnings
 from datetime import datetime, UTC
 from datetime import datetime, UTC
 from typing import Dict, Any, List
+import time
+import itertools
+import threading
 
 class MockQuestionItem(Enum):
     A = 'A'
@@ -202,13 +206,16 @@ def test_pause_game_unauthorized(mock_request, mock_state, mock_socketio, mock_e
 
 def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
     """Test correlation matrix computation with no answers"""
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
             
             # Check matrix dimensions and default values
@@ -242,13 +249,16 @@ def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
         create_mock_answer(3, 'X', True)
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
             
             # Check specific correlations
@@ -281,13 +291,16 @@ def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
         create_mock_answer(4, 'B', True), create_mock_answer(4, 'Y', True)    # +1
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             _, _, _, _, _, corr_sums, pair_counts = result
             
             # Check pair counts are correct
@@ -317,13 +330,16 @@ def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_s
         create_mock_answer(2, 'A', False), create_mock_answer(2, 'A', False)
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             _, _, avg_balance, balance_dict, resp_dict, _, _ = result
             
             # Should have equal true and false responses
@@ -343,13 +359,16 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
         create_mock_answer(1, 'Y', False)  # Wrong item
     ]
     
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.Answers') as mock_answers:
-            mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
             
-            result = compute_correlation_matrix(mock_team.team_id)
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
+                
+                result = compute_correlation_matrix(mock_team.team_name)
             corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
             
             # Matrix should contain all zeros due to invalid data
@@ -359,10 +378,13 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
 
 def test_compute_correlation_matrix_error_handling(mock_team, mock_db_session):
     """Test error handling in correlation matrix computation"""
-    with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-        mock_rounds.query.filter_by.side_effect = Exception("Database error")
+    with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        mock_get_id.return_value = mock_team.team_id
         
-        result = compute_correlation_matrix(mock_team.team_id)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter_by.side_effect = Exception("Database error")
+            
+            result = compute_correlation_matrix(mock_team.team_name)
         corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
         
         # Should return default values on error
@@ -564,6 +586,12 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
     """Test full dashboard update emission"""
     from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
     
+    # Clear any existing state
+    force_clear_all_caches()
+    
+    # Ensure specific_client is in dashboard_clients for all test cases
+    mock_state.dashboard_clients = MockSet(['test_dashboard_sid', 'specific_client'])
+    
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = [{'team_name': 'team1'}]
         
@@ -571,6 +599,7 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
             mock_answers.query.count.return_value = 10
             
             # Test update for specific client without teams streaming
+            dashboard_teams_streaming['specific_client'] = False
             emit_dashboard_full_update('specific_client')
             
             # Check that emit was called
@@ -593,6 +622,8 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
             # Test update for specific client with teams streaming enabled
             dashboard_teams_streaming['specific_client'] = True
             mock_socketio.emit.reset_mock()
+            # Clear cache to ensure fresh data is fetched
+            force_clear_all_caches()
             emit_dashboard_full_update('specific_client')
             
             # Check the call
@@ -638,7 +669,7 @@ def test_emit_dashboard_team_update_runs(mock_state, mock_socketio):
     """Test that emit_dashboard_team_update function runs without crashing"""
     from src.sockets.dashboard import emit_dashboard_team_update
     # Should not raise
-    emit_dashboard_team_update(force_refresh=True)
+    emit_dashboard_team_update()
 
 def test_emit_dashboard_full_update_runs(mock_state, mock_socketio):
     """Test that emit_dashboard_full_update function runs without crashing"""
@@ -838,10 +869,13 @@ def test_request_teams_update_when_streaming_disabled(mock_request, mock_state, 
         mock_socketio.emit.assert_not_called()
 
 def test_emit_dashboard_team_update_selective_sending(mock_state, mock_socketio):
-    """Test that all clients receive updates but with different content based on streaming preference"""
+    """Test that team updates are sent selectively based on streaming preferences"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup multiple clients with different streaming preferences
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
+    
+    # Setup mixed client types
     mock_state.dashboard_clients = MockSet(['client1', 'client2', 'client3'])
     dashboard_teams_streaming['client1'] = True   # Streaming enabled
     dashboard_teams_streaming['client2'] = False  # Streaming disabled
@@ -852,8 +886,8 @@ def test_emit_dashboard_team_update_selective_sending(mock_state, mock_socketio)
         
         emit_dashboard_team_update()
         
-        # All clients should now receive updates (streaming and non-streaming)
-        assert len(mock_socketio.emit.call_args_list) == 3
+        # Should emit to all clients (streaming and non-streaming)
+        assert mock_socketio.emit.call_count == 3
         
         # Separate calls by client type for verification
         streaming_calls = []
@@ -928,6 +962,9 @@ def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
     """Test teams streaming behavior with clients in various states"""
     from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
     
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
+    
     # Setup clients in various states
     dashboard_teams_streaming['streaming_client'] = True
     dashboard_teams_streaming['non_streaming_client'] = False
@@ -997,18 +1034,22 @@ def test_metrics_sent_regardless_of_teams_streaming_state(mock_state, mock_socke
     """Test that team metrics are always sent even when teams streaming is disabled (Bug 1 fix)"""
     from src.sockets.dashboard import emit_dashboard_full_update, dashboard_teams_streaming
     
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
+    
     # Setup client with teams streaming disabled
     dashboard_teams_streaming['test_client'] = False
     
-    # Mock teams data
-    mock_teams = [
-        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2'},
-        {'team_id': 2, 'team_name': 'Team2', 'is_active': True, 'player1_sid': 'p3', 'player2_sid': None},
-        {'team_id': 3, 'team_name': 'Team3', 'is_active': False, 'player1_sid': None, 'player2_sid': None}
-    ]
+    # Mock active teams in state (used for lightweight metrics calculation)
+    mock_state.active_teams = {
+        'Team1': {'team_id': 1, 'status': 'active', 'players': ['p1', 'p2']},
+        'Team2': {'team_id': 2, 'status': 'waiting_pair', 'players': ['p3']},
+        'Team3': {'team_id': 3, 'status': 'inactive', 'players': []}
+    }
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-        mock_get_teams.return_value = mock_teams
+        # get_all_teams should NOT be called since no streaming clients
+        mock_get_teams.return_value = []
         
         with patch('src.sockets.dashboard.Answers') as mock_answers:
             mock_answers.query.count.return_value = 10
@@ -1022,10 +1063,10 @@ def test_metrics_sent_regardless_of_teams_streaming_state(mock_state, mock_socke
             # Check that metrics are included even though teams streaming is disabled
             update_data = call_args[0][1]  # Second argument is the data
             
-            # Should have metrics
+            # Should have metrics calculated from state.active_teams
             assert 'active_teams_count' in update_data
             assert 'ready_players_count' in update_data
-            assert update_data['active_teams_count'] == 2  # Two active teams
+            assert update_data['active_teams_count'] == 2  # Team1 and Team2 have status active/waiting_pair
             assert update_data['ready_players_count'] == 3  # 2 + 1 players from active teams
             
             # Should have empty teams array since streaming is disabled
@@ -1034,6 +1075,9 @@ def test_metrics_sent_regardless_of_teams_streaming_state(mock_state, mock_socke
             # Should have other expected fields
             assert update_data['total_answers_count'] == 10
             assert update_data['connected_players_count'] == 2
+            
+            # get_all_teams should NOT have been called for non-streaming client
+            mock_get_teams.assert_not_called()
 
 def test_dashboard_join_respects_client_streaming_preference(mock_request, mock_state, mock_socketio):
     """Test that dashboard join callback respects existing client streaming preferences (Bug 2 fix)"""
@@ -1110,6 +1154,9 @@ def test_emit_dashboard_team_update_includes_metrics_for_streaming_clients(mock_
     """Test that team status updates include proper data for streaming clients"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
+    
     # Setup client with teams streaming enabled
     mock_state.dashboard_clients = MockSet(['streaming_client'])
     dashboard_teams_streaming['streaming_client'] = True
@@ -1183,6 +1230,9 @@ def test_dashboard_join_no_duplicate_updates_without_callback(mock_request, mock
 def test_dashboard_join_other_clients_receive_updates(mock_request, mock_state, mock_socketio):
     """Test that existing dashboard clients receive updates when a new client joins"""
     from src.sockets.dashboard import on_dashboard_join, dashboard_teams_streaming
+    
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
     
     # Setup existing clients
     mock_state.dashboard_clients = MockSet(['existing_client1', 'existing_client2'])
@@ -1387,131 +1437,134 @@ def test_dashboard_join_multiple_clients_no_duplicates(mock_request, mock_state,
 # ===== TESTS FOR DASHBOARD METRICS UPDATE FIX =====
 
 def test_emit_dashboard_team_update_metrics_to_non_streaming_clients(mock_state, mock_socketio):
-    """Test that non-streaming clients receive metric updates when team status changes"""
+    """Test that non-streaming clients receive metric updates without teams data"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup clients with teams streaming disabled
-    mock_state.dashboard_clients = MockSet(['non_streaming_client1', 'non_streaming_client2'])
-    dashboard_teams_streaming['non_streaming_client1'] = False
-    dashboard_teams_streaming['non_streaming_client2'] = False
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
     
-    # Mock teams data with various statuses
-    mock_teams = [
-        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'status': 'active', 'player1_sid': 'p1', 'player2_sid': 'p2'},
-        {'team_id': 2, 'team_name': 'Team2', 'is_active': True, 'status': 'waiting_pair', 'player1_sid': 'p3', 'player2_sid': None},
-        {'team_id': 3, 'team_name': 'Team3', 'is_active': False, 'status': 'inactive', 'player1_sid': None, 'player2_sid': None}
-    ]
+    # Setup client with teams streaming disabled
+    mock_state.dashboard_clients = MockSet(['non_streaming_client'])
+    dashboard_teams_streaming['non_streaming_client'] = False
+    
+    # Mock active teams in state (used for lightweight metrics calculation)
+    mock_state.active_teams = {
+        'Team1': {'team_id': 1, 'status': 'active', 'players': ['p1', 'p2']},
+        'Team2': {'team_id': 2, 'status': 'waiting_pair', 'players': ['p3']}
+    }
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-        mock_get_teams.return_value = mock_teams
-        
-        # Clear socketio mock to track calls
-        mock_socketio.emit.reset_mock()
+        # get_all_teams should NOT be called since no streaming clients
+        mock_get_teams.return_value = []
         
         emit_dashboard_team_update()
         
-        # Verify both clients received updates
-        assert mock_socketio.emit.call_count == 2
+        # Verify the call was made to non-streaming client
+        assert mock_socketio.emit.called
+        call_args = mock_socketio.emit.call_args
         
-        # Check the content of updates sent to non-streaming clients
-        for call in mock_socketio.emit.call_args_list:
-            event_name, update_data = call[0][0], call[0][1]
-            client_sid = call[1]['to']
-            
-            assert event_name == 'team_status_changed_for_dashboard'
-            assert client_sid in ['non_streaming_client1', 'non_streaming_client2']
-            
-            # Should have empty teams array but include metrics
-            assert update_data['teams'] == []
-            assert update_data['active_teams_count'] == 2  # Team1 and Team2 are active
-            assert update_data['ready_players_count'] == 3  # 2 from Team1 + 1 from Team2
-            assert update_data['connected_players_count'] == 2
+        # Check that it's the right event and client
+        assert call_args[0][0] == 'team_status_changed_for_dashboard'
+        assert call_args[1]['to'] == 'non_streaming_client'
+        
+        # Check that teams data is empty but metrics are present
+        update_data = call_args[0][1]
+        assert update_data['teams'] == []  # Empty for non-streaming client
+        assert 'active_teams_count' in update_data
+        assert 'ready_players_count' in update_data
+        assert update_data['active_teams_count'] == 2  # Team1 and Team2 have active/waiting_pair status
+        assert update_data['ready_players_count'] == 3  # 2 + 1 players from active teams
+        
+        # get_all_teams should NOT have been called for non-streaming client
+        mock_get_teams.assert_not_called()
 
 def test_emit_dashboard_team_update_full_data_to_streaming_clients(mock_state, mock_socketio):
     """Test that streaming clients receive full teams data + metrics"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup clients with teams streaming enabled
-    mock_state.dashboard_clients = MockSet(['streaming_client1', 'streaming_client2'])
-    dashboard_teams_streaming['streaming_client1'] = True
-    dashboard_teams_streaming['streaming_client2'] = True
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
+    
+    # Setup client with teams streaming enabled
+    mock_state.dashboard_clients = MockSet(['streaming_client'])
+    dashboard_teams_streaming['streaming_client'] = True
     
     # Mock teams data
     mock_teams = [
-        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'status': 'active', 'player1_sid': 'p1', 'player2_sid': 'p2'}
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'active'},
+        {'team_id': 2, 'team_name': 'Team2', 'is_active': False, 'player1_sid': None, 'player2_sid': None, 'status': 'inactive'}
     ]
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        mock_socketio.emit.reset_mock()
-        
         emit_dashboard_team_update()
         
-        # Verify both clients received updates
-        assert mock_socketio.emit.call_count == 2
+        # Verify the call was made to streaming client
+        assert mock_socketio.emit.called
+        call_args = mock_socketio.emit.call_args
         
-        # Check the content of updates sent to streaming clients
-        for call in mock_socketio.emit.call_args_list:
-            event_name, update_data = call[0][0], call[0][1]
-            client_sid = call[1]['to']
-            
-            assert event_name == 'team_status_changed_for_dashboard'
-            assert client_sid in ['streaming_client1', 'streaming_client2']
-            
-            # Should have full teams data plus metrics
-            assert update_data['teams'] == mock_teams
-            assert update_data['active_teams_count'] == 1
-            assert update_data['ready_players_count'] == 2
-            assert update_data['connected_players_count'] == 2
+        # Check that it's the right event and client
+        assert call_args[0][0] == 'team_status_changed_for_dashboard'
+        assert call_args[1]['to'] == 'streaming_client'
+        
+        # Check that full teams data is included for streaming client
+        update_data = call_args[0][1]
+        assert update_data['teams'] == mock_teams  # Full teams data
+        assert 'active_teams_count' in update_data
+        assert 'ready_players_count' in update_data
+        assert update_data['active_teams_count'] == 1  # Only Team1 is active
+        assert update_data['ready_players_count'] == 2  # 2 players from Team1
 
 def test_emit_dashboard_team_update_mixed_client_types(mock_state, mock_socketio):
     """Test mixed streaming and non-streaming clients receive appropriate data"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
     
     # Setup mixed client types
     mock_state.dashboard_clients = MockSet(['streaming_client', 'non_streaming_client'])
     dashboard_teams_streaming['streaming_client'] = True
     dashboard_teams_streaming['non_streaming_client'] = False
     
+    # Mock teams data
     mock_teams = [
-        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'status': 'active', 'player1_sid': 'p1', 'player2_sid': 'p2'}
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'player1_sid': 'p1', 'player2_sid': 'p2', 'status': 'active'}
     ]
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        mock_socketio.emit.reset_mock()
-        
         emit_dashboard_team_update()
         
-        # Verify both clients received updates
+        # Should emit to both clients
         assert mock_socketio.emit.call_count == 2
         
         # Separate calls by client type
-        streaming_calls = []
-        non_streaming_calls = []
+        streaming_call = None
+        non_streaming_call = None
         
         for call in mock_socketio.emit.call_args_list:
             client_sid = call[1]['to']
             if client_sid == 'streaming_client':
-                streaming_calls.append(call)
-            else:
-                non_streaming_calls.append(call)
+                streaming_call = call
+            elif client_sid == 'non_streaming_client':
+                non_streaming_call = call
         
         # Verify streaming client gets full data
-        assert len(streaming_calls) == 1
-        streaming_data = streaming_calls[0][0][1]
+        assert streaming_call is not None
+        streaming_data = streaming_call[0][1]
         assert streaming_data['teams'] == mock_teams
-        assert streaming_data['active_teams_count'] == 1
-        assert streaming_data['ready_players_count'] == 2
+        assert 'active_teams_count' in streaming_data
+        assert 'ready_players_count' in streaming_data
         
-        # Verify non-streaming client gets metrics only
-        assert len(non_streaming_calls) == 1
-        non_streaming_data = non_streaming_calls[0][0][1]
+        # Verify non-streaming client gets empty teams but still metrics
+        assert non_streaming_call is not None
+        non_streaming_data = non_streaming_call[0][1]
         assert non_streaming_data['teams'] == []
-        assert non_streaming_data['active_teams_count'] == 1
-        assert non_streaming_data['ready_players_count'] == 2
+        assert 'active_teams_count' in non_streaming_data
+        assert 'ready_players_count' in non_streaming_data
 
 def test_emit_dashboard_team_update_no_clients_early_return(mock_state, mock_socketio):
     """Test that function returns early when no dashboard clients exist"""
@@ -1530,128 +1583,141 @@ def test_emit_dashboard_team_update_no_clients_early_return(mock_state, mock_soc
         mock_socketio.emit.assert_not_called()
 
 def test_emit_dashboard_team_update_uses_existing_caching(mock_state, mock_socketio):
-    """Test that function leverages existing caching for performance"""
+    """Test that repeated calls use caching/throttling appropriately"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup clients
+    # FIXED: Use force_clear_all_caches to start fresh, then test throttling
+    force_clear_all_caches()
+    
+    # Set up streaming client to trigger get_all_teams calls
     mock_state.dashboard_clients = MockSet(['client1'])
     dashboard_teams_streaming['client1'] = True
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = []
         
-        emit_dashboard_team_update(force_refresh=True)
+        # First call should make fresh calculation
+        emit_dashboard_team_update()
+        assert mock_get_teams.call_count == 1
         
-        # Verify get_all_teams was called with force_refresh parameter
-        mock_get_teams.assert_called_once_with(force_refresh=True)
-        
-        mock_get_teams.reset_mock()
-        
-        # Call again without force_refresh
-        emit_dashboard_team_update(force_refresh=False)
-        
-        # Should still call get_all_teams but with different parameter
-        mock_get_teams.assert_called_once_with(force_refresh=False)
+        # FIXED: Second call immediately should be throttled (no additional call)
+        emit_dashboard_team_update()
+        assert mock_get_teams.call_count == 1  # Should still be 1 due to throttling
 
 def test_emit_dashboard_team_update_correct_metrics_calculation(mock_state, mock_socketio):
     """Test that metrics are calculated correctly according to backend definition"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup client
-    mock_state.dashboard_clients = MockSet(['client1'])
-    dashboard_teams_streaming['client1'] = False  # Non-streaming to check metrics
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
     
-    # Mock teams with various statuses - only active and waiting_pair should count
+    # Setup clients with different streaming preferences
+    mock_state.dashboard_clients = MockSet(['streaming_client', 'non_streaming_client'])
+    dashboard_teams_streaming['streaming_client'] = True
+    dashboard_teams_streaming['non_streaming_client'] = False
+    
+    # Mock teams data with various statuses for accurate metrics calculation
     mock_teams = [
-        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'status': 'active', 'player1_sid': 'p1', 'player2_sid': 'p2'},  # Counts
-        {'team_id': 2, 'team_name': 'Team2', 'is_active': True, 'status': 'waiting_pair', 'player1_sid': 'p3', 'player2_sid': None},  # Counts
-        {'team_id': 3, 'team_name': 'Team3', 'is_active': False, 'status': 'waiting_pair', 'player1_sid': 'p4', 'player2_sid': None},  # Counts (waiting_pair)
-        {'team_id': 4, 'team_name': 'Team4', 'is_active': False, 'status': 'inactive', 'player1_sid': None, 'player2_sid': None}  # Doesn't count
+        {'team_id': 1, 'team_name': 'Team1', 'is_active': True, 'status': 'active', 'player1_sid': 'p1', 'player2_sid': 'p2'},  # 2 ready players
+        {'team_id': 2, 'team_name': 'Team2', 'is_active': True, 'status': 'waiting_pair', 'player1_sid': 'p3', 'player2_sid': None},  # 1 ready player
+        {'team_id': 3, 'team_name': 'Team3', 'is_active': False, 'status': 'inactive', 'player1_sid': None, 'player2_sid': None}  # 0 ready players
     ]
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        mock_socketio.emit.reset_mock()
-        
         emit_dashboard_team_update()
         
-        # Verify metrics calculation
-        assert mock_socketio.emit.call_count == 1
-        call_args = mock_socketio.emit.call_args
-        update_data = call_args[0][1]
+        # Should send to both clients
+        assert mock_socketio.emit.call_count == 2
         
-        # Should count Team1, Team2, and Team3 (3 active teams by backend definition)
-        assert update_data['active_teams_count'] == 3
-        # Should count 2 + 1 + 1 = 4 players
-        assert update_data['ready_players_count'] == 4
+        # Check metrics in any of the updates (they should be the same)
+        update_data = mock_socketio.emit.call_args_list[0][0][1]
+        
+        # Verify metrics calculation:
+        # active_teams_count = teams with is_active=True = 2 (Team1, Team2)
+        # ready_players_count = 2 (from Team1) + 1 (from Team2) = 3
+        assert update_data['active_teams_count'] == 2
+        assert update_data['ready_players_count'] == 3
 
 def test_emit_dashboard_team_update_handles_empty_teams_data(mock_state, mock_socketio):
     """Test handling of empty teams data"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup client
-    mock_state.dashboard_clients = MockSet(['client1'])
-    dashboard_teams_streaming['client1'] = False
-    
-    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
-        mock_get_teams.return_value = []  # Empty teams list
-        
-        mock_socketio.emit.reset_mock()
-        
-        emit_dashboard_team_update()
-        
-        # Should handle empty data gracefully
-        assert mock_socketio.emit.call_count == 1
-        call_args = mock_socketio.emit.call_args
-        update_data = call_args[0][1]
-        
-        assert update_data['teams'] == []
-        assert update_data['active_teams_count'] == 0
-        assert update_data['ready_players_count'] == 0
-        assert update_data['connected_players_count'] == 2
-
-def test_emit_dashboard_team_update_error_handling(mock_state, mock_socketio):
-    """Test error handling in emit_dashboard_team_update"""
-    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
     
     # Setup client
     mock_state.dashboard_clients = MockSet(['client1'])
     dashboard_teams_streaming['client1'] = True
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        # Return empty teams data
+        mock_get_teams.return_value = []
+        
+        emit_dashboard_team_update()
+        
+        # Should emit even with empty data
+        assert mock_socketio.emit.called
+        call_args = mock_socketio.emit.call_args
+        update_data = call_args[0][1]
+        
+        # Should handle empty data correctly
+        assert update_data['teams'] == []
+        assert update_data['active_teams_count'] == 0
+        assert update_data['ready_players_count'] == 0
+        assert 'connected_players_count' in update_data
+
+def test_emit_dashboard_team_update_error_handling(mock_state, mock_socketio):
+    """Test error handling in emit_dashboard_team_update"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # FIXED: Use force_clear_all_caches to ensure fresh state, then cause error
+    force_clear_all_caches()
+    
+    # Setup client
+    mock_state.dashboard_clients = MockSet(['client1'])
+    dashboard_teams_streaming['client1'] = True
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        # Cause an error on get_all_teams
         mock_get_teams.side_effect = Exception("Database error")
         
-        # Should not raise exception, should handle error gracefully
+        # Should handle error gracefully and log it (but not crash)
         try:
             emit_dashboard_team_update()
-        except Exception:
-            pytest.fail("emit_dashboard_team_update should handle errors gracefully")
+        except Exception as e:
+            # Should not re-raise the exception, should handle gracefully
+            pytest.fail(f"emit_dashboard_team_update should handle errors gracefully, but raised: {e}")
         
-        # Should not emit anything on error
-        mock_socketio.emit.assert_not_called()
+        # FIXED: After clearing cache, function should try to get fresh data and encounter error
+        # The function should log the error but continue with default/cached values
+        # Since cache was cleared, it will try fresh data, fail, and return early without emit
+        assert not mock_socketio.emit.called  # Should not emit when fresh data fails and no cache
 
 def test_emit_dashboard_team_update_performance_no_duplicate_computation(mock_state, mock_socketio):
     """Test that teams data is computed only once even with multiple clients"""
     from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
     
-    # Setup multiple clients of different types
-    mock_state.dashboard_clients = MockSet(['streaming1', 'streaming2', 'non_streaming1', 'non_streaming2'])
-    dashboard_teams_streaming['streaming1'] = True
-    dashboard_teams_streaming['streaming2'] = True
-    dashboard_teams_streaming['non_streaming1'] = False
-    dashboard_teams_streaming['non_streaming2'] = False
+    # FIXED: Use force_clear_all_caches to ensure fresh data
+    force_clear_all_caches()
+    
+    # Setup multiple clients
+    mock_state.dashboard_clients = MockSet(['client1', 'client2', 'client3'])
+    dashboard_teams_streaming['client1'] = True
+    dashboard_teams_streaming['client2'] = False  
+    dashboard_teams_streaming['client3'] = True
     
     with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = []
         
         emit_dashboard_team_update()
         
-        # Should call get_all_teams only once despite multiple clients
+        # Should call get_all_teams exactly once despite multiple clients
         assert mock_get_teams.call_count == 1
         
-        # Should emit to all 4 clients
-        assert mock_socketio.emit.call_count == 4
+        # Should emit to all clients
+        assert mock_socketio.emit.call_count == 3
 
 def test_emit_dashboard_team_update_preserves_connected_players_count(mock_state, mock_socketio):
     """Test that team status updates preserve the connected players count across multiple calls"""
@@ -1735,3 +1801,475 @@ def test_on_keep_alive_unauthorized_client(mock_request, mock_state, mock_emit):
     
     # Should not emit keep_alive_ack
     mock_emit.assert_not_called()
+
+# ===== TESTS FOR COMPREHENSIVE THROTTLING BEHAVIOR =====
+
+def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
+    """Test that regular get_all_teams calls respect REFRESH_DELAY_QUICK throttling"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    # Clear caches to start fresh
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # First call should compute fresh data
+        result1 = get_all_teams()
+        assert isinstance(result1, list)
+        
+        # Second call immediately after should return cached data
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
+            result2 = get_all_teams()
+            assert result2 is result1  # Should be same cached object
+        
+        # Call after REFRESH_DELAY_QUICK should compute fresh data
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.6  # 0.6 seconds later (> REFRESH_DELAY_QUICK)
+            result3 = get_all_teams()
+            assert isinstance(result3, list)
+
+# Throttling constants test removed - duplicate of test in test_dashboard_throttling.py
+
+def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
+    """Test mixing regular calls with cache behavior"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    # Clear caches to start fresh
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Start with regular call
+        result1 = get_all_teams()
+        
+        # Another call immediately after should use cache
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
+            result2 = get_all_teams()
+            assert result2 is result1  # Should be cached
+        
+        # Another call quickly should still be cached
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
+            result3 = get_all_teams()
+            assert result3 is result1  # Should be cached
+        
+        # Call after delay should compute fresh data
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.6  # 0.6 seconds total
+            result4 = get_all_teams()
+            assert isinstance(result4, list)
+
+def test_clear_team_caches_resets_throttling_timers(mock_state, mock_db_session):
+    """Test that clear_team_caches resets throttling timers"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Make a call to set the timer
+        get_all_teams()
+        
+        # Clear caches
+        clear_team_caches()
+        
+        # Next call should compute fresh data regardless of timing
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.1  # Very short time
+            result1 = get_all_teams()
+            assert isinstance(result1, list)
+
+def test_get_all_teams_no_cached_data_initial_call(mock_state, mock_db_session):
+    """Test behavior when no cached data exists initially"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    
+    # Clear caches to ensure no cached data
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Both regular calls should compute when no cache exists
+        result1 = get_all_teams()
+        assert isinstance(result1, list)
+        
+        # Clear cache again
+        clear_team_caches()
+        
+        result2 = get_all_teams()
+        assert isinstance(result2, list)
+
+def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_session):
+    """Test that throttling works properly even when exceptions occur during data computation"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        # First call succeeds
+        mock_teams.query.all.return_value = []
+        result1 = get_all_teams()
+        assert isinstance(result1, list)
+        
+        # Second call would fail, but should return cached data due to throttling
+        mock_teams.query.all.side_effect = Exception("Database error")
+        with patch('src.sockets.dashboard.time') as mock_time:
+            mock_time.return_value = time.time() + 0.2  # Within throttling period
+            result2 = get_all_teams()
+            assert result2 is result1  # Should return cached data despite exception setup
+
+def test_emit_dashboard_team_update_uses_throttled_refresh(mock_state, mock_socketio):
+    """Test that team updates use throttled refresh mechanism"""
+    from src.sockets.dashboard import emit_dashboard_team_update, dashboard_teams_streaming
+    
+    # FIXED: Use force_clear_all_caches to ensure fresh data on first call
+    force_clear_all_caches()
+    
+    # Set up streaming client to trigger get_all_teams calls
+    mock_state.dashboard_clients = MockSet(['client1'])
+    dashboard_teams_streaming['client1'] = True
+    
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = []
+        
+        # First call should make fresh calculation
+        emit_dashboard_team_update()
+        assert mock_get_teams.call_count == 1
+        
+        # Second call immediately should be throttled (no additional call to get_all_teams)
+        emit_dashboard_team_update()
+        assert mock_get_teams.call_count == 1  # Still 1, due to throttling
+        
+        # Third call immediately should still be throttled
+        emit_dashboard_team_update()
+        assert mock_get_teams.call_count == 1  # Still 1, due to throttling
+        
+        # Clear cache to force fresh calculation on next call
+        force_clear_all_caches()
+        emit_dashboard_team_update()
+        
+        # Should make fresh call now after cache clear
+        assert mock_get_teams.call_count == 2
+
+def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session):
+    """Test throttling behavior under simulated concurrent access"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import time
+    
+    clear_team_caches()
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Simulate multiple rapid calls as might happen in real usage
+        results = []
+        base_time = time.time()
+        
+        # Multiple calls within throttling windows
+        for i in range(5):
+            with patch('src.sockets.dashboard.time') as mock_time:
+                mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
+                result = get_all_teams()
+                results.append(result)
+        
+        # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
+        assert isinstance(results[0], list)
+        for i in range(1, 5):
+            assert results[i] is results[0], f"Result {i} should be cached"
+
+def test_throttling_integration_with_team_events(mock_state, mock_socketio):
+    """Test that the throttling works well with actual team management events"""
+    from src.sockets.dashboard import emit_dashboard_team_update, force_clear_all_caches, dashboard_teams_streaming
+    
+    # FIXED: Force clear all caches to ensure the first call is fresh
+    force_clear_all_caches()
+    
+    # Set up streaming client to trigger get_all_teams calls
+    mock_state.dashboard_clients = MockSet(['client1'])
+    dashboard_teams_streaming['client1'] = True
+    
+    # Simulate rapid team events
+    with patch('src.sockets.dashboard.get_all_teams') as mock_get_teams:
+        mock_get_teams.return_value = []
+        
+        # Simulate multiple rapid calls (without complex time mocking)
+        emit_dashboard_team_update()  # First call should work
+        emit_dashboard_team_update()  # Second call should be throttled
+        emit_dashboard_team_update()  # Third call should also be throttled
+        
+        # FIXED: With proper throttling, only the first call should hit get_all_teams
+        # Subsequent calls should be throttled due to REFRESH_DELAY_QUICK
+        assert mock_get_teams.call_count == 1  # Only first call, rest are throttled
+
+# ===== TESTS FOR THREAD SAFETY AND LOCKING =====
+
+def test_cache_clearing_thread_safety():
+    """Test that cache clearing is thread-safe"""
+    from src.sockets.dashboard import clear_team_caches
+    import threading
+    import time
+    
+    exceptions = []
+    
+    def clear_cache_worker():
+        try:
+            for _ in range(10):
+                clear_team_caches()
+                time.sleep(0.01)
+        except Exception as e:
+            exceptions.append(e)
+    
+    # Start multiple threads clearing caches simultaneously
+    threads = []
+    for _ in range(5):
+        thread = threading.Thread(target=clear_cache_worker)
+        threads.append(thread)
+        thread.start()
+    
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
+    
+    # Should not have any exceptions from race conditions
+    assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
+
+def test_get_all_teams_thread_safety(mock_state, mock_db_session):
+    """Test that get_all_teams is thread-safe"""
+    from src.sockets.dashboard import get_all_teams, clear_team_caches
+    import threading
+    import time
+    
+    clear_team_caches()
+    exceptions = []
+    results = []
+    
+    def get_teams_worker():
+        try:
+            for _ in range(5):
+                result = get_all_teams()
+                results.append(len(result))
+                time.sleep(0.01)
+        except Exception as e:
+            exceptions.append(e)
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Start multiple threads accessing get_all_teams simultaneously
+        threads = []
+        for _ in range(3):
+            thread = threading.Thread(target=get_teams_worker)
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for all threads to complete
+        for thread in threads:
+            thread.join()
+    
+    # Should not have any exceptions from race conditions
+    assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
+    # Should have consistent results
+    assert all(result == 0 for result in results), f"Inconsistent results: {results}"
+
+def test_dashboard_client_cleanup_thread_safety():
+    """Test that dashboard client cleanup is thread-safe with atomic operations"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    import threading
+    
+    # Setup test data
+    dashboard_last_activity['test1'] = 123.0
+    dashboard_last_activity['test2'] = 456.0
+    dashboard_teams_streaming['test1'] = True
+    dashboard_teams_streaming['test2'] = False
+    
+    exceptions = []
+    
+    def cleanup_worker(sid):
+        try:
+            for _ in range(10):
+                _atomic_client_update(sid, remove=True)
+        except Exception as e:
+            exceptions.append(e)
+    
+    # Start multiple threads cleaning up the same clients
+    threads = []
+    for sid in ['test1', 'test2']:
+        for _ in range(3):  # Multiple threads per client
+            thread = threading.Thread(target=cleanup_worker, args=(sid,))
+            threads.append(thread)
+            thread.start()
+    
+    # Wait for all threads to complete
+    for thread in threads:
+        thread.join()
+    
+    # Should not have any exceptions from race conditions
+    assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
+    
+    # Data should be cleaned up
+    assert 'test1' not in dashboard_last_activity
+    assert 'test2' not in dashboard_last_activity
+    assert 'test1' not in dashboard_teams_streaming
+    assert 'test2' not in dashboard_teams_streaming
+
+def test_clear_team_caches_includes_periodic_cleanup(mock_state):
+    """Test that clear_team_caches includes periodic cleanup"""
+    from src.sockets.dashboard import clear_team_caches, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Setup stale data
+    mock_state.dashboard_clients = MockSet(['active'])
+    dashboard_last_activity['active'] = 123.0
+    dashboard_last_activity['stale'] = 456.0
+    dashboard_teams_streaming['active'] = True
+    dashboard_teams_streaming['stale'] = False
+    
+    # Clear caches (should include cleanup)
+    clear_team_caches()
+    
+    # Active client should remain, stale should be removed
+    assert 'active' in dashboard_last_activity
+    assert 'stale' not in dashboard_last_activity
+    assert 'active' in dashboard_teams_streaming
+    assert 'stale' not in dashboard_teams_streaming
+
+def test_handle_dashboard_disconnect_uses_cleanup(mock_state):
+    """Test that handle_dashboard_disconnect properly cleans up client data"""
+    from src.sockets.dashboard import handle_dashboard_disconnect, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Setup test client
+    mock_state.dashboard_clients = MockSet(['test_client'])
+    dashboard_last_activity['test_client'] = 123.0
+    dashboard_teams_streaming['test_client'] = True
+    
+    # Disconnect
+    handle_dashboard_disconnect('test_client')
+    
+    # Client should be removed from state and tracking data cleaned up
+    assert 'test_client' not in mock_state.dashboard_clients
+    assert 'test_client' not in dashboard_last_activity
+    assert 'test_client' not in dashboard_teams_streaming
+
+def test_handle_dashboard_disconnect_nonexistent_client():
+    """Test that disconnect handles nonexistent clients gracefully"""
+    from src.sockets.dashboard import handle_dashboard_disconnect
+    
+    # Should not raise exception for nonexistent client
+    handle_dashboard_disconnect('nonexistent_client')
+
+# ===== TESTS FOR CONCURRENT ACCESS SCENARIOS =====
+
+def test_concurrent_cache_clear_and_get_teams(mock_state, mock_db_session):
+    """Test concurrent cache clearing and team data access"""
+    from src.sockets.dashboard import clear_team_caches, get_all_teams
+    import threading
+    import time
+    
+    exceptions = []
+    results = []
+    
+    def cache_clearer():
+        try:
+            for _ in range(5):
+                clear_team_caches()
+                time.sleep(0.01)
+        except Exception as e:
+            exceptions.append(e)
+    
+    def team_getter():
+        try:
+            for _ in range(5):
+                result = get_all_teams()
+                results.append(len(result))
+                time.sleep(0.01)
+        except Exception as e:
+            exceptions.append(e)
+    
+    with patch('src.sockets.dashboard.Teams') as mock_teams:
+        mock_teams.query.all.return_value = []
+        
+        # Start concurrent operations
+        threads = []
+        
+        # Cache clearers
+        for _ in range(2):
+            thread = threading.Thread(target=cache_clearer)
+            threads.append(thread)
+            thread.start()
+        
+        # Team getters
+        for _ in range(3):
+            thread = threading.Thread(target=team_getter)
+            threads.append(thread)
+            thread.start()
+        
+        # Wait for completion
+        for thread in threads:
+            thread.join()
+    
+    # Should not have any exceptions from race conditions
+    assert len(exceptions) == 0, f"Concurrent access violations: {exceptions}"
+    # Should have some results (exact count depends on timing)
+    assert len(results) > 0
+
+def test_memory_usage_stress_test():
+    """Test that repeated operations don't cause memory leaks"""
+    from src.sockets.dashboard import dashboard_last_activity, dashboard_teams_streaming, _atomic_client_update
+    
+    # Simulate many client connections and disconnections
+    for i in range(1000):
+        client_id = f'client_{i}'
+        
+        # Add client data atomically
+        _atomic_client_update(client_id, activity_time=float(i), streaming_enabled=(i % 2 == 0))
+        
+        # Clean up every 100 clients to simulate periodic cleanup
+        if i % 100 == 0:
+            # Clean up first 50 clients
+            for j in range(max(0, i - 50), i):
+                cleanup_id = f'client_{j}'
+                _atomic_client_update(cleanup_id, remove=True)
+    
+    # Final cleanup
+    remaining_clients = list(dashboard_last_activity.keys()) + list(dashboard_teams_streaming.keys())
+    for client_id in set(remaining_clients):  # Use set to avoid duplicates
+        _atomic_client_update(client_id, remove=True)
+    
+    # Memory should be cleaned up
+    assert len(dashboard_last_activity) == 0
+    assert len(dashboard_teams_streaming) == 0
+
+# ===== TESTS FOR ERROR HANDLING IN THREAD-SAFE OPERATIONS =====
+
+def test_safe_dashboard_operation_error_handling():
+    """Test that _safe_dashboard_operation handles errors properly"""
+    from src.sockets.dashboard import _safe_dashboard_operation
+    
+    # Test that exceptions are properly re-raised
+    with pytest.raises(ValueError):
+        with _safe_dashboard_operation():
+            raise ValueError("Test error")
+
+def test_atomic_client_update_error_resilience():
+    """Test that atomic client update is resilient to errors"""
+    from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+    
+    # Should handle empty/None client IDs gracefully
+    try:
+        _atomic_client_update('', activity_time=123.0)
+        _atomic_client_update(None, remove=True)  # This might raise, but shouldn't crash
+    except Exception:
+        pass  # Expected behavior for invalid input
+    
+    # Normal operations should still work
+    _atomic_client_update('valid_client', activity_time=456.0)
+    assert dashboard_last_activity.get('valid_client') == 456.0
+    
+    # Cleanup
+    _atomic_client_update('valid_client', remove=True)

@@ -1,7 +1,7 @@
 // Initialize socket with ping timeout settings
 const socket = io(window.location.origin, {
-    pingTimeout: 60000, // Increase ping timeout to 60 seconds
-    pingInterval: 25000 // Ping every 25 seconds
+    pingTimeout: 30000, // ping timeout 30 seconds
+    pingInterval: 5000 // Ping every 5 seconds
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
@@ -21,7 +21,7 @@ setInterval(() => {
     if (socket.connected) {
         socket.emit('keep_alive');
     }
-}, 30000); // Send keep-alive ping every 30 seconds
+}, 10000); // Send keep-alive ping every 10 seconds
 
 const activeTeamsCountEl = document.getElementById("active-teams-count");
 const readyPlayersCountEl = document.getElementById("ready-players-count");

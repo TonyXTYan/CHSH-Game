@@ -70,3 +70,6 @@ build/
 
 # Specific project files
 src/static/sub/hello.txt 
+
+# AI related
+.ai-prompts/
