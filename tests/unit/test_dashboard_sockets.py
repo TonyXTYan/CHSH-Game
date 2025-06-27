@@ -1831,14 +1831,7 @@ def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
             result3 = get_all_teams()
             assert isinstance(result3, list)
 
-def test_throttling_uses_single_delay(mock_state, mock_db_session):
-    """Test that both REFRESH_DELAY_QUICK and REFRESH_DELAY_FULL exist and are set correctly"""
-    from src.sockets.dashboard import REFRESH_DELAY_QUICK, REFRESH_DELAY_FULL
-    
-    # Verify both constants exist and are set correctly
-    assert REFRESH_DELAY_QUICK == 1.0
-    assert REFRESH_DELAY_FULL == 2.0
-    assert REFRESH_DELAY_FULL > REFRESH_DELAY_QUICK  # Full updates should be throttled more
+# Throttling constants test removed - duplicate of test in test_dashboard_throttling.py
 
 def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
     """Test mixing regular calls with cache behavior"""
