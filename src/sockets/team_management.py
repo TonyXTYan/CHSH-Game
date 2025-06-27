@@ -164,10 +164,12 @@ def handle_connect() -> None:
         logger.info(f'Client connected: {sid}')
         
         # Queue connection during high load to prevent overwhelming
-        state.connection_manager.queue_connection(sid)
+        if hasattr(state, 'connection_manager'):
+            state.connection_manager.queue_connection(sid)
         
         # Sync state with database on connection (handles server restarts)
-        state.sync_with_database()
+        if hasattr(state, 'sync_with_database'):
+            state.sync_with_database()
         
         # By default, treat all non-dashboard connections as players
         if sid not in state.dashboard_clients:
@@ -176,14 +178,13 @@ def handle_connect() -> None:
             emit_dashboard_full_update()  # Use full update to refresh player count
         
         # Process any queued connections
-        state.connection_manager.process_connection_queue()
+        if hasattr(state, 'connection_manager'):
+            state.connection_manager.process_connection_queue()
         
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list(),
-            'game_mode': state.game_mode,
-            'server_instance_id': getattr(state, 'server_instance_id', 'unknown'),
-            'connection_stable': True
+            'game_mode': state.game_mode
         })  # type: ignore
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
@@ -192,8 +193,7 @@ def handle_connect() -> None:
             emit('connection_established', {
                 'game_started': False,
                 'available_teams': [],
-                'game_mode': 'new',
-                'connection_stable': False
+                'game_mode': 'new'
             })  # type: ignore
         except:
             pass
@@ -226,7 +226,7 @@ def handle_disconnect() -> None:
                         player_slot = _get_player_slot_in_team(team_info, sid)
 
                         # Create reconnection token for graceful reconnections
-                        if was_full_team and player_slot:
+                        if was_full_team and player_slot and hasattr(state, 'connection_manager'):
                             reconnection_token = state.connection_manager.create_reconnection_token(
                                 team_name, player_slot
                             )
@@ -240,15 +240,11 @@ def handle_disconnect() -> None:
                             
                             team_info['players'].remove(sid)
                             
-                            # Update the database but don't immediately clear session IDs during load spikes
-                            # This helps with quick reconnections
-                            current_connection_count = len(state.connected_players)
-                            if current_connection_count < state.connection_count_peak * 0.7:  # Normal load
-                                if db_team.player1_session_id == sid:
-                                    db_team.player1_session_id = None
-                                elif db_team.player2_session_id == sid:
-                                    db_team.player2_session_id = None
-                            # Otherwise keep session IDs for faster reconnection during load spikes
+                            # Update the database - always clear session IDs for proper state management
+                            if db_team.player1_session_id == sid:
+                                db_team.player1_session_id = None
+                            elif db_team.player2_session_id == sid:
+                                db_team.player2_session_id = None
                                 
                             # Leave the team room BEFORE emitting to the team
                             try:
@@ -427,6 +423,10 @@ def on_reconnect_with_token(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'Reconnection token required'})  # type: ignore
             return
             
+        if not hasattr(state, 'connection_manager'):
+            emit('error', {'message': 'Reconnection system not available'})  # type: ignore
+            return
+            
         token_data = state.connection_manager.validate_reconnection_token(token)
         if not token_data:
             emit('error', {'message': 'Invalid or expired reconnection token'})  # type: ignore
@@ -436,7 +436,8 @@ def on_reconnect_with_token(data: Dict[str, Any]) -> None:
         player_slot = token_data['player_slot']
         
         # Sync state with database first
-        state.sync_with_database()
+        if hasattr(state, 'sync_with_database'):
+            state.sync_with_database()
         
         # Check if team still exists and can accept reconnection
         if team_name not in state.active_teams:
