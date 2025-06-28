@@ -674,6 +674,7 @@ th {
 .team-row.moving {
     z-index: 2; /* Ensure moving rows stay above others */
     will-change: transform;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1); /* Subtle shadow during movement */
 }
 
 .team-row.new-team {
