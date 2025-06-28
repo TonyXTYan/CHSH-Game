@@ -972,14 +972,18 @@ def _compute_team_hashes_optimized(team_id: int, team_rounds: List[Any], team_an
         logger.error(f"Error computing team hashes for team {team_id}: {str(e)}")
         return "ERROR", "ERROR"
 
-def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any]) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
+def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
     """Compute correlation matrix using pre-fetched rounds and answers data."""
     try:
-        # Get team data for session ID mapping
-        db_team = Teams.query.get(team_id)
-        if not db_team:
-            logger.warning(f"Could not find team data for team_id: {team_id}")
-            return ([[ (0,0) for _ in range(4) ] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
+        # Use pre-fetched team data to avoid N+1 queries
+        if team_obj is None:
+            # Fallback to database query if team_obj not provided (backward compatibility)
+            team_obj = Teams.query.get(team_id)
+            if not team_obj:
+                logger.warning(f"Could not find team data for team_id: {team_id}")
+                return ([[ (0,0) for _ in range(4) ] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
+        
+        db_team = team_obj
         
         # Create a mapping from round_id to the round object for quick access
         round_map = {round_obj.round_id: round_obj for round_obj in team_rounds}
@@ -1078,14 +1082,18 @@ def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], 
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
-def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any]) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
+def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """Compute success metrics for new mode using pre-fetched rounds and answers data."""
     try:
-        # Get team data for session ID mapping
-        db_team = Teams.query.get(team_id)
-        if not db_team:
-            logger.warning(f"Could not find team data for team_id: {team_id}")
-            return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
+        # Use pre-fetched team data to avoid N+1 queries
+        if team_obj is None:
+            # Fallback to database query if team_obj not provided (backward compatibility)
+            team_obj = Teams.query.get(team_id)
+            if not team_obj:
+                logger.warning(f"Could not find team data for team_id: {team_id}")
+                return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
+        
+        db_team = team_obj
         
         # Create a mapping from round_id to the round object for quick access
         round_map = {round_obj.round_id: round_obj for round_obj in team_rounds}
@@ -1413,7 +1421,7 @@ def _calculate_success_statistics_from_data(success_result: Tuple) -> Dict[str, 
             'same_item_balance_uncertainty': None
         }
 
-def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str], team_rounds: List[Any], team_answers: List[Any]) -> Optional[Dict[str, Any]]:
+def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str], team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Optional[Dict[str, Any]]:
     """
     Process all heavy computation for a single team using pre-fetched data.
     OPTIMIZATION: Uses pre-fetched rounds and answers to avoid database queries.
@@ -1444,12 +1452,13 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
         
         # ALWAYS compute both classic and new statistics for details modal
         # Get correlation matrix and success metrics data using pre-fetched data
-        correlation_result = _compute_correlation_matrix_optimized(team_id, team_rounds, team_answers)
+        # Pass team_obj to avoid N+1 queries
+        correlation_result = _compute_correlation_matrix_optimized(team_id, team_rounds, team_answers, team_obj)
         (corr_matrix_tuples, item_values,
          same_item_balance_avg, same_item_balance, same_item_responses,
          correlation_sums, pair_counts) = correlation_result
         
-        success_result = _compute_success_metrics_optimized(team_id, team_rounds, team_answers)
+        success_result = _compute_success_metrics_optimized(team_id, team_rounds, team_answers, team_obj)
         (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, 
          success_counts, success_pair_counts, player_responses) = success_result
         
@@ -1674,7 +1683,8 @@ def get_all_teams() -> List[Dict[str, Any]]:
                     players[0] if len(players) > 0 else None,
                     players[1] if len(players) > 1 else None,
                     team_rounds,
-                    team_answers
+                    team_answers,
+                    team  # Pass team object to avoid N+1 queries
                 )
                 
                 if team_data:

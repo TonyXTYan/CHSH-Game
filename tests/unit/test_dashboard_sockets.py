@@ -2475,29 +2475,27 @@ def test_compute_correlation_matrix_optimized():
         create_mock_answer(3, 'X', True, player_session_id='player2_session')    # Same answers = correlation +1
     ]
     
-    # Mock the Teams query for session ID mapping
-    with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_db_team = MagicMock()
-        mock_db_team.player1_session_id = 'player1_session'
-        mock_db_team.player2_session_id = 'player2_session'
-        mock_teams.query.get.return_value = mock_db_team
-        
-        with app.app_context():  # Add application context for database access
-            result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers)
-        corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
-        
-        # Verify matrix structure
-        assert len(corr_matrix) == 4
-        assert all(len(row) == 4 for row in corr_matrix)
-        assert item_values == ['A', 'B', 'X', 'Y']
-        
-        # Verify specific correlations
-        a_idx = item_values.index('A')
-        x_idx = item_values.index('X')
-        y_idx = item_values.index('Y')
-        
-        assert corr_matrix[a_idx][x_idx] == (1, 1)   # A-X: +1 correlation, 1 pair
-        assert corr_matrix[a_idx][y_idx] == (-1, 1)  # A-Y: -1 correlation, 1 pair
+    # Create mock team object with session IDs
+    mock_team = MagicMock()
+    mock_team.player1_session_id = 'player1_session'
+    mock_team.player2_session_id = 'player2_session'
+    
+    with app.app_context():  # Add application context for database access
+        result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers, mock_team)
+    corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
+    
+    # Verify matrix structure
+    assert len(corr_matrix) == 4
+    assert all(len(row) == 4 for row in corr_matrix)
+    assert item_values == ['A', 'B', 'X', 'Y']
+    
+    # Verify specific correlations
+    a_idx = item_values.index('A')
+    x_idx = item_values.index('X')
+    y_idx = item_values.index('Y')
+    
+    assert corr_matrix[a_idx][x_idx] == (1, 1)   # A-X: +1 correlation, 1 pair
+    assert corr_matrix[a_idx][y_idx] == (-1, 1)  # A-Y: -1 correlation, 1 pair
     
     # Verify counts
     assert pair_counts[('A', 'X')] == 1
@@ -2538,25 +2536,23 @@ def test_compute_success_metrics_optimized():
         create_mock_answer(3, 'X', True, player_session_id='player2_session')    # Different answers for B-X = failure
     ]
     
-    # Mock the Teams query for session ID mapping
-    with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_db_team = MagicMock()
-        mock_db_team.player1_session_id = 'player1_session'
-        mock_db_team.player2_session_id = 'player2_session'
-        mock_teams.query.get.return_value = mock_db_team
-        
-        with app.app_context():  # Add application context for database access
-            result = _compute_success_metrics_optimized(1, mock_rounds, mock_answers)
-        (success_matrix, item_values, overall_success_rate, normalized_score,
-         success_counts, pair_counts, player_responses) = result
-        
-        # Verify matrix structure
-        assert len(success_matrix) == 4
-        assert all(len(row) == 4 for row in success_matrix)
-        assert item_values == ['A', 'B', 'X', 'Y']
-        
-        # Verify success calculations
-        assert overall_success_rate == 2/3  # 2 successful out of 3 rounds
+    # Create mock team object with session IDs
+    mock_team = MagicMock()
+    mock_team.player1_session_id = 'player1_session'
+    mock_team.player2_session_id = 'player2_session'
+    
+    with app.app_context():  # Add application context for database access
+        result = _compute_success_metrics_optimized(1, mock_rounds, mock_answers, mock_team)
+    (success_matrix, item_values, overall_success_rate, normalized_score,
+     success_counts, pair_counts, player_responses) = result
+    
+    # Verify matrix structure
+    assert len(success_matrix) == 4
+    assert all(len(row) == 4 for row in success_matrix)
+    assert item_values == ['A', 'B', 'X', 'Y']
+    
+    # Verify success calculations
+    assert overall_success_rate == 2/3  # 2 successful out of 3 rounds
     assert success_counts[('B', 'Y')] == 1  # B-Y was successful
     assert success_counts[('A', 'X')] == 1  # A-X was successful
     assert success_counts[('B', 'X')] == 0  # B-X was not successful
