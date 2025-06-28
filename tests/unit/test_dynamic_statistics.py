@@ -11,6 +11,13 @@ from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
 class TestDynamicStatistics:
     """Test dynamic statistics functionality for mode switching."""
 
+    @pytest.fixture(autouse=True)
+    def setup_flask_context(self):
+        """Setup Flask application context for tests"""
+        from src.config import app
+        with app.test_request_context('/'):
+            yield
+
     @pytest.fixture
     def mock_state(self):
         """Mock state with different game modes."""
