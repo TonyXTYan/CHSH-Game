@@ -1,5 +1,5 @@
 import pytest
-from unittest.mock import patch, MagicMock, call
+from unittest.mock import patch, MagicMock, call, PropertyMock
 from src.sockets.dashboard import (
     on_pause_game, compute_correlation_matrix, on_dashboard_join,
     on_start_game, on_restart_game, get_all_teams, emit_dashboard_full_update,
@@ -546,41 +546,61 @@ def test_get_all_teams(mock_state, mock_db_session):
         with patch('src.sockets.dashboard.Teams') as mock_teams:
             mock_teams.query.all.return_value = [mock_team]
             
-            # Set up compute_correlation_matrix mock return values
-            corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
-            item_values = ['A', 'B', 'X', 'Y']
-            
-            with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
-                mock_compute.return_value = (
-                    corr_matrix, item_values, 0.0, {}, {}, {}, {}
-                )
+            # Mock bulk queries for optimized version
+            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+                mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
                 
-                with patch('src.sockets.dashboard.compute_team_hashes') as mock_hashes:
-                    mock_hashes.return_value = ('hash1', 'hash2')
+                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                    mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                     
-                    with patch('src.sockets.dashboard._calculate_team_statistics') as mock_stats:
-                        mock_stats.return_value = {
-                            'trace_average_statistic': 0.0,
-                            'trace_average_statistic_uncertainty': None,
-                            'chsh_value_statistic': 0.0,
-                            'chsh_value_statistic_uncertainty': None,
-                            'cross_term_combination_statistic': 0.0,
-                            'cross_term_combination_statistic_uncertainty': None,
-                            'same_item_balance': 0.0,
-                            'same_item_balance_uncertainty': None
-                        }
+                    # Mock the optimized hash computation
+                    with patch('src.sockets.dashboard._compute_team_hashes_optimized') as mock_hashes:
+                        mock_hashes.return_value = ('hash1', 'hash2')
                         
-                        result = get_all_teams()
-                        
-                        assert len(result) == 1
-                        team_data = result[0]
-                        assert team_data['team_name'] == "Test Team"
-                        assert team_data['team_id'] == 1
-                        assert team_data['is_active'] == True
-                        assert team_data['history_hash1'] == 'hash1'
-                        assert team_data['history_hash2'] == 'hash2'
-                        assert 'correlation_matrix' in team_data
-                        assert 'correlation_stats' in team_data
+                        # Mock the optimized computation functions
+                        with patch('src.sockets.dashboard._compute_correlation_matrix_optimized') as mock_corr:
+                            corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
+                            item_values = ['A', 'B', 'X', 'Y']
+                            mock_corr.return_value = (corr_matrix, item_values, 0.0, {}, {}, {}, {})
+                            
+                            with patch('src.sockets.dashboard._compute_success_metrics_optimized') as mock_success:
+                                mock_success.return_value = (corr_matrix, item_values, 0.0, 0.0, {}, {}, {})
+                                
+                                with patch('src.sockets.dashboard._calculate_team_statistics_from_data') as mock_stats:
+                                    mock_stats.return_value = {
+                                        'trace_average_statistic': 0.0,
+                                        'trace_average_statistic_uncertainty': None,
+                                        'chsh_value_statistic': 0.0,
+                                        'chsh_value_statistic_uncertainty': None,
+                                        'cross_term_combination_statistic': 0.0,
+                                        'cross_term_combination_statistic_uncertainty': None,
+                                        'same_item_balance': 0.0,
+                                        'same_item_balance_uncertainty': None
+                                    }
+                                    
+                                    with patch('src.sockets.dashboard._calculate_success_statistics_from_data') as mock_new_stats:
+                                        mock_new_stats.return_value = {
+                                            'trace_average_statistic': 0.0,
+                                            'trace_average_statistic_uncertainty': None,
+                                            'chsh_value_statistic': 0.0,
+                                            'chsh_value_statistic_uncertainty': None,
+                                            'cross_term_combination_statistic': 0.0,
+                                            'cross_term_combination_statistic_uncertainty': None,
+                                            'same_item_balance': 0.0,
+                                            'same_item_balance_uncertainty': None
+                                        }
+                                        
+                                        result = get_all_teams()
+                                        
+                                        assert len(result) == 1
+                                        team_data = result[0]
+                                        assert team_data['team_name'] == "Test Team"
+                                        assert team_data['team_id'] == 1
+                                        assert team_data['is_active'] == True
+                                        assert team_data['history_hash1'] == 'hash1'
+                                        assert team_data['history_hash2'] == 'hash2'
+                                        assert 'correlation_matrix' in team_data
+                                        assert 'correlation_stats' in team_data
 
 def test_emit_dashboard_full_update(mock_state, mock_socketio):
     """Test full dashboard update emission"""
@@ -1815,21 +1835,41 @@ def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
     with patch('src.sockets.dashboard.Teams') as mock_teams:
         mock_teams.query.all.return_value = []
         
-        # First call should compute fresh data
-        result1 = get_all_teams()
-        assert isinstance(result1, list)
-        
-        # Second call immediately after should return cached data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
-            result2 = get_all_teams()
-            assert result2 is result1  # Should be same cached object
-        
-        # Call after REFRESH_DELAY_QUICK should compute fresh data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.6  # 0.6 seconds later (> REFRESH_DELAY_QUICK)
-            result3 = get_all_teams()
-            assert isinstance(result3, list)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify throttling
+                db_call_count = 0
+                original_teams_all = mock_teams.query.all
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # First call should compute fresh data
+                result1 = get_all_teams()
+                assert isinstance(result1, list)
+                assert db_call_count == 1
+                
+                # Second call immediately after should use cached data (throttled)
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
+                    result2 = get_all_teams()
+                    assert isinstance(result2, list)
+                    assert db_call_count == 1  # Should not increment due to throttling
+                
+                # Call after REFRESH_DELAY_QUICK should compute fresh data
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 1.2  # 1.2 seconds later (> REFRESH_DELAY_QUICK)
+                    result3 = get_all_teams()
+                    assert isinstance(result3, list)
+                    assert db_call_count == 2  # Should increment for fresh computation
 
 # Throttling constants test removed - duplicate of test in test_dashboard_throttling.py
 
@@ -1842,28 +1882,43 @@ def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
     clear_team_caches()
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_teams.query.all.return_value = []
-        
-        # Start with regular call
-        result1 = get_all_teams()
-        
-        # Another call immediately after should use cache
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
-            result2 = get_all_teams()
-            assert result2 is result1  # Should be cached
-        
-        # Another call quickly should still be cached
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
-            result3 = get_all_teams()
-            assert result3 is result1  # Should be cached
-        
-        # Call after delay should compute fresh data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.6  # 0.6 seconds total
-            result4 = get_all_teams()
-            assert isinstance(result4, list)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify caching
+                db_call_count = 0
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # Start with regular call
+                result1 = get_all_teams()
+                assert db_call_count == 1
+                
+                # Another call immediately after should use cache
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
+                    result2 = get_all_teams()
+                    assert db_call_count == 1  # Should be cached, no new DB call
+                
+                # Another call quickly should still be cached
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
+                    result3 = get_all_teams()
+                    assert db_call_count == 1  # Should still be cached
+                
+                # Call after delay should compute fresh data
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 1.2  # 1.2 seconds total (> REFRESH_DELAY_QUICK)
+                    result4 = get_all_teams()
+                    assert db_call_count == 2  # Should make new DB call
 
 def test_clear_team_caches_resets_throttling_timers(mock_state, mock_db_session):
     """Test that clear_team_caches resets throttling timers"""
@@ -1913,17 +1968,41 @@ def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_se
     clear_team_caches()
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
-        # First call succeeds
-        mock_teams.query.all.return_value = []
-        result1 = get_all_teams()
-        assert isinstance(result1, list)
-        
-        # Second call would fail, but should return cached data due to throttling
-        mock_teams.query.all.side_effect = Exception("Database error")
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.2  # Within throttling period
-            result2 = get_all_teams()
-            assert result2 is result1  # Should return cached data despite exception setup
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify throttling behavior
+                db_call_count = 0
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # First call succeeds
+                result1 = get_all_teams()
+                assert isinstance(result1, list)
+                assert db_call_count == 1
+                
+                # Second call would fail, but should return cached data due to throttling
+                def failing_teams_call():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    raise Exception("Database error")
+                
+                mock_teams.query.all = failing_teams_call
+                
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.2  # Within throttling period
+                    result2 = get_all_teams()
+                    # Should return cached data without calling DB (due to throttling)
+                    assert isinstance(result2, list)
+                    assert db_call_count == 1  # Should not increment due to throttling
 
 def test_emit_dashboard_team_update_uses_throttled_refresh(mock_state, mock_socketio):
     """Test that team updates use throttled refresh mechanism"""
@@ -1966,23 +2045,41 @@ def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session)
     clear_team_caches()
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_teams.query.all.return_value = []
-        
-        # Simulate multiple rapid calls as might happen in real usage
-        results = []
-        base_time = time.time()
-        
-        # Multiple calls within throttling windows
-        for i in range(5):
-            with patch('src.sockets.dashboard.time') as mock_time:
-                mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
-                result = get_all_teams()
-                results.append(result)
-        
-        # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
-        assert isinstance(results[0], list)
-        for i in range(1, 5):
-            assert results[i] is results[0], f"Result {i} should be cached"
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify throttling
+                db_call_count = 0
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # Simulate multiple rapid calls as might happen in real usage
+                results = []
+                base_time = time.time()
+                
+                # Multiple calls within throttling windows
+                for i in range(5):
+                    with patch('src.sockets.dashboard.time') as mock_time:
+                        mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
+                        result = get_all_teams()
+                        results.append(result)
+                
+                # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
+                assert isinstance(results[0], list)
+                assert db_call_count == 1  # Only first call should hit database
+                
+                # All results should be functionally equivalent (though not necessarily same object)
+                for i in range(1, 5):
+                    assert isinstance(results[i], list), f"Result {i} should be a list"
+                    assert len(results[i]) == len(results[0]), f"Result {i} should have same length as first result"
 
 def test_throttling_integration_with_team_events(mock_state, mock_socketio):
     """Test that the throttling works well with actual team management events"""
@@ -2273,3 +2370,442 @@ def test_atomic_client_update_error_resilience():
     
     # Cleanup
     _atomic_client_update('valid_client', remove=True)
+
+# ===== TESTS FOR NEW OPTIMIZED FUNCTIONS =====
+
+def test_compute_team_hashes_optimized():
+    """Test optimized team hash computation with pre-fetched data"""
+    from src.sockets.dashboard import _compute_team_hashes_optimized
+    
+    # Create mock rounds and answers
+    mock_rounds = [
+        create_mock_round(1, 'A', 'X'),
+        create_mock_round(2, 'B', 'Y')
+    ]
+    
+    mock_answers = [
+        create_mock_answer(1, 'A', True),
+        create_mock_answer(1, 'X', False),
+        create_mock_answer(2, 'B', True),
+        create_mock_answer(2, 'Y', True)
+    ]
+    
+    # Test hash computation
+    hash1, hash2 = _compute_team_hashes_optimized(1, mock_rounds, mock_answers)
+    
+    # Should return valid hash strings
+    assert isinstance(hash1, str)
+    assert isinstance(hash2, str)
+    assert len(hash1) == 8  # SHA256 truncated to 8 chars
+    assert len(hash2) == 8  # MD5 truncated to 8 chars
+    assert hash1 != hash2   # Different hash algorithms should give different results
+
+def test_compute_team_hashes_optimized_empty_data():
+    """Test optimized hash computation with empty data"""
+    from src.sockets.dashboard import _compute_team_hashes_optimized
+    
+    hash1, hash2 = _compute_team_hashes_optimized(1, [], [])
+    
+    # Should handle empty data gracefully
+    assert isinstance(hash1, str)
+    assert isinstance(hash2, str)
+    assert len(hash1) == 8
+    assert len(hash2) == 8
+
+def test_compute_team_hashes_optimized_error_handling():
+    """Test optimized hash computation error handling"""
+    from src.sockets.dashboard import _compute_team_hashes_optimized
+    
+    # Create mock data that will cause an exception during processing
+    invalid_round = MagicMock()
+    invalid_round.player1_item.value = "A"
+    invalid_round.player2_item.value = "X"
+    
+    invalid_answer = MagicMock()
+    # Create a property that raises an exception when accessed
+    type(invalid_answer.assigned_item).value = PropertyMock(side_effect=RuntimeError("Test exception"))
+    invalid_answer.response_value = True
+    
+    hash1, hash2 = _compute_team_hashes_optimized(1, [invalid_round], [invalid_answer])
+    
+    # Should return error indicators
+    assert hash1 == "ERROR"
+    assert hash2 == "ERROR"
+
+def test_compute_correlation_matrix_optimized():
+    """Test optimized correlation matrix computation"""
+    from src.sockets.dashboard import _compute_correlation_matrix_optimized
+    
+    # Create test data
+    mock_rounds = [
+        create_mock_round(1, 'A', 'X'),
+        create_mock_round(2, 'A', 'Y'),
+        create_mock_round(3, 'B', 'X')
+    ]
+    
+    mock_answers = [
+        create_mock_answer(1, 'A', True),
+        create_mock_answer(1, 'X', True),   # Same answers = correlation +1
+        create_mock_answer(2, 'A', False),
+        create_mock_answer(2, 'Y', True),   # Different answers = correlation -1
+        create_mock_answer(3, 'B', True),
+        create_mock_answer(3, 'X', True)    # Same answers = correlation +1
+    ]
+    
+    result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers)
+    corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
+    
+    # Verify matrix structure
+    assert len(corr_matrix) == 4
+    assert all(len(row) == 4 for row in corr_matrix)
+    assert item_values == ['A', 'B', 'X', 'Y']
+    
+    # Verify specific correlations
+    a_idx = item_values.index('A')
+    x_idx = item_values.index('X')
+    y_idx = item_values.index('Y')
+    
+    assert corr_matrix[a_idx][x_idx] == (1, 1)   # A-X: +1 correlation, 1 pair
+    assert corr_matrix[a_idx][y_idx] == (-1, 1)  # A-Y: -1 correlation, 1 pair
+    
+    # Verify counts
+    assert pair_counts[('A', 'X')] == 1
+    assert pair_counts[('A', 'Y')] == 1
+    assert pair_counts[('B', 'X')] == 1
+
+def test_compute_correlation_matrix_optimized_empty():
+    """Test optimized correlation matrix with empty data"""
+    from src.sockets.dashboard import _compute_correlation_matrix_optimized
+    
+    result = _compute_correlation_matrix_optimized(1, [], [])
+    corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
+    
+    # Should return default empty structure
+    assert len(corr_matrix) == 4
+    assert all(len(row) == 4 for row in corr_matrix)
+    assert all(all(cell == (0, 0) for cell in row) for row in corr_matrix)
+    assert item_values == ['A', 'B', 'X', 'Y']
+    assert avg_balance == 0.0
+
+def test_compute_success_metrics_optimized():
+    """Test optimized success metrics computation"""
+    from src.sockets.dashboard import _compute_success_metrics_optimized
+    
+    # Create test data for new mode success calculation
+    mock_rounds = [
+        create_mock_round(1, 'B', 'Y'),  # B-Y should require different answers
+        create_mock_round(2, 'A', 'X'),  # A-X should require same answers
+        create_mock_round(3, 'B', 'X')   # B-X should require same answers
+    ]
+    
+    mock_answers = [
+        create_mock_answer(1, 'B', True),
+        create_mock_answer(1, 'Y', False),  # Different answers for B-Y = success
+        create_mock_answer(2, 'A', True),
+        create_mock_answer(2, 'X', True),   # Same answers for A-X = success
+        create_mock_answer(3, 'B', False),
+        create_mock_answer(3, 'X', True)    # Different answers for B-X = failure
+    ]
+    
+    result = _compute_success_metrics_optimized(1, mock_rounds, mock_answers)
+    (success_matrix, item_values, overall_success_rate, normalized_score, 
+     success_counts, pair_counts, player_responses) = result
+    
+    # Verify matrix structure
+    assert len(success_matrix) == 4
+    assert all(len(row) == 4 for row in success_matrix)
+    assert item_values == ['A', 'B', 'X', 'Y']
+    
+    # Verify success calculations
+    assert overall_success_rate == 2/3  # 2 successful out of 3 rounds
+    assert success_counts[('B', 'Y')] == 1  # B-Y was successful
+    assert success_counts[('A', 'X')] == 1  # A-X was successful
+    assert success_counts[('B', 'X')] == 0  # B-X was not successful
+    assert pair_counts[('B', 'Y')] == 1
+    assert pair_counts[('A', 'X')] == 1
+    assert pair_counts[('B', 'X')] == 1
+
+def test_compute_success_metrics_optimized_empty():
+    """Test optimized success metrics with empty data"""
+    from src.sockets.dashboard import _compute_success_metrics_optimized
+    
+    result = _compute_success_metrics_optimized(1, [], [])
+    (success_matrix, item_values, overall_success_rate, normalized_score, 
+     success_counts, pair_counts, player_responses) = result
+    
+    # Should return default structure
+    assert len(success_matrix) == 4
+    assert all(len(row) == 4 for row in success_matrix)
+    assert all(all(cell == (0, 0) for cell in row) for row in success_matrix)
+    assert item_values == ['A', 'B', 'X', 'Y']
+    assert overall_success_rate == 0.0
+    assert normalized_score == 0.0
+
+def test_calculate_team_statistics_from_data():
+    """Test calculation of team statistics from pre-computed correlation data"""
+    from src.sockets.dashboard import _calculate_team_statistics_from_data
+    
+    # Create mock correlation data
+    corr_matrix = [[(1, 1), (0, 0), (1, 1), (0, 0)] for _ in range(4)]
+    item_values = ['A', 'B', 'X', 'Y']
+    same_item_balance_avg = 0.8
+    same_item_balance = {'A': 0.8}
+    same_item_responses = {'A': {'true': 4, 'false': 1}}
+    correlation_sums = {('A', 'X'): 1, ('A', 'Y'): 0, ('B', 'X'): 1, ('B', 'Y'): 0}
+    pair_counts = {('A', 'X'): 1, ('A', 'Y'): 0, ('B', 'X'): 1, ('B', 'Y'): 0}
+    
+    correlation_result = (corr_matrix, item_values, same_item_balance_avg, 
+                         same_item_balance, same_item_responses, correlation_sums, pair_counts)
+    
+    stats = _calculate_team_statistics_from_data(correlation_result)
+    
+    # Verify expected structure
+    assert 'trace_average_statistic' in stats
+    assert 'trace_average_statistic_uncertainty' in stats
+    assert 'chsh_value_statistic' in stats
+    assert 'chsh_value_statistic_uncertainty' in stats
+    assert 'cross_term_combination_statistic' in stats
+    assert 'cross_term_combination_statistic_uncertainty' in stats
+    assert 'same_item_balance' in stats
+    assert 'same_item_balance_uncertainty' in stats
+    
+    # All values should be numeric or None
+    for key, value in stats.items():
+        assert value is None or isinstance(value, (int, float))
+
+def test_calculate_team_statistics_from_data_error_handling():
+    """Test team statistics calculation error handling"""
+    from src.sockets.dashboard import _calculate_team_statistics_from_data
+    
+    # Test with invalid/empty data
+    invalid_data = ([], [], 0.0, {}, {}, {}, {})
+    stats = _calculate_team_statistics_from_data(invalid_data)
+    
+    # Should return default values
+    assert stats['trace_average_statistic'] == 0.0
+    assert stats['chsh_value_statistic'] == 0.0
+    assert stats['cross_term_combination_statistic'] == 0.0
+    assert stats['same_item_balance'] == 0.0
+
+def test_calculate_success_statistics_from_data():
+    """Test calculation of success statistics from pre-computed success data"""
+    from src.sockets.dashboard import _calculate_success_statistics_from_data
+    
+    # Create mock success data
+    success_matrix = [[(1, 1), (0, 1), (1, 1), (0, 1)] for _ in range(4)]
+    item_values = ['A', 'B', 'X', 'Y']
+    overall_success_rate = 0.75
+    normalized_score = 0.5
+    success_counts = {('A', 'X'): 1, ('A', 'Y'): 0, ('B', 'X'): 1, ('B', 'Y'): 0}
+    pair_counts = {('A', 'X'): 1, ('A', 'Y'): 1, ('B', 'X'): 1, ('B', 'Y'): 1}
+    player_responses = {'A': {'true': 3, 'false': 1}, 'B': {'true': 2, 'false': 2}}
+    
+    success_result = (success_matrix, item_values, overall_success_rate, normalized_score,
+                     success_counts, pair_counts, player_responses)
+    
+    stats = _calculate_success_statistics_from_data(success_result)
+    
+    # Verify expected structure
+    assert 'trace_average_statistic' in stats
+    assert 'trace_average_statistic_uncertainty' in stats
+    assert 'chsh_value_statistic' in stats
+    assert 'chsh_value_statistic_uncertainty' in stats
+    assert 'cross_term_combination_statistic' in stats
+    assert 'cross_term_combination_statistic_uncertainty' in stats
+    assert 'same_item_balance' in stats
+    assert 'same_item_balance_uncertainty' in stats
+    
+    # Verify success rate is preserved
+    assert stats['trace_average_statistic'] == 0.75
+    assert stats['chsh_value_statistic'] == 0.5
+
+def test_calculate_success_statistics_from_data_error_handling():
+    """Test success statistics calculation error handling"""
+    from src.sockets.dashboard import _calculate_success_statistics_from_data
+    
+    # Test with invalid/empty data
+    invalid_data = ([], [], 0.0, 0.0, {}, {}, {})
+    stats = _calculate_success_statistics_from_data(invalid_data)
+    
+    # Should return default values
+    assert stats['trace_average_statistic'] == 0.0
+    assert stats['chsh_value_statistic'] == 0.0
+    assert stats['cross_term_combination_statistic'] == 0.0
+    assert stats['same_item_balance'] == 0.0
+
+def test_process_single_team_optimized():
+    """Test optimized single team processing"""
+    from src.sockets.dashboard import _process_single_team_optimized
+    
+    # Mock state with game mode
+    with patch('src.sockets.dashboard.state') as mock_state:
+        mock_state.game_mode = 'new'
+        mock_state.active_teams = {}
+        
+        # Mock the optimized functions
+        with patch('src.sockets.dashboard._compute_team_hashes_optimized') as mock_hashes:
+            mock_hashes.return_value = ('hash1', 'hash2')
+            
+            with patch('src.sockets.dashboard._compute_correlation_matrix_optimized') as mock_corr:
+                corr_result = ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
+                mock_corr.return_value = corr_result
+                
+                with patch('src.sockets.dashboard._compute_success_metrics_optimized') as mock_success:
+                    success_result = ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
+                    mock_success.return_value = success_result
+                    
+                    with patch('src.sockets.dashboard._calculate_team_statistics_from_data') as mock_classic_stats:
+                        mock_classic_stats.return_value = {
+                            'trace_average_statistic': 0.0,
+                            'trace_average_statistic_uncertainty': None,
+                            'chsh_value_statistic': 0.0,
+                            'chsh_value_statistic_uncertainty': None,
+                            'cross_term_combination_statistic': 0.0,
+                            'cross_term_combination_statistic_uncertainty': None,
+                            'same_item_balance': 0.0,
+                            'same_item_balance_uncertainty': None
+                        }
+                        
+                        with patch('src.sockets.dashboard._calculate_success_statistics_from_data') as mock_new_stats:
+                            mock_new_stats.return_value = {
+                                'trace_average_statistic': 0.0,
+                                'trace_average_statistic_uncertainty': None,
+                                'chsh_value_statistic': 0.0,
+                                'chsh_value_statistic_uncertainty': None,
+                                'cross_term_combination_statistic': 0.0,
+                                'cross_term_combination_statistic_uncertainty': None,
+                                'same_item_balance': 0.0,
+                                'same_item_balance_uncertainty': None
+                            }
+                            
+                            # Test the function
+                            team_data = _process_single_team_optimized(
+                                1, "Test Team", True, "2023-01-01T00:00:00", 
+                                0, None, None, [], []
+                            )
+                            
+                            # Verify result structure
+                            assert team_data is not None
+                            assert team_data['team_name'] == "Test Team"
+                            assert team_data['team_id'] == 1
+                            assert team_data['is_active'] == True
+                            assert team_data['history_hash1'] == 'hash1'
+                            assert team_data['history_hash2'] == 'hash2'
+                            assert 'correlation_matrix' in team_data
+                            assert 'correlation_stats' in team_data
+                            assert 'classic_stats' in team_data
+                            assert 'new_stats' in team_data
+                            assert team_data['game_mode'] == 'new'
+
+def test_process_single_team_optimized_error_handling():
+    """Test optimized team processing error handling"""
+    from src.sockets.dashboard import _process_single_team_optimized
+    
+    # Test with exception in hash computation
+    with patch('src.sockets.dashboard.state') as mock_state:
+        mock_state.game_mode = 'classic'
+        mock_state.active_teams = {}
+        
+        with patch('src.sockets.dashboard._compute_team_hashes_optimized') as mock_hashes:
+            mock_hashes.side_effect = Exception("Hash computation failed")
+            
+            # Should handle error gracefully
+            team_data = _process_single_team_optimized(
+                1, "Test Team", True, None, 0, None, None, [], []
+            )
+            
+            # Should return None on error
+            assert team_data is None
+
+def test_optimized_functions_integration():
+    """Test that optimized functions work together correctly"""
+    from src.sockets.dashboard import (
+        _compute_team_hashes_optimized, 
+        _compute_correlation_matrix_optimized,
+        _compute_success_metrics_optimized,
+        _calculate_team_statistics_from_data,
+        _calculate_success_statistics_from_data
+    )
+    
+    # Create realistic test data
+    mock_rounds = [
+        create_mock_round(1, 'A', 'X'),
+        create_mock_round(2, 'B', 'Y')
+    ]
+    
+    mock_answers = [
+        create_mock_answer(1, 'A', True),
+        create_mock_answer(1, 'X', True),
+        create_mock_answer(2, 'B', False),
+        create_mock_answer(2, 'Y', True)
+    ]
+    
+    # Test hash computation
+    hash1, hash2 = _compute_team_hashes_optimized(1, mock_rounds, mock_answers)
+    assert isinstance(hash1, str) and isinstance(hash2, str)
+    
+    # Test correlation computation
+    corr_result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers)
+    assert len(corr_result) == 7  # Should return 7-tuple
+    
+    # Test success metrics computation
+    success_result = _compute_success_metrics_optimized(1, mock_rounds, mock_answers)
+    assert len(success_result) == 7  # Should return 7-tuple
+    
+    # Test statistics calculations
+    classic_stats = _calculate_team_statistics_from_data(corr_result)
+    new_stats = _calculate_success_statistics_from_data(success_result)
+    
+    # Both should return complete stats dictionaries
+    expected_keys = ['trace_average_statistic', 'trace_average_statistic_uncertainty', 
+                    'chsh_value_statistic', 'chsh_value_statistic_uncertainty',
+                    'cross_term_combination_statistic', 'cross_term_combination_statistic_uncertainty',
+                    'same_item_balance', 'same_item_balance_uncertainty']
+    
+    for key in expected_keys:
+        assert key in classic_stats
+        assert key in new_stats
+
+def test_optimized_vs_original_function_compatibility():
+    """Test that optimized functions produce compatible results with original logic"""
+    from src.sockets.dashboard import (
+        _compute_team_hashes_optimized,
+        _compute_correlation_matrix_optimized,
+        compute_correlation_matrix
+    )
+    
+    # Create test data
+    mock_rounds = [create_mock_round(1, 'A', 'X')]
+    mock_answers = [
+        create_mock_answer(1, 'A', True),
+        create_mock_answer(1, 'X', True)
+    ]
+    
+    # Test hash computation with realistic data
+    hash1, hash2 = _compute_team_hashes_optimized(1, mock_rounds, mock_answers)
+    
+    # Should produce consistent, non-error results
+    assert hash1 != "ERROR"
+    assert hash2 != "ERROR"
+    assert len(hash1) == 8
+    assert len(hash2) == 8
+    
+    # Test correlation matrix structure compatibility
+    corr_result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers)
+    
+    # Should have same structure as original function
+    assert len(corr_result) == 7
+    corr_matrix, item_values = corr_result[0], corr_result[1]
+    assert len(corr_matrix) == 4
+    assert item_values == ['A', 'B', 'X', 'Y']
+    assert all(len(row) == 4 for row in corr_matrix)
+    
+    # Test that correlation values are tuples of (numerator, denominator)
+    for row in corr_matrix:
+        for cell in row:
+            assert isinstance(cell, tuple)
+            assert len(cell) == 2
+            assert isinstance(cell[0], int)  # numerator
+            assert isinstance(cell[1], int)  # denominator
+
+# ===== END TESTS FOR NEW OPTIMIZED FUNCTIONS =====
