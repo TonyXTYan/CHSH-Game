@@ -9,7 +9,7 @@ let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
 let currentGameMode = 'new'; // Track current game mode
-let currentGameTheme = 'classic'; // Track current game theme
+let currentGameTheme = 'food'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 let lastRoundResults = null; // Track last round results for display
 
@@ -159,11 +159,11 @@ function resetToInitialView() {
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
     currentGameMode = 'new'; // Reset to new mode
-    currentGameTheme = 'classic'; // Reset to classic theme
+    currentGameTheme = 'food'; // Reset to food theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
     updateGameMode('new');
-    updateGameTheme('classic');
+    updateGameTheme('food');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
 }
@@ -227,7 +227,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
             // Show last round results if available (graceful fallback for null data)
             const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
             if (lastRoundMessage) {
-                waitingMessage.textContent = lastRoundMessage;
+                waitingMessage.innerHTML = lastRoundMessage;
             } else {
                 waitingMessage.textContent = "Waiting for next round...";
             }
@@ -249,7 +249,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 // Show last round results if available (graceful fallback for null data)
                 const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
                 if (lastRoundMessage) {
-                    waitingMessage.textContent = lastRoundMessage;
+                    waitingMessage.innerHTML = lastRoundMessage;
                     waitingMessage.classList.add('visible');
                 } else {
                     waitingMessage.textContent = "Waiting for next round...";
@@ -429,6 +429,7 @@ function submitAnswer(answer) {
     
     trueBtn.disabled = true;
     falseBtn.disabled = true;
+    waitingMessage.textContent = "Waiting for partner to answer...";
     waitingMessage.classList.add('visible');
     showStatus(`Round ${currentRound.round_number} answer received`, 'success');
 }
@@ -485,7 +486,7 @@ function setAnswerButtonsEnabled(enabled) {
         // Show last round results if available (graceful fallback for null data)
         const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
         if (lastRoundMessage && currentRound?.alreadyAnswered) {
-            waitingMessage.textContent = lastRoundMessage;
+            waitingMessage.innerHTML = lastRoundMessage;
             waitingMessage.classList.add('visible');
         } else {
             waitingMessage.textContent = "Waiting for next round...";
@@ -781,9 +782,9 @@ function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
     } else {
         // Bad result - use sad/disgusted emojis  
         if (shouldBeDifferent) {
-            return 'bad 😭'; // Same answers when they should be different
+            return 'yuck 🤮'; // Same answers when they should be different (treating different foods the same = disgusting)
         } else {
-            return 'yuck 🤮'; // Different answers when they should be same
+            return 'bad 😭'; // Different answers when they should be same (inconsistent with similar foods = sad)
         }
     }
 }
@@ -813,12 +814,12 @@ function generateLastRoundMessage(lastRound, theme, playerPos) {
         // Evaluate the result
         const result = evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer);
         
-        return `Last round, your team (P1/P2) were asked ${p1Display}/${p2Display} and decisions was ${p1Decision}/${p2Decision}, that was ${result}`;
+        return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and decisions was <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
     } else {
         // Classic theme
         const p1AnswerText = p1Answer ? 'True' : 'False';
         const p2AnswerText = p2Answer ? 'True' : 'False';
         
-        return `Last round, your team (P1/P2) were asked ${p1Item}/${p2Item} and answer was ${p1AnswerText}/${p2AnswerText}`;
+        return `Last round, your team (P1/P2) were asked <b>${p1Item}/${p2Item}</b> and answer was <b>${p1AnswerText}/${p2AnswerText}</b>`;
     }
 }

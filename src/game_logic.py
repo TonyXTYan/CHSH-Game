@@ -9,6 +9,24 @@ logger = logging.getLogger(__name__)
 QUESTION_ITEMS = [ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y]
 TARGET_COMBO_REPEATS = 2
 
+def get_effective_combo_repeats(game_mode=None):
+    """Get the effective combo repeats based on game mode.
+    
+    Args:
+        game_mode: The game mode. If None, will get from state.
+        
+    Returns:
+        int: TARGET_COMBO_REPEATS*2 for 'new' mode, TARGET_COMBO_REPEATS for others
+    """
+    if game_mode is None:
+        from src.state import state
+        game_mode = state.game_mode
+    
+    if game_mode == 'new':
+        return TARGET_COMBO_REPEATS * 2
+    else:
+        return TARGET_COMBO_REPEATS
+
 def start_new_round_for_pair(team_name):
     try:
         from src.state import state  # Import inside function to avoid circular import
@@ -40,6 +58,9 @@ def start_new_round_for_pair(team_name):
         round_number = team_info['current_round_number']
         combo_tracker = team_info.get('combo_tracker', {})
         
+        # Get effective combo repeats based on game mode
+        effective_combo_repeats = get_effective_combo_repeats(state.game_mode)
+        
         # Mode-specific question assignment logic
         if state.game_mode == 'new':
             # New mode: Player 1 gets A,B only; Player 2 gets X,Y only
@@ -50,18 +71,18 @@ def start_new_round_for_pair(team_name):
             # Classic mode: Original logic with all combinations
             all_possible_combos = [(i1, i2) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
         
-        round_limit = (TARGET_COMBO_REPEATS + 1) * len(all_possible_combos)
+        round_limit = (effective_combo_repeats + 1) * len(all_possible_combos)
         rounds_remaining = round_limit - team_info['current_round_number']
 
         if rounds_remaining <= len(all_possible_combos):  # Enter deterministic phase
             # Get combos that still need repeats
             needed_combos = [c for c in all_possible_combos 
-                           if combo_tracker.get((c[0].value, c[1].value), 0) < TARGET_COMBO_REPEATS]
+                           if combo_tracker.get((c[0].value, c[1].value), 0) < effective_combo_repeats]
             
             # Build and shuffle priority queue
             priority_queue = []
             for combo in needed_combos:
-                hits_needed = TARGET_COMBO_REPEATS - combo_tracker.get((combo[0].value, combo[1].value), 0)
+                hits_needed = effective_combo_repeats - combo_tracker.get((combo[0].value, combo[1].value), 0)
                 priority_queue.extend([combo] * hits_needed)
             random.shuffle(priority_queue)
             
@@ -70,7 +91,7 @@ def start_new_round_for_pair(team_name):
             # Original random selection with preference
             random.shuffle(all_possible_combos)
             chosen_combo = next((c for c in all_possible_combos 
-                               if combo_tracker.get((c[0].value, c[1].value), 0) < TARGET_COMBO_REPEATS), 
+                               if combo_tracker.get((c[0].value, c[1].value), 0) < effective_combo_repeats), 
                                random.choice(all_possible_combos))
         
         p1_item, p2_item = chosen_combo

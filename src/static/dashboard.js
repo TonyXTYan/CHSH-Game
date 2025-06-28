@@ -9,7 +9,7 @@ const connectionStatusDiv = document.getElementById("connection-status-dash");
 let currentGameMode = 'new';
 
 // Theme state  
-let currentGameTheme = 'classic';
+let currentGameTheme = 'food';
 
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
@@ -327,6 +327,14 @@ socket.on("connect", async () => {
     const startBtn = document.getElementById("start-game-btn");
     resetButtonToInitialState(startBtn);
     socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
+    
+    // Notify server about teams streaming preference immediately after connecting
+    socket.emit('set_teams_streaming', { enabled: teamsStreamEnabled });
+    
+    // If teams streaming is enabled by default, request current teams data
+    if (teamsStreamEnabled) {
+        socket.emit('request_teams_update');
+    }
 });
 
 function clearAllUITables() {
@@ -445,6 +453,11 @@ window.addEventListener('load', () => {
     
     // Initialize game mode display (will be updated when dashboard connects)
     updateGameModeDisplay(currentGameMode);
+    
+    // If teams streaming is enabled by default, ensure headers are properly initialized
+    if (teamsStreamEnabled) {
+        updateTableHeaders(currentGameMode);
+    }
     
     // Initialize theme display (will be updated when dashboard connects)
     updateGameThemeDisplay(currentGameTheme);
@@ -677,12 +690,18 @@ socket.on("error", (data) => {
 socket.on("dashboard_update", (data) => {
     console.log("Dashboard update received:", data);
     lastReceivedTeams = data.teams;
+    let modeChanged = false;
     if (data.game_state) {
         console.log(`Game state update - started: ${data.game_state.started}, paused: ${data.game_state.paused}, streaming: ${data.game_state.streaming_enabled}, mode: ${data.game_state.mode}`);
         
         // Update game mode if provided
         if (data.game_state.mode && data.game_state.mode !== currentGameMode) {
+            modeChanged = true;
             updateGameModeDisplay(data.game_state.mode);
+            // Refresh teams display to match new mode
+            if (teamsStreamEnabled && data.teams) {
+                updateActiveTeams(data.teams);
+            }
         }
         
         // Update theme if provided
@@ -713,8 +732,8 @@ socket.on("dashboard_update", (data) => {
         }
     }
     
-    // Only update teams if streaming is enabled
-    if (teamsStreamEnabled) {
+    // Only update teams if streaming is enabled (avoid double update if mode just changed)
+    if (teamsStreamEnabled && !modeChanged) {
         updateActiveTeams(data.teams);
         // Refresh team details popup if open
         if (data.teams) {
@@ -863,6 +882,9 @@ function updateActiveTeams(teams) {
     if (!teams) {
         teams = [];
     }
+
+    // Ensure table headers are set correctly for current game mode
+    updateTableHeaders(currentGameMode);
 
     const showInactive = document.getElementById('show-inactive').checked;
     const sortBy = document.getElementById('sort-teams').value;
@@ -1170,7 +1192,7 @@ function updateAnswerLog(answers) {
 }
 
 let answerStreamEnabled = false;
-let teamsStreamEnabled = false;
+let teamsStreamEnabled = true; // Default to ON
 let advancedControlsEnabled = false;
 const answerTable = document.getElementById('answer-log-table');
 const noAnswersMsg = document.getElementById('no-answers-log');
@@ -1191,11 +1213,11 @@ answerTable.style.display = 'none';
 noAnswersMsg.style.display = 'none';
 toggleChevron.textContent = '▶';
 
-// Initialize teams streaming to OFF state
-teamsToggleBtn.textContent = 'OFF';
-teamsTable.style.display = 'none';
-noTeamsMsg.style.display = 'none';
-teamsToggleChevron.textContent = '▶';
+// Initialize teams streaming to ON state (default)
+teamsToggleBtn.textContent = 'ON';
+teamsTable.style.display = 'table';
+noTeamsMsg.style.display = 'block';
+teamsToggleChevron.textContent = '▼';
 
 // Initialize advanced controls to collapsed state
 if (advancedControlsContent) {
@@ -1223,14 +1245,10 @@ function updateTeamsStreamingUI() {
         teamsTable.style.display = 'table';
         teamsToggleChevron.textContent = '▼';
         
-        // Show appropriate message based on teams data
+        // Show appropriate message based on teams data and populate table
         if (lastReceivedTeams && lastReceivedTeams.length > 0) {
-            // Check if any teams will be displayed after filtering
-            const showInactive = document.getElementById('show-inactive').checked;
-            const filteredTeams = showInactive ? lastReceivedTeams : lastReceivedTeams.filter(team =>
-                team.is_active || team.status === 'waiting_pair'
-            );
-            noTeamsMsg.style.display = filteredTeams.length === 0 ? 'block' : 'none';
+            // Actually update the teams table with current data
+            updateActiveTeams(lastReceivedTeams);
         } else {
             noTeamsMsg.style.display = 'block';
         }
@@ -1272,8 +1290,9 @@ function toggleTeamsStream() {
     // Notify server about teams streaming preference
     socket.emit('set_teams_streaming', { enabled: teamsStreamEnabled });
     
-    // If enabling, request current teams data
+    // If enabling, ensure headers are correct and request current teams data
     if (teamsStreamEnabled) {
+        updateTableHeaders(currentGameMode);
         socket.emit('request_teams_update');
     }
 }
