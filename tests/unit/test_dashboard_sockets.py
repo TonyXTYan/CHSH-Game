@@ -557,19 +557,19 @@ def test_get_all_teams(mock_state, mock_db_session):
                     mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                     
                     # Mock the optimized hash computation
-                    with patch('src.dashboard._compute_team_hashes_optimized') as mock_hashes:
+                    with patch('src.dashboard.team_processing._compute_team_hashes_optimized') as mock_hashes:
                         mock_hashes.return_value = ('hash1', 'hash2')
                         
                         # Mock the optimized computation functions
-                        with patch('src.dashboard._compute_correlation_matrix_optimized') as mock_corr:
+                        with patch('src.dashboard.statistics._compute_correlation_matrix_optimized') as mock_corr:
                             corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
                             item_values = ['A', 'B', 'X', 'Y']
                             mock_corr.return_value = (corr_matrix, item_values, 0.0, {}, {}, {}, {})
                             
-                            with patch('src.dashboard._compute_success_metrics_optimized') as mock_success:
+                            with patch('src.dashboard.statistics._compute_success_metrics_optimized') as mock_success:
                                 mock_success.return_value = (corr_matrix, item_values, 0.0, 0.0, {}, {}, {})
                                 
-                                with patch('src.dashboard._calculate_team_statistics_from_data') as mock_stats:
+                                with patch('src.dashboard.statistics._calculate_team_statistics_from_data') as mock_stats:
                                     mock_stats.return_value = {
                                         'trace_average_statistic': 0.0,
                                         'trace_average_statistic_uncertainty': None,
@@ -581,7 +581,7 @@ def test_get_all_teams(mock_state, mock_db_session):
                                         'same_item_balance_uncertainty': None
                                     }
                                     
-                                    with patch('src.dashboard._calculate_success_statistics_from_data') as mock_new_stats:
+                                    with patch('src.dashboard.statistics._calculate_success_statistics_from_data') as mock_new_stats:
                                         mock_new_stats.return_value = {
                                             'trace_average_statistic': 0.0,
                                             'trace_average_statistic_uncertainty': None,
@@ -2646,18 +2646,18 @@ def test_process_single_team_optimized():
         mock_state.active_teams = {}
         
         # Mock the optimized functions
-        with patch('src.dashboard._compute_team_hashes_optimized') as mock_hashes:
+        with patch('src.dashboard.statistics._compute_team_hashes_optimized') as mock_hashes:
             mock_hashes.return_value = ('hash1', 'hash2')
             
-            with patch('src.dashboard._compute_correlation_matrix_optimized') as mock_corr:
+            with patch('src.dashboard.statistics._compute_correlation_matrix_optimized') as mock_corr:
                 corr_result = ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
                 mock_corr.return_value = corr_result
                 
-                with patch('src.dashboard._compute_success_metrics_optimized') as mock_success:
+                with patch('src.dashboard.statistics._compute_success_metrics_optimized') as mock_success:
                     success_result = ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
                     mock_success.return_value = success_result
                     
-                    with patch('src.dashboard._calculate_team_statistics_from_data') as mock_classic_stats:
+                    with patch('src.dashboard.statistics._calculate_team_statistics_from_data') as mock_classic_stats:
                         mock_classic_stats.return_value = {
                             'trace_average_statistic': 0.0,
                             'trace_average_statistic_uncertainty': None,
@@ -2669,7 +2669,7 @@ def test_process_single_team_optimized():
                             'same_item_balance_uncertainty': None
                         }
                         
-                        with patch('src.dashboard._calculate_success_statistics_from_data') as mock_new_stats:
+                        with patch('src.dashboard.statistics._calculate_success_statistics_from_data') as mock_new_stats:
                             mock_new_stats.return_value = {
                                 'trace_average_statistic': 0.0,
                                 'trace_average_statistic_uncertainty': None,
@@ -2709,7 +2709,7 @@ def test_process_single_team_optimized_error_handling():
         mock_state.game_mode = 'classic'
         mock_state.active_teams = {}
         
-        with patch('src.dashboard._compute_team_hashes_optimized') as mock_hashes:
+        with patch('src.dashboard.statistics._compute_team_hashes_optimized') as mock_hashes:
             mock_hashes.side_effect = Exception("Hash computation failed")
             
             # Should handle error gracefully
