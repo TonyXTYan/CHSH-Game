@@ -125,6 +125,7 @@ def test_round_completion_when_both_players_answer(mock_request_context):
          patch('src.sockets.game.socketio.emit') as mock_socketio_emit, \
          patch('src.sockets.game.db.session') as mock_session, \
          patch('src.sockets.game.PairQuestionRounds') as mock_rounds, \
+         patch('src.sockets.game.Answers') as mock_answers, \
          patch('src.sockets.game.start_new_round_for_pair') as mock_start_new_round:
         
         # Set up valid team state
@@ -142,7 +143,20 @@ def test_round_completion_when_both_players_answer(mock_request_context):
         
         # Mock database round query
         mock_round = MagicMock()
+        mock_round.player1_item.value = 'A'
+        mock_round.player2_item.value = 'B'
         mock_rounds.query.get.return_value = mock_round
+        
+        # Mock answers query
+        mock_answer1 = MagicMock()
+        mock_answer1.assigned_item.value = 'A'
+        mock_answer1.response_value = True
+        
+        mock_answer2 = MagicMock()
+        mock_answer2.assigned_item.value = 'B'
+        mock_answer2.response_value = False
+        
+        mock_answers.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
         
         # First player submits answer
         data = {
@@ -164,15 +178,16 @@ def test_round_completion_when_both_players_answer(mock_request_context):
         }
         on_submit_answer(data)
         
-        # Verify round_complete was emitted to team
-        mock_socketio_emit.assert_any_call(
-            'round_complete',
-            {
-                'team_name': test_team,
-                'round_number': 1
-            },
-            to=test_team
-        )
+        # Verify round_complete was emitted to team with enhanced data
+        round_complete_calls = [call for call in mock_socketio_emit.call_args_list 
+                               if call[0][0] == 'round_complete']
+        assert len(round_complete_calls) > 0, "round_complete should have been emitted"
+        
+        round_complete_data = round_complete_calls[0][0][1]
+        assert round_complete_data['team_name'] == test_team
+        assert round_complete_data['round_number'] == 1
+        # Enhanced version should include last_round_details
+        assert 'last_round_details' in round_complete_data
         
         # Verify new round was started
         mock_start_new_round.assert_called_once_with(test_team)

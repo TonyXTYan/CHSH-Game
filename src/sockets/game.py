@@ -103,11 +103,42 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         emit_dashboard_team_update()
 
         if len(team_info['answered_current_round']) == 2:
-            # print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")
-            socketio.emit('round_complete', {
-                'team_name': team_name,
-                'round_number': team_info['current_round_number']
-            }, to=team_name)  # type: ignore
+            # Get the completed round details from database
+            round_db_entry = PairQuestionRounds.query.get(round_id)
+            if round_db_entry:
+                # Get both players' answers for this round
+                round_answers = Answers.query.filter_by(question_round_id=round_id).all()
+                
+                # Organize the answer data by player position
+                p1_answer = None
+                p2_answer = None
+                p1_item = round_db_entry.player1_item.value if round_db_entry.player1_item else None
+                p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
+                
+                for answer in round_answers:
+                    # Determine which player this answer belongs to based on assigned item
+                    if answer.assigned_item.value == p1_item:
+                        p1_answer = answer.response_value
+                    elif answer.assigned_item.value == p2_item:
+                        p2_answer = answer.response_value
+                
+                # Emit enhanced round_complete event with detailed results
+                socketio.emit('round_complete', {
+                    'team_name': team_name,
+                    'round_number': team_info['current_round_number'],
+                    'last_round_details': {
+                        'p1_item': p1_item,
+                        'p2_item': p2_item,
+                        'p1_answer': p1_answer,
+                        'p2_answer': p2_answer
+                    }
+                }, to=team_name)  # type: ignore
+            else:
+                # Fallback to basic round_complete event
+                socketio.emit('round_complete', {
+                    'team_name': team_name,
+                    'round_number': team_info['current_round_number']
+                }, to=team_name)  # type: ignore
             start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_submit_answer: {str(e)}", exc_info=True)
