@@ -11,6 +11,7 @@ let currentTeamStatus = null; // Track current team status
 let currentGameMode = 'new'; // Track current game mode
 let currentGameTheme = 'classic'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
+let lastRoundResults = null; // Track last round results for display
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -222,6 +223,14 @@ function updateGameState(newGameStarted = null, isReset = false) {
         if (currentRound.alreadyAnswered) {
             trueBtn.disabled = true;
             falseBtn.disabled = true;
+            
+            // Show last round results if available (graceful fallback for null data)
+            const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
+            if (lastRoundMessage) {
+                waitingMessage.textContent = lastRoundMessage;
+            } else {
+                waitingMessage.textContent = "Waiting for next round...";
+            }
             waitingMessage.classList.add('visible');
         } else if (teamIncomplete) {
             // Team is incomplete - disable input
@@ -237,7 +246,14 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 waitingMessage.textContent = "Game is paused";
                 waitingMessage.classList.add('visible');
             } else {
-                waitingMessage.textContent = "Waiting for next round...";
+                // Show last round results if available (graceful fallback for null data)
+                const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
+                if (lastRoundMessage) {
+                    waitingMessage.textContent = lastRoundMessage;
+                    waitingMessage.classList.add('visible');
+                } else {
+                    waitingMessage.textContent = "Waiting for next round...";
+                }
             }
         }
     } else if (gameStarted) {
@@ -466,9 +482,16 @@ function setAnswerButtonsEnabled(enabled) {
         waitingMessage.textContent = "Game is paused";
         waitingMessage.classList.add('visible');
     } else {
-        waitingMessage.textContent = "Waiting for next round...";
-        if (!currentRound?.alreadyAnswered) {
-            waitingMessage.classList.remove('visible');
+        // Show last round results if available (graceful fallback for null data)
+        const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
+        if (lastRoundMessage && currentRound?.alreadyAnswered) {
+            waitingMessage.textContent = lastRoundMessage;
+            waitingMessage.classList.add('visible');
+        } else {
+            waitingMessage.textContent = "Waiting for next round...";
+            if (!currentRound?.alreadyAnswered) {
+                waitingMessage.classList.remove('visible');
+            }
         }
     }
 }
@@ -485,6 +508,11 @@ const callbacks = {
     setAnswerButtonsEnabled,
     getCurrentRoundInfo: () => currentRound,
     resetToInitialView,
+    setLastRoundResults: (results) => {
+        lastRoundResults = results;
+        // Update waiting message display if needed
+        updateGameState();
+    },
     
     onConnectionEstablished: (data) => {
         // Handle initial connection with game state
@@ -617,6 +645,7 @@ const callbacks = {
         currentRound = data;
         currentRound.alreadyAnswered = false;
         lastClickedButton = null; // Reset last clicked button for new round
+        // Don't clear lastRoundResults here - we want to show it during the new round until answered
         
         // Apply themed display to the question item
         if (window.themeManager && data.item) {
@@ -729,3 +758,67 @@ updateGameState();
 
 // Log initial mode on page load
 console.log('Page loaded - current mode:', currentGameMode);
+
+// Function to evaluate if a food combination was "good" based on optimal strategy
+function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
+    // For food theme, we follow the same optimal strategy as classic:
+    // - B+Y (🥟+🍫) should be different answers (one Choose, one Skip)
+    // - All other combinations should be same answers
+    
+    const shouldBeDifferent = (p1Item === 'B' && p2Item === 'Y') || (p1Item === 'Y' && p2Item === 'B');
+    const actuallyDifferent = p1Answer !== p2Answer;
+    
+    const isOptimal = shouldBeDifferent === actuallyDifferent;
+    
+    // For food theme, we use different emojis based on the result
+    if (isOptimal) {
+        // Good result - use happy emojis
+        if (shouldBeDifferent) {
+            return 'yum 😋'; // Different answers when they should be different
+        } else {
+            return 'yum 😋'; // Same answers when they should be same
+        }
+    } else {
+        // Bad result - use sad/disgusted emojis  
+        if (shouldBeDifferent) {
+            return 'bad 😭'; // Same answers when they should be different
+        } else {
+            return 'yuck 🤮'; // Different answers when they should be same
+        }
+    }
+}
+
+// Function to generate last round result message
+// Safely handles None/null values from backend when answer data is incomplete
+function generateLastRoundMessage(lastRound, theme, playerPos) {
+    if (!lastRound || !lastRound.p1_item || !lastRound.p2_item || 
+        lastRound.p1_answer === null || lastRound.p2_answer === null) {
+        return null; // Falls back to "Waiting for next round..." message
+    }
+    
+    const p1Item = lastRound.p1_item;
+    const p2Item = lastRound.p2_item;
+    const p1Answer = lastRound.p1_answer;
+    const p2Answer = lastRound.p2_answer;
+    
+    if (theme === 'food') {
+        // Use theme manager to get food emojis
+        const p1Display = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
+        const p2Display = window.themeManager ? window.themeManager.getItemDisplay(p2Item) : p2Item;
+        
+        // Convert boolean answers to Choose/Skip
+        const p1Decision = p1Answer ? 'Choose' : 'Skip';
+        const p2Decision = p2Answer ? 'Choose' : 'Skip';
+        
+        // Evaluate the result
+        const result = evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer);
+        
+        return `Last round, your team (P1/P2) were asked ${p1Display}/${p2Display} and decisions was ${p1Decision}/${p2Decision}, that was ${result}`;
+    } else {
+        // Classic theme
+        const p1AnswerText = p1Answer ? 'True' : 'False';
+        const p2AnswerText = p2Answer ? 'True' : 'False';
+        
+        return `Last round, your team (P1/P2) were asked ${p1Item}/${p2Item} and answer was ${p1AnswerText}/${p2AnswerText}`;
+    }
+}

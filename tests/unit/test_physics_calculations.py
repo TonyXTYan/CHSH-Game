@@ -31,18 +31,28 @@ def create_mock_round(round_id, p1_item, p2_item):
     """Create a mock round object"""
     round_obj = MagicMock()
     round_obj.round_id = round_id
-    round_obj.player1_item = MockQuestionItem[p1_item]
-    round_obj.player2_item = MockQuestionItem[p2_item]
+    round_obj.player1_item = MagicMock()
+    round_obj.player1_item.value = p1_item
+    round_obj.player2_item = MagicMock()
+    round_obj.player2_item.value = p2_item
     round_obj.timestamp_initiated = datetime.now(UTC)
     return round_obj
 
-def create_mock_answer(round_id, item, response, timestamp=None):
+def create_mock_answer(round_id, item, response, timestamp=None, player_session_id=None):
     """Create a mock answer object"""
     answer = MagicMock()
     answer.question_round_id = round_id
     answer.assigned_item = MockQuestionItem[item]
     answer.response_value = response
     answer.timestamp = timestamp or datetime.now(UTC)
+    
+    # Determine player_session_id based on item if not provided
+    if player_session_id is None:
+        if item in ['A', 'B']:
+            player_session_id = 'player1_session'
+        else:  # X, Y
+            player_session_id = 'player2_session'
+    answer.player_session_id = player_session_id
     return answer
 
 
@@ -58,7 +68,17 @@ class TestPhysicsCalculations:
 
     def _compute_correlation_matrix_by_id(self, team_id):
         """Helper method to call compute_correlation_matrix with team_id for backward compatibility"""
-        with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id, \
+             patch('src.sockets.dashboard.Teams') as mock_teams_model:
+            
+            # Mock Teams table for session ID mapping
+            mock_team = MagicMock()
+            mock_team.player1_session_id = 'player1_session'
+            mock_team.player2_session_id = 'player2_session'
+            mock_teams_query = MagicMock()
+            mock_teams_query.filter_by.return_value.first.return_value = mock_team
+            mock_teams_model.query = mock_teams_query
+            
             mock_get_id.return_value = team_id
             return compute_correlation_matrix(f"test_team_{team_id}")
 
@@ -296,10 +316,18 @@ class TestPhysicsCalculations:
         ]
         
         answers = [
-            create_mock_answer(1, 'A', True), create_mock_answer(1, 'A', True),
-            create_mock_answer(2, 'A', False), create_mock_answer(2, 'A', False),
-            create_mock_answer(3, 'A', True), create_mock_answer(3, 'A', False),
-            create_mock_answer(4, 'A', False), create_mock_answer(4, 'A', True)
+            # Round 1: Both players get A, player1=True, player2=True
+            create_mock_answer(1, 'A', True, player_session_id='player1_session'), 
+            create_mock_answer(1, 'A', True, player_session_id='player2_session'),
+            # Round 2: Both players get A, player1=False, player2=False
+            create_mock_answer(2, 'A', False, player_session_id='player1_session'), 
+            create_mock_answer(2, 'A', False, player_session_id='player2_session'),
+            # Round 3: Both players get A, player1=True, player2=False
+            create_mock_answer(3, 'A', True, player_session_id='player1_session'), 
+            create_mock_answer(3, 'A', False, player_session_id='player2_session'),
+            # Round 4: Both players get A, player1=False, player2=True
+            create_mock_answer(4, 'A', False, player_session_id='player1_session'), 
+            create_mock_answer(4, 'A', True, player_session_id='player2_session')
         ]
 
         with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
@@ -322,8 +350,10 @@ class TestPhysicsCalculations:
         
         # All responses are True - maximum bias
         answers = [
-            create_mock_answer(1, 'A', True), create_mock_answer(1, 'A', True),
-            create_mock_answer(2, 'A', True), create_mock_answer(2, 'A', True)
+            create_mock_answer(1, 'A', True, player_session_id='player1_session'), 
+            create_mock_answer(1, 'A', True, player_session_id='player2_session'),
+            create_mock_answer(2, 'A', True, player_session_id='player1_session'), 
+            create_mock_answer(2, 'A', True, player_session_id='player2_session')
         ]
 
         with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:

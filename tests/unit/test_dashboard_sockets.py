@@ -38,12 +38,14 @@ def create_mock_round(round_id: int, p1_item: str, p2_item: str) -> MagicMock:
     round_obj.timestamp_initiated = datetime.now(UTC)
     return round_obj
 
-def create_mock_answer(round_id: int, item: str, response: bool, timestamp: datetime = None) -> MagicMock:
+def create_mock_answer(round_id: int, item: str, response: bool, timestamp: datetime = None, player_session_id: str = None) -> MagicMock:
     answer = MagicMock()
     answer.question_round_id = round_id
     answer.assigned_item = MockQuestionItem[item]
     answer.response_value = response
     answer.timestamp = timestamp or datetime.now(UTC)
+    # Add player_session_id for the fixed dashboard functions
+    answer.player_session_id = player_session_id or f"session_{round_id}_{item}"
     return answer
 
 @pytest.fixture
@@ -239,38 +241,45 @@ def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
         create_mock_round(3, 'B', 'X')
     ]
     
-    # Create corresponding answers
+    # Create corresponding answers with proper session IDs
     answers = [
-        create_mock_answer(1, 'A', True),
-        create_mock_answer(1, 'X', True),
-        create_mock_answer(2, 'A', False),
-        create_mock_answer(2, 'Y', True),
-        create_mock_answer(3, 'B', True),
-        create_mock_answer(3, 'X', True)
+        create_mock_answer(1, 'A', True, player_session_id='player1_session'),
+        create_mock_answer(1, 'X', True, player_session_id='player2_session'),
+        create_mock_answer(2, 'A', False, player_session_id='player1_session'),
+        create_mock_answer(2, 'Y', True, player_session_id='player2_session'),
+        create_mock_answer(3, 'B', True, player_session_id='player1_session'),
+        create_mock_answer(3, 'X', True, player_session_id='player2_session')
     ]
     
     with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
         mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+        # Mock the Teams query for session ID mapping
+        with patch('src.sockets.dashboard.Teams') as mock_teams:
+            mock_db_team = MagicMock()
+            mock_db_team.player1_session_id = 'player1_session'
+            mock_db_team.player2_session_id = 'player2_session'
+            mock_teams.query.filter_by.return_value.first.return_value = mock_db_team
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
-                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+                mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
                 
-                result = compute_correlation_matrix(mock_team.team_name)
-            corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
-            
-            # Check specific correlations
-            a_idx = item_values.index('A')
-            x_idx = item_values.index('X')
-            y_idx = item_values.index('Y')
-            
-            # A-X had one matching pair (True, True)
-            assert corr_matrix[a_idx][x_idx] == (1, 1)
-            
-            # A-Y had one opposing pair (False, True)
-            assert corr_matrix[a_idx][y_idx] == (-1, 1)
+                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                    mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                    
+                    result = compute_correlation_matrix(mock_team.team_name)
+                corr_matrix, item_values, _, _, _, corr_sums, pair_counts = result
+                
+                # Check specific correlations
+                a_idx = item_values.index('A')
+                x_idx = item_values.index('X')
+                y_idx = item_values.index('Y')
+                
+                # A-X had one matching pair (True, True)
+                assert corr_matrix[a_idx][x_idx] == (1, 1)
+                
+                # A-Y had one opposing pair (False, True)
+                assert corr_matrix[a_idx][y_idx] == (-1, 1)
 
 def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
     """Test cross-term combination statistic calculation"""
@@ -285,35 +294,42 @@ def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
     ]
     
     answers = [
-        create_mock_answer(1, 'A', True), create_mock_answer(1, 'X', True),   # +1
-        create_mock_answer(2, 'A', True), create_mock_answer(2, 'Y', False),  # -1
-        create_mock_answer(3, 'B', True), create_mock_answer(3, 'X', True),   # +1
-        create_mock_answer(4, 'B', True), create_mock_answer(4, 'Y', True)    # +1
+        create_mock_answer(1, 'A', True, player_session_id='player1_session'), create_mock_answer(1, 'X', True, player_session_id='player2_session'),   # +1
+        create_mock_answer(2, 'A', True, player_session_id='player1_session'), create_mock_answer(2, 'Y', False, player_session_id='player2_session'),  # -1
+        create_mock_answer(3, 'B', True, player_session_id='player1_session'), create_mock_answer(3, 'X', True, player_session_id='player2_session'),   # +1
+        create_mock_answer(4, 'B', True, player_session_id='player1_session'), create_mock_answer(4, 'Y', True, player_session_id='player2_session')    # +1
     ]
     
     with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
         mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+        # Mock the Teams query for session ID mapping
+        with patch('src.sockets.dashboard.Teams') as mock_teams:
+            mock_db_team = MagicMock()
+            mock_db_team.player1_session_id = 'player1_session'
+            mock_db_team.player2_session_id = 'player2_session'
+            mock_teams.query.filter_by.return_value.first.return_value = mock_db_team
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
-                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+                mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
                 
-                result = compute_correlation_matrix(mock_team.team_name)
-            _, _, _, _, _, corr_sums, pair_counts = result
-            
-            # Check pair counts are correct
-            assert pair_counts[('A', 'X')] == 1
-            assert pair_counts[('A', 'Y')] == 1
-            assert pair_counts[('B', 'X')] == 1
-            assert pair_counts[('B', 'Y')] == 1
-            
-            # Check correlation sums
-            assert corr_sums[('A', 'X')] == 1
-            assert corr_sums[('A', 'Y')] == -1
-            assert corr_sums[('B', 'X')] == 1
-            assert corr_sums[('B', 'Y')] == 1
+                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                    mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                    
+                    result = compute_correlation_matrix(mock_team.team_name)
+                _, _, _, _, _, corr_sums, pair_counts = result
+                
+                # Check pair counts are correct
+                assert pair_counts[('A', 'X')] == 1
+                assert pair_counts[('A', 'Y')] == 1
+                assert pair_counts[('B', 'X')] == 1
+                assert pair_counts[('B', 'Y')] == 1
+                
+                # Check correlation sums
+                assert corr_sums[('A', 'X')] == 1
+                assert corr_sums[('A', 'Y')] == -1
+                assert corr_sums[('B', 'X')] == 1
+                assert corr_sums[('B', 'Y')] == 1
 
 def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_session):
     """Test same-item balance calculation with mixed responses"""
@@ -326,28 +342,35 @@ def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_s
     ]
     
     answers = [
-        create_mock_answer(1, 'A', True), create_mock_answer(1, 'A', True),
-        create_mock_answer(2, 'A', False), create_mock_answer(2, 'A', False)
+        create_mock_answer(1, 'A', True, player_session_id='player1_session'), create_mock_answer(1, 'A', True, player_session_id='player2_session'),
+        create_mock_answer(2, 'A', False, player_session_id='player1_session'), create_mock_answer(2, 'A', False, player_session_id='player2_session')
     ]
     
     with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
         mock_get_id.return_value = mock_team.team_id
         
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
-            mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
+        # Mock the Teams query for session ID mapping
+        with patch('src.sockets.dashboard.Teams') as mock_teams:
+            mock_db_team = MagicMock()
+            mock_db_team.player1_session_id = 'player1_session'
+            mock_db_team.player2_session_id = 'player2_session'
+            mock_teams.query.filter_by.return_value.first.return_value = mock_db_team
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
-                mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+                mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
                 
-                result = compute_correlation_matrix(mock_team.team_name)
-            _, _, avg_balance, balance_dict, resp_dict, _, _ = result
-            
-            # Should have equal true and false responses
-            assert resp_dict['A']['true'] == 2
-            assert resp_dict['A']['false'] == 2
-            # Perfect balance = 1.0
-            assert balance_dict['A'] == 1.0
-            assert avg_balance == 1.0
+                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                    mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
+                    
+                    result = compute_correlation_matrix(mock_team.team_name)
+                _, _, avg_balance, balance_dict, resp_dict, _, _ = result
+                
+                # Should have equal true and false responses
+                assert resp_dict['A']['true'] == 2
+                assert resp_dict['A']['false'] == 2
+                # Perfect balance = 1.0
+                assert balance_dict['A'] == 1.0
+                assert avg_balance == 1.0
 
 def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
     """Test handling of invalid or inconsistent data"""
@@ -2444,15 +2467,21 @@ def test_compute_correlation_matrix_optimized():
     ]
     
     mock_answers = [
-        create_mock_answer(1, 'A', True),
-        create_mock_answer(1, 'X', True),   # Same answers = correlation +1
-        create_mock_answer(2, 'A', False),
-        create_mock_answer(2, 'Y', True),   # Different answers = correlation -1
-        create_mock_answer(3, 'B', True),
-        create_mock_answer(3, 'X', True)    # Same answers = correlation +1
+        create_mock_answer(1, 'A', True, player_session_id='player1_session'),
+        create_mock_answer(1, 'X', True, player_session_id='player2_session'),   # Same answers = correlation +1
+        create_mock_answer(2, 'A', False, player_session_id='player1_session'),
+        create_mock_answer(2, 'Y', True, player_session_id='player2_session'),   # Different answers = correlation -1
+        create_mock_answer(3, 'B', True, player_session_id='player1_session'),
+        create_mock_answer(3, 'X', True, player_session_id='player2_session')    # Same answers = correlation +1
     ]
     
-    result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers)
+    # Create mock team object with session IDs
+    mock_team = MagicMock()
+    mock_team.player1_session_id = 'player1_session'
+    mock_team.player2_session_id = 'player2_session'
+    
+    with app.app_context():  # Add application context for database access
+        result = _compute_correlation_matrix_optimized(1, mock_rounds, mock_answers, mock_team)
     corr_matrix, item_values, avg_balance, balance_dict, resp_dict, corr_sums, pair_counts = result
     
     # Verify matrix structure
@@ -2499,16 +2528,22 @@ def test_compute_success_metrics_optimized():
     ]
     
     mock_answers = [
-        create_mock_answer(1, 'B', True),
-        create_mock_answer(1, 'Y', False),  # Different answers for B-Y = success
-        create_mock_answer(2, 'A', True),
-        create_mock_answer(2, 'X', True),   # Same answers for A-X = success
-        create_mock_answer(3, 'B', False),
-        create_mock_answer(3, 'X', True)    # Different answers for B-X = failure
+        create_mock_answer(1, 'B', True, player_session_id='player1_session'),
+        create_mock_answer(1, 'Y', False, player_session_id='player2_session'),  # Different answers for B-Y = success
+        create_mock_answer(2, 'A', True, player_session_id='player1_session'),
+        create_mock_answer(2, 'X', True, player_session_id='player2_session'),   # Same answers for A-X = success
+        create_mock_answer(3, 'B', False, player_session_id='player1_session'),
+        create_mock_answer(3, 'X', True, player_session_id='player2_session')    # Different answers for B-X = failure
     ]
     
-    result = _compute_success_metrics_optimized(1, mock_rounds, mock_answers)
-    (success_matrix, item_values, overall_success_rate, normalized_score, 
+    # Create mock team object with session IDs
+    mock_team = MagicMock()
+    mock_team.player1_session_id = 'player1_session'
+    mock_team.player2_session_id = 'player2_session'
+    
+    with app.app_context():  # Add application context for database access
+        result = _compute_success_metrics_optimized(1, mock_rounds, mock_answers, mock_team)
+    (success_matrix, item_values, overall_success_rate, normalized_score,
      success_counts, pair_counts, player_responses) = result
     
     # Verify matrix structure

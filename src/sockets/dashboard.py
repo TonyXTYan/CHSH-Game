@@ -421,6 +421,12 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
             logger.warning(f"Could not find team_id for team_name: {team_name}")
             return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
         
+        # Get team data for session ID mapping
+        db_team = Teams.query.filter_by(team_name=team_name).first()
+        if not db_team:
+            logger.warning(f"Could not find team data for team_name: {team_name}")
+            return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
+        
         # Get all rounds and their corresponding answers for this team
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
         round_map = {round.round_id: round for round in rounds}
@@ -464,26 +470,16 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
             if not p1_item or not p2_item:
                 continue
                 
-            # Get player responses
+            # Get player responses using session ID matching to avoid duplicate item bug
             p1_answer = None
             p2_answer = None
 
-            ans_A = round_answers[0]
-            ans_B = round_answers[1]
-
-            if p1_item == p2_item:
-                # Both players were assigned the same item
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-            else:
-                # Different items
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p2_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-                elif ans_A.assigned_item.value == p2_item and ans_B.assigned_item.value == p1_item:
-                    p1_answer = ans_B.response_value 
-                    p2_answer = ans_A.response_value
+            # Match answers by player session ID instead of assigned item to handle duplicate items correctly
+            for answer in round_answers:
+                if answer.player_session_id == db_team.player1_session_id:
+                    p1_answer = answer.response_value
+                elif answer.player_session_id == db_team.player2_session_id:
+                    p2_answer = answer.response_value
             
             # Skip if we don't have both answers
             if p1_answer is None or p2_answer is None:
@@ -542,6 +538,12 @@ def compute_correlation_matrix(team_name: str) -> Tuple[List[List[Tuple[int, int
             logger.warning(f"Could not find team_id for team_name: {team_name}")
             return ([[ (0,0) for _ in range(4) ] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
         
+        # Get team data for session ID mapping
+        db_team = Teams.query.filter_by(team_name=team_name).first()
+        if not db_team:
+            logger.warning(f"Could not find team data for team_name: {team_name}")
+            return ([[ (0,0) for _ in range(4) ] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
+        
         # Get all rounds and their corresponding answers for this team
         # Use separate optimized queries with proper indexing
         rounds = PairQuestionRounds.query.filter_by(team_id=team_id).order_by(PairQuestionRounds.timestamp_initiated).all()
@@ -585,46 +587,25 @@ def compute_correlation_matrix(team_name: str) -> Tuple[List[List[Tuple[int, int
             if not p1_item or not p2_item:
                 continue
                 
-            # Get player responses (True/False)
-            # Find which answer belongs to which player
+            # Get player responses using session ID matching to avoid duplicate item bug
             p1_answer = None
             p2_answer = None
 
-            # We've already checked that len(round_answers) == 2
-            ans_A = round_answers[0]
-            ans_B = round_answers[1]
-
-            if p1_item == p2_item:
-                # Both players were assigned the same item.
-                # Both answers in round_answers should correspond to this item.
-                # We assign one response to p1_answer and the other to p2_answer.
-                # The specific order (ans_A to p1 vs. ans_B to p1) doesn't affect
-                # the (p1_answer == p2_answer) correlation calculation.
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item: # Or p2_item, they are the same
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-                    
-                    # Track responses for same-item balance metric
-                    if p1_item not in same_item_responses:
-                        same_item_responses[p1_item] = {'true': 0, 'false': 0}
-                    
-                    # Count each response separately
-                    same_item_responses[p1_item]['true' if p1_answer else 'false'] += 1
-                    same_item_responses[p1_item]['true' if p2_answer else 'false'] += 1
-                # If assigned_item values don't match, p1_answer/p2_answer might remain None,
-                # and the round will be skipped by the check below, which is appropriate for inconsistent data.
-            else:
-                # p1_item and p2_item are different.
-                # Match answers to their respective items.
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p2_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-                elif ans_A.assigned_item.value == p2_item and ans_B.assigned_item.value == p1_item:
-                    # ans_A is for p2_item, ans_B is for p1_item
-                    p1_answer = ans_B.response_value 
-                    p2_answer = ans_A.response_value
-                # If items don't match as expected, p1_answer/p2_answer might remain None,
-                # and the round will be skipped by the check below.
+            # Match answers by player session ID instead of assigned item to handle duplicate items correctly
+            for answer in round_answers:
+                if answer.player_session_id == db_team.player1_session_id:
+                    p1_answer = answer.response_value
+                elif answer.player_session_id == db_team.player2_session_id:
+                    p2_answer = answer.response_value
+            
+            # Track responses for same-item balance metric only when both players have same item
+            if p1_item == p2_item and p1_answer is not None and p2_answer is not None:
+                if p1_item not in same_item_responses:
+                    same_item_responses[p1_item] = {'true': 0, 'false': 0}
+                
+                # Count each response separately
+                same_item_responses[p1_item]['true' if p1_answer else 'false'] += 1
+                same_item_responses[p1_item]['true' if p2_answer else 'false'] += 1
             
             # Skip if we don't have both answers (e.g., due to data inconsistency)
             if p1_answer is None or p2_answer is None:
@@ -991,9 +972,19 @@ def _compute_team_hashes_optimized(team_id: int, team_rounds: List[Any], team_an
         logger.error(f"Error computing team hashes for team {team_id}: {str(e)}")
         return "ERROR", "ERROR"
 
-def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any]) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
+def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Tuple[List[List[Tuple[int, int]]], List[str], float, Dict[str, float], Dict[str, Dict[str, int]], Dict[Tuple[str, str], int], Dict[Tuple[str, str], int]]:
     """Compute correlation matrix using pre-fetched rounds and answers data."""
     try:
+        # Use pre-fetched team data to avoid N+1 queries
+        if team_obj is None:
+            # Fallback to database query if team_obj not provided (backward compatibility)
+            team_obj = Teams.query.get(team_id)
+            if not team_obj:
+                logger.warning(f"Could not find team data for team_id: {team_id}")
+                return ([[ (0,0) for _ in range(4) ] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
+        
+        db_team = team_obj
+        
         # Create a mapping from round_id to the round object for quick access
         round_map = {round_obj.round_id: round_obj for round_obj in team_rounds}
         
@@ -1030,34 +1021,25 @@ def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], 
             if not p1_item or not p2_item:
                 continue
                 
-            # Get player responses (True/False)
+            # Get player responses using session ID matching to avoid duplicate item bug
             p1_answer = None
             p2_answer = None
 
-            ans_A = round_answers[0]
-            ans_B = round_answers[1]
-
-            if p1_item == p2_item:
-                # Both players were assigned the same item
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-                    
-                    # Track responses for same-item balance metric
-                    if p1_item not in same_item_responses:
-                        same_item_responses[p1_item] = {'true': 0, 'false': 0}
-                    
-                    # Count each response separately
-                    same_item_responses[p1_item]['true' if p1_answer else 'false'] += 1
-                    same_item_responses[p1_item]['true' if p2_answer else 'false'] += 1
-            else:
-                # p1_item and p2_item are different
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p2_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-                elif ans_A.assigned_item.value == p2_item and ans_B.assigned_item.value == p1_item:
-                    p1_answer = ans_B.response_value 
-                    p2_answer = ans_A.response_value
+            # Match answers by player session ID instead of assigned item to handle duplicate items correctly
+            for answer in round_answers:
+                if answer.player_session_id == db_team.player1_session_id:
+                    p1_answer = answer.response_value
+                elif answer.player_session_id == db_team.player2_session_id:
+                    p2_answer = answer.response_value
+            
+            # Track responses for same-item balance metric only when both players have same item
+            if p1_item == p2_item and p1_answer is not None and p2_answer is not None:
+                if p1_item not in same_item_responses:
+                    same_item_responses[p1_item] = {'true': 0, 'false': 0}
+                
+                # Count each response separately
+                same_item_responses[p1_item]['true' if p1_answer else 'false'] += 1
+                same_item_responses[p1_item]['true' if p2_answer else 'false'] += 1
             
             # Skip if we don't have both answers
             if p1_answer is None or p2_answer is None:
@@ -1100,9 +1082,19 @@ def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], 
         return ([[ (0,0) for _ in range(4) ] for _ in range(4)],
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
-def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any]) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
+def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """Compute success metrics for new mode using pre-fetched rounds and answers data."""
     try:
+        # Use pre-fetched team data to avoid N+1 queries
+        if team_obj is None:
+            # Fallback to database query if team_obj not provided (backward compatibility)
+            team_obj = Teams.query.get(team_id)
+            if not team_obj:
+                logger.warning(f"Could not find team data for team_id: {team_id}")
+                return ([[(0, 0) for _ in range(4)] for _ in range(4)], ['A', 'B', 'X', 'Y'], 0.0, 0.0, {}, {}, {})
+        
+        db_team = team_obj
+        
         # Create a mapping from round_id to the round object for quick access
         round_map = {round_obj.round_id: round_obj for round_obj in team_rounds}
         
@@ -1143,26 +1135,16 @@ def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], tea
             if not p1_item or not p2_item:
                 continue
                 
-            # Get player responses
+            # Get player responses using session ID matching to avoid duplicate item bug
             p1_answer = None
             p2_answer = None
 
-            ans_A = round_answers[0]
-            ans_B = round_answers[1]
-
-            if p1_item == p2_item:
-                # Both players were assigned the same item
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p1_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-            else:
-                # Different items
-                if ans_A.assigned_item.value == p1_item and ans_B.assigned_item.value == p2_item:
-                    p1_answer = ans_A.response_value
-                    p2_answer = ans_B.response_value
-                elif ans_A.assigned_item.value == p2_item and ans_B.assigned_item.value == p1_item:
-                    p1_answer = ans_B.response_value 
-                    p2_answer = ans_A.response_value
+            # Match answers by player session ID instead of assigned item to handle duplicate items correctly
+            for answer in round_answers:
+                if answer.player_session_id == db_team.player1_session_id:
+                    p1_answer = answer.response_value
+                elif answer.player_session_id == db_team.player2_session_id:
+                    p2_answer = answer.response_value
             
             # Skip if we don't have both answers
             if p1_answer is None or p2_answer is None:
@@ -1439,7 +1421,7 @@ def _calculate_success_statistics_from_data(success_result: Tuple) -> Dict[str, 
             'same_item_balance_uncertainty': None
         }
 
-def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str], team_rounds: List[Any], team_answers: List[Any]) -> Optional[Dict[str, Any]]:
+def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool, created_at: Optional[str], current_round: int, player1_sid: Optional[str], player2_sid: Optional[str], team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Optional[Dict[str, Any]]:
     """
     Process all heavy computation for a single team using pre-fetched data.
     OPTIMIZATION: Uses pre-fetched rounds and answers to avoid database queries.
@@ -1470,12 +1452,13 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
         
         # ALWAYS compute both classic and new statistics for details modal
         # Get correlation matrix and success metrics data using pre-fetched data
-        correlation_result = _compute_correlation_matrix_optimized(team_id, team_rounds, team_answers)
+        # Pass team_obj to avoid N+1 queries
+        correlation_result = _compute_correlation_matrix_optimized(team_id, team_rounds, team_answers, team_obj)
         (corr_matrix_tuples, item_values,
          same_item_balance_avg, same_item_balance, same_item_responses,
          correlation_sums, pair_counts) = correlation_result
         
-        success_result = _compute_success_metrics_optimized(team_id, team_rounds, team_answers)
+        success_result = _compute_success_metrics_optimized(team_id, team_rounds, team_answers, team_obj)
         (success_matrix_tuples, success_item_values, overall_success_rate, normalized_cumulative_score, 
          success_counts, success_pair_counts, player_responses) = success_result
         
@@ -1700,7 +1683,8 @@ def get_all_teams() -> List[Dict[str, Any]]:
                     players[0] if len(players) > 0 else None,
                     players[1] if len(players) > 1 else None,
                     team_rounds,
-                    team_answers
+                    team_answers,
+                    team  # Pass team object to avoid N+1 queries
                 )
                 
                 if team_data:
