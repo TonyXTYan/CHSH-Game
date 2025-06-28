@@ -6,7 +6,7 @@ import os
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
 
-from src.sockets.dashboard import (
+from src.dashboard import (
     SelectiveCache, 
     selective_cache,
     invalidate_team_caches,
@@ -353,7 +353,7 @@ class TestIntegrationWithDashboardFunctions:
     def setup_mocks(self):
         """Set up mocks for dashboard functions."""
         # Mock database and app context requirements
-        with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        with patch('src.dashboard.client_management._get_team_id_from_name') as mock_get_id:
             mock_get_id.return_value = None  # Return None to avoid DB queries
             yield
     
@@ -363,7 +363,7 @@ class TestIntegrationWithDashboardFunctions:
         clear_team_caches()
         
         # Import the cache instances
-        from src.sockets.dashboard import _hash_cache, _correlation_cache
+        from src.dashboard import _hash_cache, _correlation_cache
         
         # Manually populate some cache entries
         _hash_cache.set("('Team1',)", ("hash1", "hash2"))
@@ -382,7 +382,7 @@ class TestIntegrationWithDashboardFunctions:
     
     def test_clear_team_caches_function(self):
         """Test the global clear_team_caches function."""
-        from src.sockets.dashboard import _hash_cache, _correlation_cache
+        from src.dashboard import _hash_cache, _correlation_cache
         
         # Populate caches
         _hash_cache.set("('Team1',)", "data1")

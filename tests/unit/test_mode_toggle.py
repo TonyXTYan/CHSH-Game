@@ -1,6 +1,6 @@
 import pytest
 from unittest.mock import patch, MagicMock, call
-from src.sockets.dashboard import on_toggle_game_mode, clear_team_caches, emit_dashboard_full_update, force_clear_all_caches
+from src.dashboard import on_toggle_game_mode, clear_team_caches, emit_dashboard_full_update, force_clear_all_caches
 from src.state import state
 import warnings
 
@@ -36,13 +36,13 @@ def mock_request():
     mock_req = MagicMock()
     mock_req.sid = 'test_dashboard_sid'
     
-    with patch('src.sockets.dashboard.request', mock_req):
+    with patch('src.dashboard.socket_handlers.request', mock_req):
         yield mock_req
 
 @pytest.fixture
 def mock_state():
     """Mock application state"""
-    with patch('src.sockets.dashboard.state') as mock_state:
+    with patch('src.dashboard.socket_handlers.state') as mock_state:
         mock_state.dashboard_clients = MockSet(['test_dashboard_sid'])
         mock_state.active_teams = {'team1': {'players': ['p1', 'p2']}, 'team2': {'players': ['p3', 'p4']}}
         mock_state.game_mode = 'new'  # Start with new mode as default
@@ -51,19 +51,19 @@ def mock_state():
 @pytest.fixture
 def mock_socketio():
     """Mock socket.io instance"""
-    with patch('src.sockets.dashboard.socketio') as mock_io:
+    with patch('src.dashboard.socket_handlers.socketio') as mock_io:
         yield mock_io
 
 @pytest.fixture
 def mock_emit():
     """Mock emit function"""
-    with patch('src.sockets.dashboard.emit') as mock_emit:
+    with patch('src.dashboard.socket_handlers.emit') as mock_emit:
         yield mock_emit
 
 @pytest.fixture
 def mock_logger():
     """Mock logger"""
-    with patch('src.sockets.dashboard.logger') as mock_logger:
+    with patch('src.dashboard.logger') as mock_logger:
         yield mock_logger
 
 @pytest.fixture(autouse=True)
@@ -78,8 +78,8 @@ def test_toggle_game_mode_new_to_classic(mock_request, mock_state, mock_socketio
     # Setup: Start with new mode
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -104,8 +104,8 @@ def test_toggle_game_mode_classic_to_new(mock_request, mock_state, mock_socketio
     # Setup: Start with classic mode
     mock_state.game_mode = 'classic'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -131,8 +131,8 @@ def test_toggle_game_mode_multiple_dashboard_clients(mock_request, mock_state, m
     mock_state.dashboard_clients = MockSet(['test_dashboard_sid', 'client2', 'client3'])
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.clear_team_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -171,8 +171,8 @@ def test_toggle_game_mode_no_dashboard_clients(mock_request, mock_state, mock_so
     mock_state.dashboard_clients = MockSet(['test_dashboard_sid'])
     mock_state.game_mode = 'classic'
     
-    with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.clear_team_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -187,7 +187,7 @@ def test_toggle_game_mode_error_handling(mock_request, mock_state, mock_socketio
     """Test error handling during mode toggle"""
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache:
+    with patch('src.dashboard.force_clear_all_caches') as mock_clear_cache:
         # Mock force_clear_all_caches to raise an exception
         mock_clear_cache.side_effect = Exception("Cache clear failed")
         
@@ -206,8 +206,8 @@ def test_toggle_game_mode_with_emit_dashboard_full_update_error(mock_request, mo
     """Test error handling when emit_dashboard_full_update fails"""
     mock_state.game_mode = 'classic'
     
-    with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.clear_team_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Mock emit_dashboard_full_update to raise an exception
         mock_full_update.side_effect = Exception("Dashboard update failed")
@@ -224,8 +224,8 @@ def test_toggle_game_mode_socket_emission_error(mock_request, mock_state, mock_s
     """Test error handling when socket emission fails"""
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.clear_team_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Mock socketio.emit to raise an exception
         mock_socketio.emit.side_effect = Exception("Socket emission failed")
@@ -243,8 +243,8 @@ def test_game_mode_state_persistence(mock_request, mock_state, mock_socketio, mo
     initial_mode = 'new'
     mock_state.game_mode = initial_mode
     
-    with patch('src.sockets.dashboard.force_clear_all_caches'), \
-         patch('src.sockets.dashboard.emit_dashboard_full_update'):
+    with patch('src.dashboard.force_clear_all_caches'), \
+         patch('src.dashboard.emit_dashboard_full_update'):
         
         # First toggle: new -> classic
         on_toggle_game_mode()
@@ -276,8 +276,8 @@ def test_toggle_game_mode_with_active_teams(mock_request, mock_state, mock_socke
     }
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -307,8 +307,8 @@ def test_toggle_game_mode_integration_with_dashboard_updates(mock_request, mock_
     def track_dashboard_update():
         call_order.append('dashboard_update')
     
-    with patch('src.sockets.dashboard.force_clear_all_caches', side_effect=track_clear_cache), \
-         patch('src.sockets.dashboard.emit_dashboard_full_update', side_effect=track_dashboard_update):
+    with patch('src.dashboard.force_clear_all_caches', side_effect=track_clear_cache), \
+         patch('src.dashboard.emit_dashboard_full_update', side_effect=track_dashboard_update):
         
         mock_socketio.emit.side_effect = track_socket_emit
         
@@ -323,8 +323,8 @@ def test_toggle_game_mode_invalid_initial_state(mock_request, mock_state, mock_s
     # Setup with invalid mode
     mock_state.game_mode = 'invalid_mode'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -340,8 +340,8 @@ def test_toggle_game_mode_concurrent_requests(mock_request, mock_state, mock_soc
     # This test simulates rapid successive calls
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.dashboard.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call multiple times rapidly
         on_toggle_game_mode()  # new -> classic
@@ -386,8 +386,8 @@ def test_toggle_game_mode_preserves_other_state(mock_request, mock_state, mock_s
     mock_state.answer_stream_enabled = True
     original_active_teams = mock_state.active_teams.copy()
     
-    with patch('src.sockets.dashboard.clear_team_caches'), \
-         patch('src.sockets.dashboard.emit_dashboard_full_update'):
+    with patch('src.dashboard.clear_team_caches'), \
+         patch('src.dashboard.emit_dashboard_full_update'):
         
         # Call the function
         on_toggle_game_mode()

@@ -1397,13 +1397,13 @@ class TestPlayerInteraction:
         # Force cache clearing to ensure dashboard sees updated state
         # This simulates the cache clearing that would happen during real disconnect handling
         try:
-            from src.sockets.dashboard import force_clear_all_caches
+            from src.dashboard import force_clear_all_caches
             force_clear_all_caches()
             eventlet.sleep(0.2)  # Allow time for cache clearing to take effect
         except ImportError:
             try:
                 # Fallback to clear_team_caches if force_clear_all_caches not available
-                from src.sockets.dashboard import clear_team_caches
+                from src.dashboard import clear_team_caches
                 clear_team_caches()
                 eventlet.sleep(0.2)
             except ImportError:
@@ -1413,14 +1413,14 @@ class TestPlayerInteraction:
         """Force the dashboard to get fresh, non-throttled data by clearing server caches."""
         # Import the server function to force cache clearing
         try:
-            from src.sockets.dashboard import force_clear_all_caches
+            from src.dashboard import force_clear_all_caches
             # Use force_clear_all_caches to completely clear throttling caches
             force_clear_all_caches()
             eventlet.sleep(0.2)  # Allow time for cache clearing
         except ImportError:
             try:
                 # Fallback to clear_team_caches if force_clear_all_caches not available
-                from src.sockets.dashboard import clear_team_caches
+                from src.dashboard import clear_team_caches
                 clear_team_caches()
                 eventlet.sleep(0.2)
             except ImportError:

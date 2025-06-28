@@ -3,7 +3,7 @@ import time
 from unittest.mock import Mock, patch, MagicMock
 import logging
 import threading
-from src.sockets.dashboard import (
+from src.dashboard import (
     emit_dashboard_team_update,
     emit_dashboard_full_update,
     clear_team_caches,
@@ -17,10 +17,10 @@ from src.state import state
 @pytest.fixture
 def mock_dashboard_dependencies():
     """Mock all dependencies for dashboard functions."""
-    with patch('src.sockets.dashboard.socketio') as mock_socketio, \
-         patch('src.sockets.dashboard.get_all_teams') as mock_get_teams, \
-         patch('src.sockets.dashboard.app') as mock_app, \
-         patch('src.sockets.dashboard.Answers') as mock_answers:
+    with patch('src.dashboard.socket_handlers.socketio') as mock_socketio, \
+         patch('src.dashboard.get_all_teams') as mock_get_teams, \
+         patch('src.dashboard.http_routes.app') as mock_app, \
+         patch('src.dashboard.computations.Answers') as mock_answers:
         
         # Setup mock data
         mock_teams = [
@@ -93,7 +93,7 @@ class TestDashboardThrottling:
         force_clear_all_caches()
         
         # Need to set up streaming client to trigger get_all_teams call
-        from src.sockets.dashboard import dashboard_teams_streaming
+        from src.dashboard import dashboard_teams_streaming
         dashboard_teams_streaming['dashboard1'] = True
         
         emit_dashboard_team_update()
@@ -146,7 +146,7 @@ class TestDashboardThrottling:
         clear_team_caches()
         
         # Need to set up streaming client to trigger get_all_teams call
-        from src.sockets.dashboard import dashboard_teams_streaming
+        from src.dashboard import dashboard_teams_streaming
         dashboard_teams_streaming['dashboard1'] = True
         
         # Call function
@@ -197,14 +197,14 @@ class TestDashboardThrottling:
     
     def test_different_throttling_delays(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that team updates and full updates have different throttling delays."""
-        from src.sockets.dashboard import dashboard_teams_streaming
+        from src.dashboard import dashboard_teams_streaming
         clear_team_caches()
         
         # Set up streaming client to trigger get_all_teams calls
         dashboard_teams_streaming['dashboard1'] = True
         
         # Test team update throttling with REFRESH_DELAY_QUICK
-        with patch('src.sockets.dashboard.time') as mock_time:
+        with patch('src.dashboard.update_emitters.time') as mock_time:
             base_time = 1000.0
             mock_time.return_value = base_time
             
@@ -213,7 +213,7 @@ class TestDashboardThrottling:
             
             # Immediate second call should be throttled
             mock_time.return_value = base_time + REFRESH_DELAY_QUICK * 0.5
-            import src.sockets.dashboard as dashboard_module
+            import src.dashboard as dashboard_module
             initial_team_time = dashboard_module._last_team_update_time
             
             emit_dashboard_team_update()
@@ -225,7 +225,7 @@ class TestDashboardThrottling:
         clear_team_caches()
         mock_answers = mock_dashboard_dependencies['answers']
         
-        with patch('src.sockets.dashboard.time') as mock_time:
+        with patch('src.dashboard.update_emitters.time') as mock_time:
             base_time = 2000.0
             mock_time.return_value = base_time
             
@@ -243,7 +243,7 @@ class TestDashboardThrottling:
     def test_separate_caches_no_interference(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that the separate caches don't interfere with each other."""
         # Import the force clear function for complete cache reset
-        from src.sockets.dashboard import force_clear_all_caches, dashboard_teams_streaming
+        from src.dashboard import force_clear_all_caches, dashboard_teams_streaming
         force_clear_all_caches()
         
         # Set up streaming client to trigger get_all_teams calls
@@ -274,7 +274,7 @@ class TestDashboardThrottling:
     def test_cache_invalidation_clears_both_caches(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that cache invalidation clears both caches."""
         # Import the force clear function for complete cache reset
-        from src.sockets.dashboard import force_clear_all_caches, dashboard_teams_streaming
+        from src.dashboard import force_clear_all_caches, dashboard_teams_streaming
         force_clear_all_caches()
         
         # Set up streaming client to trigger get_all_teams calls
@@ -316,7 +316,7 @@ class TestDashboardThrottling:
     
     def test_throttle_delay_timing_team_updates(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that team update throttling respects the REFRESH_DELAY_QUICK timing."""
-        from src.sockets.dashboard import dashboard_teams_streaming
+        from src.dashboard import dashboard_teams_streaming
         clear_team_caches()
         
         # Set up streaming client to trigger get_all_teams calls
@@ -344,7 +344,7 @@ class TestDashboardThrottling:
     def test_throttle_delay_timing_full_updates(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that full update throttling respects the REFRESH_DELAY_FULL timing."""
         # Import the force clear function for complete cache reset
-        from src.sockets.dashboard import force_clear_all_caches
+        from src.dashboard import force_clear_all_caches
         force_clear_all_caches()
         
         # First call
@@ -366,10 +366,10 @@ class TestDashboardThrottling:
         emit_dashboard_full_update()
         assert mock_answers.query.count.call_count > initial_db_count
     
-    @patch('src.sockets.dashboard.logger')
+    @patch('src.dashboard.logger')
     def test_error_handling(self, mock_logger, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that errors are handled gracefully."""
-        from src.sockets.dashboard import dashboard_teams_streaming
+        from src.dashboard import dashboard_teams_streaming
         
         # Set up streaming client to trigger get_all_teams calls that will error
         dashboard_teams_streaming['dashboard1'] = True
@@ -473,7 +473,7 @@ class TestThreadSafety:
     
     def test_memory_cleanup_thread_safety(self):
         """Test that memory cleanup operations are thread-safe."""
-        from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
+        from src.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
         import threading
         
         # Setup test data
@@ -529,7 +529,7 @@ class TestThreadSafety:
                     emit_dashboard_full_update()
                     
                     # Simulate client operations
-                    from src.sockets.dashboard import _atomic_client_update
+                    from src.dashboard import _atomic_client_update
                     _atomic_client_update(f'test_client_{i}', activity_time=time.time())
                     _atomic_client_update(f'test_client_{i}', streaming_enabled=True)
                     _atomic_client_update(f'test_client_{i}', remove=True)
@@ -560,7 +560,7 @@ class TestThreadSafety:
 
     def test_error_handling_preserves_lock_state(self, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that exceptions in thread-safe operations don't leave locks in bad state."""
-        from src.sockets.dashboard import _safe_dashboard_operation
+        from src.dashboard import _safe_dashboard_operation
         
         # Force an exception in a safe operation
         try:

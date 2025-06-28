@@ -116,7 +116,7 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
 
 def _import_dashboard_functions():
     """Import dashboard functions to avoid circular import"""
-    from src.sockets.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect, invalidate_team_caches
+    from src.dashboard import emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect, invalidate_team_caches
     return emit_dashboard_team_update, emit_dashboard_full_update, clear_team_caches, handle_dashboard_disconnect, invalidate_team_caches
 
 def get_available_teams_list() -> List[Dict[str, Any]]:

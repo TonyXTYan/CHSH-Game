@@ -83,7 +83,7 @@ def start_new_round_for_pair(team_name):
         db.session.commit()
         
         # Clear caches after database commit
-        from src.sockets.dashboard import clear_team_caches
+        from src.dashboard import clear_team_caches
         clear_team_caches()
 
         team_info['current_db_round_id'] = new_round_db.round_id
@@ -96,7 +96,7 @@ def start_new_round_for_pair(team_name):
         
         logger.debug(f"Team {team_name} round {round_number}: Player1({player1_sid}) gets {p1_item.value}, Player2({player2_sid}) gets {p2_item.value}")
         
-        from src.sockets.dashboard import emit_dashboard_team_update
+        from src.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
     except Exception as e:
         logger.error(f"Error in start_new_round_for_pair: {str(e)}", exc_info=True)
