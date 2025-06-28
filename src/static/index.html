@@ -13,7 +13,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>CHSH Game - Participant</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="/static/styles.css">
 </head>
 <body>
     <div class="connection-status" id="connectionStatus"></div>
@@ -77,10 +77,10 @@
             <!-- Game Rules Section -->
             <div class="collapsible-section">
                 <div class="collapsible-header">
-                    <h3 class="toggle-target">Game Rules</h3>
+                    <h3 id="game-rules-title" class="toggle-target">Game Rules</h3>
                     <span class="toggle-indicator">▼</span>
                 </div>
-                <div class="hint-content" style="display: none; border: 2px solid #9900ff; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
+                <div id="game-rules-content" class="hint-content" style="display: none; border: 2px solid #9900ff; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Discuss and agree on a shared strategy before the game starts.</li>
                         <li><strong>No</strong> communicate during the game.</li>
@@ -94,10 +94,10 @@
             <!-- Winning Conditions Section -->
             <div class="collapsible-section" style="margin-top: 15px;">
                 <div class="collapsible-header">
-                    <h3 class="toggle-target">Winning Conditions</h3>
+                    <h3 id="winning-conditions-title" class="toggle-target">Winning Conditions</h3>
                     <span class="toggle-indicator">▼</span>
                 </div>
-                <div class="hint-content" style="display: none; border: 2px solid #9900ff; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
+                <div id="winning-conditions-content" class="hint-content" style="display: none; border: 2px solid #9900ff; padding: 15px; margin-top: 10px; border-radius: 5px; background-color: #f9f9f9;">
                     <div style="margin-bottom: 15px;">
                         <strong>🎯 Best Balanced ⏐⟨Tr⟩⏐ (Consistency):</strong>
                         <ul style="margin: 5px 0; padding-left: 20px;">
@@ -130,7 +130,8 @@
     </div>
 
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
-    <script src="socket-handlers.js"></script>
-    <script src="app.js"></script>
+    <script src="/static/themes.js"></script>
+    <script src="/static/socket-handlers.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>

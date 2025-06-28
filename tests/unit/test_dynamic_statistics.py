@@ -287,18 +287,31 @@ class TestDynamicStatistics:
         
         # Mock the database queries
         with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds_model, \
-             patch('src.sockets.dashboard.Answers') as mock_answers_model:
+             patch('src.sockets.dashboard.Answers') as mock_answers_model, \
+             patch('src.sockets.dashboard.Teams') as mock_teams_model:
+            
+            # Mock Teams table for session ID mapping
+            mock_team = MagicMock()
+            mock_team.player1_session_id = 'player1_session'
+            mock_team.player2_session_id = 'player2_session'
+            mock_teams_query = MagicMock()
+            mock_teams_query.filter_by.return_value.first.return_value = mock_team
+            mock_teams_model.query = mock_teams_query
             
             # Mock rounds data - NEW mode pattern (Player 1: A,B; Player 2: X,Y)
             mock_round_1 = MagicMock()
             mock_round_1.round_id = 1
-            mock_round_1.player1_item = ItemEnum.A
-            mock_round_1.player2_item = ItemEnum.X
+            mock_round_1.player1_item = MagicMock()
+            mock_round_1.player1_item.value = 'A'
+            mock_round_1.player2_item = MagicMock()
+            mock_round_1.player2_item.value = 'X'
             
             mock_round_2 = MagicMock()
             mock_round_2.round_id = 2
-            mock_round_2.player1_item = ItemEnum.B
-            mock_round_2.player2_item = ItemEnum.Y
+            mock_round_2.player1_item = MagicMock()
+            mock_round_2.player1_item.value = 'B'
+            mock_round_2.player2_item = MagicMock()
+            mock_round_2.player2_item.value = 'Y'
             
             mock_rounds_query = MagicMock()
             mock_rounds_query.filter_by.return_value.order_by.return_value.all.return_value = [mock_round_1, mock_round_2]
@@ -311,21 +324,25 @@ class TestDynamicStatistics:
             mock_answer_1a.question_round_id = 1
             mock_answer_1a.assigned_item = ItemEnum.A
             mock_answer_1a.response_value = True
+            mock_answer_1a.player_session_id = 'player1_session'
             
             mock_answer_1b = MagicMock()
             mock_answer_1b.question_round_id = 1  
             mock_answer_1b.assigned_item = ItemEnum.X
             mock_answer_1b.response_value = False
+            mock_answer_1b.player_session_id = 'player2_session'
             
             mock_answer_2a = MagicMock()
             mock_answer_2a.question_round_id = 2
             mock_answer_2a.assigned_item = ItemEnum.B
             mock_answer_2a.response_value = False
+            mock_answer_2a.player_session_id = 'player1_session'
             
             mock_answer_2b = MagicMock()
             mock_answer_2b.question_round_id = 2
             mock_answer_2b.assigned_item = ItemEnum.Y  
             mock_answer_2b.response_value = True
+            mock_answer_2b.player_session_id = 'player2_session'
             
             mock_answers_query = MagicMock()
             mock_answers_query.filter_by.return_value.order_by.return_value.all.return_value = [

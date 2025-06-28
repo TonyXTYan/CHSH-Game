@@ -103,11 +103,53 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         emit_dashboard_team_update()
 
         if len(team_info['answered_current_round']) == 2:
-            # print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")
-            socketio.emit('round_complete', {
-                'team_name': team_name,
-                'round_number': team_info['current_round_number']
-            }, to=team_name)  # type: ignore
+            # Get the completed round details from database
+            round_db_entry = PairQuestionRounds.query.get(round_id)
+            if round_db_entry:
+                # Get team info to map session IDs to player positions
+                db_team = Teams.query.get(team_info['team_id'])
+                if db_team and db_team.player1_session_id and db_team.player2_session_id:
+                    # Get both players' answers for this round
+                    round_answers = Answers.query.filter_by(question_round_id=round_id).all()
+                    
+                    # Organize the answer data by player position using session IDs
+                    p1_answer = None
+                    p2_answer = None
+                    p1_item = round_db_entry.player1_item.value if round_db_entry.player1_item else None
+                    p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
+                    
+                    for answer in round_answers:
+                        # CRITICAL: Match answers by session ID, not item value, to handle duplicate items
+                        # (e.g., when both players receive the same item like "A" or "X")
+                        if answer.player_session_id == db_team.player1_session_id:
+                            p1_answer = answer.response_value
+                        elif answer.player_session_id == db_team.player2_session_id:
+                            p2_answer = answer.response_value
+                    
+                    # Emit enhanced round_complete event with detailed results
+                    # Note: Client safely handles None values in answers via generateLastRoundMessage()
+                    socketio.emit('round_complete', {
+                        'team_name': team_name,
+                        'round_number': team_info['current_round_number'],
+                        'last_round_details': {
+                            'p1_item': p1_item,
+                            'p2_item': p2_item,
+                            'p1_answer': p1_answer,  # May be None if session ID mismatch
+                            'p2_answer': p2_answer   # May be None if session ID mismatch
+                        }
+                    }, to=team_name)  # type: ignore
+                else:
+                    # Fallback if team data is incomplete
+                    socketio.emit('round_complete', {
+                        'team_name': team_name,
+                        'round_number': team_info['current_round_number']
+                    }, to=team_name)  # type: ignore
+            else:
+                # Fallback to basic round_complete event
+                socketio.emit('round_complete', {
+                    'team_name': team_name,
+                    'round_number': team_info['current_round_number']
+                }, to=team_name)  # type: ignore
             start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_submit_answer: {str(e)}", exc_info=True)

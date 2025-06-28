@@ -8,6 +8,9 @@ const connectionStatusDiv = document.getElementById("connection-status-dash");
 // Game mode state
 let currentGameMode = 'new';
 
+// Theme state  
+let currentGameTheme = 'classic';
+
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') {
@@ -124,6 +127,48 @@ function updateSortDropdownText(mode) {
     }
 }
 
+// Theme Management Functions
+function updateGameThemeDisplay(theme) {
+    currentGameTheme = theme;
+    const themeIndicator = document.getElementById('current-game-theme');
+    const themeDropdown = document.getElementById('theme-dropdown');
+    const themeDescription = document.getElementById('theme-description-text');
+    
+    if (themeIndicator) {
+        themeIndicator.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+    }
+    
+    if (themeDropdown) {
+        themeDropdown.value = theme;
+    }
+    
+    if (themeDescription) {
+        if (theme === 'food') {
+            themeDescription.innerHTML = `
+                <strong>Food Ingredients Theme:</strong> Questions use cooking ingredients (🍞 Bread, 🥟 Dumplings, 🥬 Lettuce, 🍫 Chocolate). 
+                Game rules are themed around cooking and recipe coordination.
+            `;
+        } else {
+            themeDescription.innerHTML = `
+                <strong>Classic Theme:</strong> Traditional ABXY notation for questions and game rules.
+            `;
+        }
+    }
+}
+
+function onThemeChange() {
+    const themeDropdown = document.getElementById('theme-dropdown');
+    if (themeDropdown && themeDropdown.value !== currentGameTheme) {
+        const newTheme = themeDropdown.value;
+        socket.emit('change_game_theme', { theme: newTheme });
+        
+        // Show changing status
+        const statusDiv = document.getElementById('connection-status-dash');
+        statusDiv.textContent = `Changing theme to ${newTheme}...`;
+        statusDiv.className = "status-connected";
+    }
+}
+
 // Track game mode toggle timeouts for cleanup
 let gameModeToggleTimeout = null;
 
@@ -189,6 +234,33 @@ socket.on('game_mode_changed', (data) => {
         connectionStatusDiv.textContent = "Connected to server";
         connectionStatusDiv.className = "status-connected";
     }, 3000);
+});
+
+// Handle theme changes from server
+socket.on('game_theme_changed', (data) => {
+    console.log('Game theme changed:', data);
+    updateGameThemeDisplay(data.theme);
+    
+    // Show a brief notification
+    connectionStatusDiv.textContent = `Game theme changed to: ${data.theme.charAt(0).toUpperCase() + data.theme.slice(1)}`;
+    connectionStatusDiv.className = "status-connected";
+    
+    // Reset status after 3 seconds
+    setTimeout(() => {
+        connectionStatusDiv.textContent = "Connected to server";
+        connectionStatusDiv.className = "status-connected";
+    }, 3000);
+});
+
+// Handle complete game state sync from server
+socket.on('game_state_sync', (data) => {
+    console.log('Game state sync:', data);
+    if (data.mode && data.mode !== currentGameMode) {
+        updateGameModeDisplay(data.mode);
+    }
+    if (data.theme && data.theme !== currentGameTheme) {
+        updateGameThemeDisplay(data.theme);
+    }
 });
 
 // Helper function to format statistics with uncertainty
@@ -373,6 +445,15 @@ window.addEventListener('load', () => {
     
     // Initialize game mode display (will be updated when dashboard connects)
     updateGameModeDisplay(currentGameMode);
+    
+    // Initialize theme display (will be updated when dashboard connects)
+    updateGameThemeDisplay(currentGameTheme);
+    
+    // Add theme dropdown change listener
+    const themeDropdown = document.getElementById('theme-dropdown');
+    if (themeDropdown) {
+        themeDropdown.addEventListener('change', onThemeChange);
+    }
 });
 
 let confirmingStop = false;
@@ -602,6 +683,11 @@ socket.on("dashboard_update", (data) => {
         // Update game mode if provided
         if (data.game_state.mode && data.game_state.mode !== currentGameMode) {
             updateGameModeDisplay(data.game_state.mode);
+        }
+        
+        // Update theme if provided
+        if (data.game_state.theme && data.game_state.theme !== currentGameTheme) {
+            updateGameThemeDisplay(data.game_state.theme);
         }
         
         // Persist full game state from server

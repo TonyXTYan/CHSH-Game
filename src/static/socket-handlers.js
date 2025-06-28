@@ -125,6 +125,11 @@ function initializeSocketHandlers(socket, callbacks) {
 
     socket.on('round_complete', (data) => {
         callbacks.showStatus(`Round ${data.round_number} complete! Next round coming up...`, 'success');
+        
+        // Store last round details if available (safely handles incomplete data)
+        if (data.last_round_details && typeof callbacks.setLastRoundResults === 'function') {
+            callbacks.setLastRoundResults(data.last_round_details);
+        }
     });
 
     socket.on('player_left', (data) => {
@@ -188,6 +193,22 @@ function initializeSocketHandlers(socket, callbacks) {
         console.log('Game mode changed:', data);
         if (callbacks.onGameModeChanged) {
             callbacks.onGameModeChanged(data);
+        }
+    });
+
+    // Handle game theme changes
+    socket.on('game_theme_changed', (data) => {
+        console.log('Game theme changed:', data);
+        if (callbacks.onGameThemeChanged) {
+            callbacks.onGameThemeChanged(data);
+        }
+    });
+
+    // Handle complete game state sync
+    socket.on('game_state_sync', (data) => {
+        console.log('Game state sync:', data);
+        if (callbacks.onGameStateSync) {
+            callbacks.onGameStateSync(data);
         }
     });
 }

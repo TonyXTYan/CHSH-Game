@@ -9,7 +9,9 @@ let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
 let currentGameMode = 'new'; // Track current game mode
+let currentGameTheme = 'classic'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
+let lastRoundResults = null; // Track last round results for display
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -74,6 +76,25 @@ function updatePlayerPosition(position) {
 function updateGameMode(mode) {
     currentGameMode = mode;
     console.log('Game mode:', mode);
+    
+    // Update theme manager mode
+    if (window.themeManager) {
+        window.themeManager.setMode(mode);
+    }
+    
+    updatePlayerResponsibilityMessage();
+}
+
+// Update game theme
+function updateGameTheme(theme) {
+    currentGameTheme = theme;
+    console.log('Game theme:', theme);
+    
+    // Update theme manager theme
+    if (window.themeManager) {
+        window.themeManager.setTheme(theme);
+    }
+    
     updatePlayerResponsibilityMessage();
 }
 
@@ -96,14 +117,20 @@ function updatePlayerResponsibilityMessage() {
     }
 
     let message = '';
-    if (currentGameMode === 'new') {
-        if (playerPosition === 1) {
-            message = 'You are responsible for answering A and B questions';
-        } else if (playerPosition === 2) {
-            message = 'You are responsible for answering X and Y questions';
+    if (window.themeManager) {
+        // Use theme manager to get the themed hint
+        message = window.themeManager.getPlayerHint(playerPosition);
+    } else {
+        // Fallback for when theme manager is not available
+        if (currentGameMode === 'new') {
+            if (playerPosition === 1) {
+                message = 'You are responsible for answering A and B questions';
+            } else if (playerPosition === 2) {
+                message = 'You are responsible for answering X and Y questions';
+            }
+        } else if (currentGameMode === 'classic') {
+            message = 'You will need to answer questions from all categories (A, B, X, Y)';
         }
-    } else if (currentGameMode === 'classic') {
-        message = 'You will need to answer questions from all categories (A, B, X, Y)';
     }
 
     if (message) {
@@ -132,9 +159,11 @@ function resetToInitialView() {
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
     currentGameMode = 'new'; // Reset to new mode
+    currentGameTheme = 'classic'; // Reset to classic theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
     updateGameMode('new');
+    updateGameTheme('classic');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
 }
@@ -172,12 +201,36 @@ function updateGameState(newGameStarted = null, isReset = false) {
         // Show question section
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
-        questionItem.textContent = currentRound.item;
+        
+        // Apply themed display to the question item
+        if (window.themeManager && currentRound.item) {
+            const themedItem = window.themeManager.getItemDisplay(currentRound.item);
+            questionItem.textContent = themedItem;
+            
+            // Apply theme colors
+            const questionDiv = questionItem.closest('.question');
+            if (questionDiv) {
+                const bgColor = window.themeManager.getQuestionBoxColor(playerPosition);
+                const textColor = window.themeManager.getQuestionTextColor();
+                questionDiv.style.backgroundColor = bgColor;
+                questionDiv.style.color = textColor;
+            }
+        } else {
+            questionItem.textContent = currentRound.item;
+        }
         
         // If already answered this round
         if (currentRound.alreadyAnswered) {
             trueBtn.disabled = true;
             falseBtn.disabled = true;
+            
+            // Show last round results if available (graceful fallback for null data)
+            const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
+            if (lastRoundMessage) {
+                waitingMessage.textContent = lastRoundMessage;
+            } else {
+                waitingMessage.textContent = "Waiting for next round...";
+            }
             waitingMessage.classList.add('visible');
         } else if (teamIncomplete) {
             // Team is incomplete - disable input
@@ -193,7 +246,14 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 waitingMessage.textContent = "Game is paused";
                 waitingMessage.classList.add('visible');
             } else {
-                waitingMessage.textContent = "Waiting for next round...";
+                // Show last round results if available (graceful fallback for null data)
+                const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
+                if (lastRoundMessage) {
+                    waitingMessage.textContent = lastRoundMessage;
+                    waitingMessage.classList.add('visible');
+                } else {
+                    waitingMessage.textContent = "Waiting for next round...";
+                }
             }
         }
     } else if (gameStarted) {
@@ -201,6 +261,17 @@ function updateGameState(newGameStarted = null, isReset = false) {
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
         questionItem.textContent = "...";
+        
+        // Apply theme colors even for placeholder
+        if (window.themeManager) {
+            const questionDiv = questionItem.closest('.question');
+            if (questionDiv) {
+                const bgColor = window.themeManager.getQuestionBoxColor(playerPosition);
+                const textColor = window.themeManager.getQuestionTextColor();
+                questionDiv.style.backgroundColor = bgColor;
+                questionDiv.style.color = textColor;
+            }
+        }
         
         if (teamIncomplete) {
             // Team is incomplete - disable input and show appropriate message
@@ -233,6 +304,17 @@ function resetGameControls() {
     waitingMessage.classList.remove('visible');
     questionItem.textContent = '';
     currentRound = null;
+    
+    // Apply default theme styling
+    if (window.themeManager) {
+        const questionDiv = questionItem.closest('.question');
+        if (questionDiv) {
+            const bgColor = window.themeManager.getQuestionBoxColor(null); // null = default gray
+            const textColor = window.themeManager.getQuestionTextColor();
+            questionDiv.style.backgroundColor = bgColor;
+            questionDiv.style.color = textColor;
+        }
+    }
 }
 
 // Update available teams list
@@ -400,9 +482,16 @@ function setAnswerButtonsEnabled(enabled) {
         waitingMessage.textContent = "Game is paused";
         waitingMessage.classList.add('visible');
     } else {
-        waitingMessage.textContent = "Waiting for next round...";
-        if (!currentRound?.alreadyAnswered) {
-            waitingMessage.classList.remove('visible');
+        // Show last round results if available (graceful fallback for null data)
+        const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
+        if (lastRoundMessage && currentRound?.alreadyAnswered) {
+            waitingMessage.textContent = lastRoundMessage;
+            waitingMessage.classList.add('visible');
+        } else {
+            waitingMessage.textContent = "Waiting for next round...";
+            if (!currentRound?.alreadyAnswered) {
+                waitingMessage.classList.remove('visible');
+            }
         }
     }
 }
@@ -419,11 +508,19 @@ const callbacks = {
     setAnswerButtonsEnabled,
     getCurrentRoundInfo: () => currentRound,
     resetToInitialView,
+    setLastRoundResults: (results) => {
+        lastRoundResults = results;
+        // Update waiting message display if needed
+        updateGameState();
+    },
     
     onConnectionEstablished: (data) => {
         // Handle initial connection with game state
         if (data.game_mode) {
             updateGameMode(data.game_mode);
+        }
+        if (data.game_theme) {
+            updateGameTheme(data.game_theme);
         }
         updateGameState(data.game_started);
         updateTeamsList(data.available_teams);
@@ -447,6 +544,11 @@ const callbacks = {
         // Update game mode if provided
         if (data.game_mode) {
             updateGameMode(data.game_mode);
+        }
+        
+        // Update theme if provided
+        if (data.game_theme) {
+            updateGameTheme(data.game_theme);
         }
         
         // Hide both create and join team sections when creating a new team
@@ -476,6 +578,11 @@ const callbacks = {
         // Update game mode if provided
         if (data.game_mode) {
             updateGameMode(data.game_mode);
+        }
+        
+        // Update theme if provided  
+        if (data.game_theme) {
+            updateGameTheme(data.game_theme);
         }
 
         showStatus(data.message, 'success');
@@ -538,6 +645,26 @@ const callbacks = {
         currentRound = data;
         currentRound.alreadyAnswered = false;
         lastClickedButton = null; // Reset last clicked button for new round
+        // Don't clear lastRoundResults here - we want to show it during the new round until answered
+        
+        // Apply themed display to the question item
+        if (window.themeManager && data.item) {
+            const themedItem = window.themeManager.getItemDisplay(data.item);
+            questionItem.textContent = themedItem;
+            
+            // Apply theme colors
+            const questionDiv = questionItem.closest('.question');
+            if (questionDiv) {
+                const bgColor = window.themeManager.getQuestionBoxColor(playerPosition);
+                const textColor = window.themeManager.getQuestionTextColor();
+                questionDiv.style.backgroundColor = bgColor;
+                questionDiv.style.color = textColor;
+            }
+        } else {
+            // Fallback to raw item
+            questionItem.textContent = data.item;
+        }
+        
         showStatus(`Round ${data.round_number}`, 'info');
         updateGameState();
     },
@@ -575,6 +702,20 @@ const callbacks = {
     onGameModeChanged: (data) => {
         updateGameMode(data.mode);
         showStatus(`Game mode changed to: ${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)}`, 'info');
+    },
+
+    onGameThemeChanged: (data) => {
+        updateGameTheme(data.theme);
+        showStatus(`Game theme changed to: ${data.theme.charAt(0).toUpperCase() + data.theme.slice(1)}`, 'info');
+    },
+    
+    onGameStateSync: (data) => {
+        if (data.mode && data.mode !== currentGameMode) {
+            updateGameMode(data.mode);
+        }
+        if (data.theme && data.theme !== currentGameTheme) {
+            updateGameTheme(data.theme);
+        }
     }
 };
 
@@ -617,3 +758,67 @@ updateGameState();
 
 // Log initial mode on page load
 console.log('Page loaded - current mode:', currentGameMode);
+
+// Function to evaluate if a food combination was "good" based on optimal strategy
+function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
+    // For food theme, we follow the same optimal strategy as classic:
+    // - B+Y (🥟+🍫) should be different answers (one Choose, one Skip)
+    // - All other combinations should be same answers
+    
+    const shouldBeDifferent = (p1Item === 'B' && p2Item === 'Y') || (p1Item === 'Y' && p2Item === 'B');
+    const actuallyDifferent = p1Answer !== p2Answer;
+    
+    const isOptimal = shouldBeDifferent === actuallyDifferent;
+    
+    // For food theme, we use different emojis based on the result
+    if (isOptimal) {
+        // Good result - use happy emojis
+        if (shouldBeDifferent) {
+            return 'yum 😋'; // Different answers when they should be different
+        } else {
+            return 'yum 😋'; // Same answers when they should be same
+        }
+    } else {
+        // Bad result - use sad/disgusted emojis  
+        if (shouldBeDifferent) {
+            return 'bad 😭'; // Same answers when they should be different
+        } else {
+            return 'yuck 🤮'; // Different answers when they should be same
+        }
+    }
+}
+
+// Function to generate last round result message
+// Safely handles None/null values from backend when answer data is incomplete
+function generateLastRoundMessage(lastRound, theme, playerPos) {
+    if (!lastRound || !lastRound.p1_item || !lastRound.p2_item || 
+        lastRound.p1_answer === null || lastRound.p2_answer === null) {
+        return null; // Falls back to "Waiting for next round..." message
+    }
+    
+    const p1Item = lastRound.p1_item;
+    const p2Item = lastRound.p2_item;
+    const p1Answer = lastRound.p1_answer;
+    const p2Answer = lastRound.p2_answer;
+    
+    if (theme === 'food') {
+        // Use theme manager to get food emojis
+        const p1Display = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
+        const p2Display = window.themeManager ? window.themeManager.getItemDisplay(p2Item) : p2Item;
+        
+        // Convert boolean answers to Choose/Skip
+        const p1Decision = p1Answer ? 'Choose' : 'Skip';
+        const p2Decision = p2Answer ? 'Choose' : 'Skip';
+        
+        // Evaluate the result
+        const result = evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer);
+        
+        return `Last round, your team (P1/P2) were asked ${p1Display}/${p2Display} and decisions was ${p1Decision}/${p2Decision}, that was ${result}`;
+    } else {
+        // Classic theme
+        const p1AnswerText = p1Answer ? 'True' : 'False';
+        const p2AnswerText = p2Answer ? 'True' : 'False';
+        
+        return `Last round, your team (P1/P2) were asked ${p1Item}/${p2Item} and answer was ${p1AnswerText}/${p2AnswerText}`;
+    }
+}

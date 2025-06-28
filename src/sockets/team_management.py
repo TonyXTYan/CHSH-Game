@@ -172,7 +172,8 @@ def handle_connect() -> None:
         emit('connection_established', {
             'game_started': state.game_started,
             'available_teams': get_available_teams_list(),
-            'game_mode': state.game_mode
+            'game_mode': state.game_mode,
+            'game_theme': state.game_theme
         })  # type: ignore
     except Exception as e:
         logger.error(f"Error in handle_connect: {str(e)}", exc_info=True)
@@ -294,6 +295,7 @@ def on_create_team(data: Dict[str, Any]) -> None:
                     'message': 'Team reactivated successfully. Waiting for another player.',
                     'game_started': state.game_started,
                     'game_mode': state.game_mode,
+                    'game_theme': state.game_theme,
                     'player_slot': 1,
                     'is_reactivated': True  # Flag to indicate this was a reactivation
                 })  # type: ignore
@@ -340,6 +342,7 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'message': 'Team created. Waiting for another player.',
             'game_started': state.game_started,
             'game_mode': state.game_mode,
+            'game_theme': state.game_theme,
             'player_slot': 1  # Creator is always assigned to player1_session_id (slot 1)
         })  # type: ignore
         # This team_status_update for 'created' seems specific to the creator,
@@ -429,6 +432,7 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'team_status': current_team_status_for_clients,
             'is_reconnection': is_valid_reconnection,
             'game_mode': state.game_mode,
+            'game_theme': state.game_theme,
             'player_slot': actual_player_slot
         }, to=sid)  # type: ignore
         
@@ -496,6 +500,7 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 1,  # Player reactivating team is assigned to player1_session_id (slot 1)
                 'is_reactivated': True  # Flag to indicate this was a reactivation
             })  # type: ignore
