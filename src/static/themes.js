@@ -236,43 +236,11 @@ class ThemeManager {
     }
     
     applyTheme() {
-        // Apply question box styling
-        const questionBox = document.getElementById('questionItem');
-        if (questionBox) {
-            const parentDiv = questionBox.closest('.question');
-            if (parentDiv) {
-                // Determine player number based on current context
-                let playerNumber = null;
-                if (window.playerPosition) {
-                    playerNumber = window.playerPosition;
-                } else if (window.currentTeam) {
-                    // Default to gray if in team but no position determined
-                    playerNumber = null;
-                }
-                
-                const bgColor = this.getQuestionBoxColor(playerNumber);
-                const textColor = this.getQuestionTextColor();
-                
-                parentDiv.style.backgroundColor = bgColor;
-                parentDiv.style.color = textColor;
-            }
-        }
-        
-        // Update player responsibility message
-        this.updatePlayerResponsibilityMessage();
-        
-        // Update game rules and winning conditions
+        // Update game rules and winning conditions (doesn't need player data)
         this.updateGameRulesAndConditions();
-    }
-    
-    updatePlayerResponsibilityMessage() {
-        const messageEl = document.getElementById('playerResponsibilityMessage');
-        if (messageEl && window.playerPosition) {
-            const hint = this.getPlayerHint(window.playerPosition);
-            if (hint) {
-                messageEl.textContent = hint;
-            }
-        }
+        
+        // Note: Question box styling and player responsibility messages are handled
+        // by the app.js functions that have access to the proper player data
     }
     
     updateGameRulesAndConditions() {
