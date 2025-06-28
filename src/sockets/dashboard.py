@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, Answers, PairQuestionRounds, ItemEnum
-from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
+from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS, get_effective_combo_repeats
 from flask_socketio import emit
 from src.game_logic import start_new_round_for_pair
 from time import time
@@ -1441,7 +1441,8 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
             all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
             
         combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
-        min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
+        effective_combo_repeats = get_effective_combo_repeats(state.game_mode)
+        min_stats_sig = all(combo_tracker.get(combo, 0) >= effective_combo_repeats
                         for combo in all_combos) if team_info else False
         
         # Get players list
@@ -1530,7 +1531,8 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
             all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
             
         combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
-        min_stats_sig = all(combo_tracker.get(combo, 0) >= TARGET_COMBO_REPEATS
+        effective_combo_repeats = get_effective_combo_repeats(state.game_mode)
+        min_stats_sig = all(combo_tracker.get(combo, 0) >= effective_combo_repeats
                         for combo in all_combos) if team_info else False
         
         # Get players list

@@ -327,6 +327,14 @@ socket.on("connect", async () => {
     const startBtn = document.getElementById("start-game-btn");
     resetButtonToInitialState(startBtn);
     socket.emit("dashboard_join"); // Notify backend that a dashboard client has joined
+    
+    // Notify server about teams streaming preference immediately after connecting
+    socket.emit('set_teams_streaming', { enabled: teamsStreamEnabled });
+    
+    // If teams streaming is enabled by default, request current teams data
+    if (teamsStreamEnabled) {
+        socket.emit('request_teams_update');
+    }
 });
 
 function clearAllUITables() {
@@ -442,9 +450,6 @@ window.addEventListener('load', () => {
     updateStreamingUI();
     updateTeamsStreamingUI();
     updateAdvancedControlsUI();
-    
-    // Notify server about default teams streaming preference
-    socket.emit('set_teams_streaming', { enabled: teamsStreamEnabled });
     
     // Initialize game mode display (will be updated when dashboard connects)
     updateGameModeDisplay(currentGameMode);
@@ -1240,14 +1245,10 @@ function updateTeamsStreamingUI() {
         teamsTable.style.display = 'table';
         teamsToggleChevron.textContent = '▼';
         
-        // Show appropriate message based on teams data
+        // Show appropriate message based on teams data and populate table
         if (lastReceivedTeams && lastReceivedTeams.length > 0) {
-            // Check if any teams will be displayed after filtering
-            const showInactive = document.getElementById('show-inactive').checked;
-            const filteredTeams = showInactive ? lastReceivedTeams : lastReceivedTeams.filter(team =>
-                team.is_active || team.status === 'waiting_pair'
-            );
-            noTeamsMsg.style.display = filteredTeams.length === 0 ? 'block' : 'none';
+            // Actually update the teams table with current data
+            updateActiveTeams(lastReceivedTeams);
         } else {
             noTeamsMsg.style.display = 'block';
         }
