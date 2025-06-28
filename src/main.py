@@ -120,7 +120,7 @@ with app.app_context():
 
 # Import all route handlers and socket event handlers
 from src.routes.static import serve
-from src.sockets import dashboard
+import src.dashboard  # Import dashboard package to register socket handlers
 from src.sockets.team_management import (
     handle_connect, 
     handle_disconnect, 

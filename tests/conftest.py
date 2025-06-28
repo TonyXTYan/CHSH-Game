@@ -93,14 +93,15 @@ def flask_server(pytestconfig, request):
             # If we can't determine, be safe and start the server
             integration_tests_present = True
     
-    # Method 3: If running all tests or tests directory, start server to be safe
+    # Method 3: Only start server for specific integration test scenarios
     if not integration_tests_present:
-        if (not args or 
-            (len(args) == 1 and args[0] in ['tests/', 'tests']) or
-            any(arg == 'tests/' for arg in args) or
-            # When running pytest without specific paths, it often defaults to current directory
-            (len(args) == 0)):
-            integration_tests_present = True
+        # Only start server if explicitly running integration tests or download endpoint tests
+        integration_keywords = ['integration', 'test_download_endpoint', 'test_server_functionality', 'test_player_interaction']
+        for arg in args:
+            arg_str = str(arg)
+            if any(keyword in arg_str for keyword in integration_keywords):
+                integration_tests_present = True
+                break
     
     # If no integration tests, skip server startup
     if not integration_tests_present:
