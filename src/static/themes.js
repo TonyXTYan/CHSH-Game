@@ -219,6 +219,17 @@ class ThemeManager {
     
     getPlayerHint(playerNumber) {
         const theme = this.getTheme();
+        
+        // In classic mode, both players receive a general message about answering all categories
+        if (this.currentMode === 'classic') {
+            if (theme.name === 'Food Ingredients') {
+                return 'You will need to answer questions from all ingredients (🍞, 🥟, 🥬, 🍫)';
+            } else {
+                return 'You will need to answer questions from all categories (A, B, X, Y)';
+            }
+        }
+        
+        // In new mode, return player-specific hints
         return theme.playerHints[playerNumber] || '';
     }
     

@@ -239,6 +239,14 @@ def test_create_team_success(mock_request_context):
         assert team.is_active == True
         assert team.player1_session_id == 'test_sid'
         
+        # Verify state updates - Critical assertions for state management
+        assert "new_team" in state.active_teams
+        assert state.active_teams["new_team"]["team_id"] == team.team_id
+        assert 'test_sid' in state.active_teams["new_team"]["players"]
+        assert state.active_teams["new_team"]["status"] == "waiting_pair"
+        assert state.player_to_team['test_sid'] == "new_team"
+        assert state.team_id_to_name[team.team_id] == "new_team"
+        
         # Verify event emissions
         mock_emit.assert_any_call(
             'team_created',
