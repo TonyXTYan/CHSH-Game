@@ -134,16 +134,8 @@ table {
     margin-top: 10px; 
 }
 
-#active-teams-table th:nth-child(1) {
-    width: 120px; /* Team Name - fixed width */
-}
-
-#active-teams-table th:nth-child(2) {
-    width: 80px;  /* Status - fixed width */
-}
-
-#active-teams-table th:not(:nth-child(1)):not(:nth-child(2)) {
-    width: auto;  /* All other columns - equal share of remaining space */
+#active-teams-table th {
+    width: auto;  /* All columns - auto width */
 }
 
 #active-teams-table td {
