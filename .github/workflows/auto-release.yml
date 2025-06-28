@@ -28,7 +28,7 @@ jobs:
       - name: Get previous tag
         id: prev_tag
         run: |
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${GITHUB_REF#refs/tags/}" | head -n 1)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$' | grep -v -E '-(alpha|beta|rc|pre|dev|test|hotfix)' | grep -v "${GITHUB_REF#refs/tags/}" | head -n 1)
           echo "Previous tag: $PREV_TAG"
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
 
@@ -36,21 +36,30 @@ jobs:
         id: release_summary
         run: |
           if [ -z "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
-            # No previous tag, get all history
-            COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ github.event.repository.default_branch }}..${GITHUB_SHA})
+            # No previous tag, get all commits for this tag
+            COMMITS=$(git log --pretty=format:'- %s (%h)' --max-count=50)
+            RANGE_DESC="all commits (first release)"
           else
             COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ steps.prev_tag.outputs.prev_tag }}..${GITHUB_SHA})
+            RANGE_DESC="commits since ${{ steps.prev_tag.outputs.prev_tag }}"
           fi
           
-          # Count commits
-          COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
-          
-          # Create simple summary
-          SUMMARY="## Release Summary
-          
-          This release includes **$COMMIT_COUNT** commits with the following changes:
-          
-          $COMMITS"
+          # Check if we have any commits
+          if [ -z "$COMMITS" ]; then
+            SUMMARY="## Release Summary
+            
+            No new commits found in this release."
+          else
+            # Count commits
+            COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
+            
+            # Create summary
+            SUMMARY="## Release Summary
+            
+            This release includes **$COMMIT_COUNT** $RANGE_DESC:
+            
+            $COMMITS"
+          fi
           
           echo "release_summary<<EOF" >> $GITHUB_ENV
           echo "$SUMMARY" >> $GITHUB_ENV
