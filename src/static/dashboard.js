@@ -862,16 +862,131 @@ function updateMetrics(activeTeamsCount, readyPlayersCount, totalAnswers, connec
 // Add event listener for show-inactive toggle
 document.getElementById('show-inactive').addEventListener('change', () => {
     if (lastReceivedTeams && teamsStreamEnabled) {
-        updateActiveTeams(lastReceivedTeams);
+        // User-initiated changes should be immediate
+        updateTeamsImmediate(lastReceivedTeams);
     }
 });
 
 // Add event listener for sort teams dropdown
 document.getElementById('sort-teams').addEventListener('change', () => {
     if (lastReceivedTeams && teamsStreamEnabled) {
-        updateActiveTeams(lastReceivedTeams);
+        // User-initiated changes should be immediate
+        updateTeamsImmediate(lastReceivedTeams);
     }
 });
+
+// Helper function to capture current team positions for animations
+function captureTeamPositions() {
+    const positions = new Map();
+    const rows = activeTeamsTableBody.querySelectorAll('.team-row');
+    
+    rows.forEach((row, index) => {
+        const teamName = row.getAttribute('data-team-name');
+        if (teamName) {
+            // Cancel any ongoing animation and get the logical position
+            const wasAnimating = row.classList.contains('moving') || row.classList.contains('new-team');
+            if (wasAnimating) {
+                // Stop current animation and get final position
+                row.style.transition = 'none';
+                row.style.transform = '';
+                row.style.opacity = '';
+                row.classList.remove('moving', 'new-team');
+                row.removeAttribute('data-animation-id');
+            }
+            
+            // Get the true logical position without transforms
+            const rect = row.getBoundingClientRect();
+            positions.set(teamName, {
+                index,
+                top: rect.top,
+                element: row
+            });
+        }
+    });
+    
+    return positions;
+}
+
+// Global animation state management
+let animationId = 0;
+
+// Helper function to animate team position changes
+function animateTeamPositions(oldPositions) {
+    if (!oldPositions || oldPositions.size === 0) {
+        return; // No previous positions to animate from
+    }
+    
+    // Increment animation ID to cancel previous animations
+    const currentAnimationId = ++animationId;
+    
+    const newRows = activeTeamsTableBody.querySelectorAll('.team-row');
+    
+    newRows.forEach((row) => {
+        const teamName = row.getAttribute('data-team-name');
+        const oldPos = oldPositions.get(teamName);
+        
+        if (oldPos) {
+            // Team existed before - animate position change
+            const newRect = row.getBoundingClientRect();
+            const deltaY = oldPos.top - newRect.top;
+            
+            if (Math.abs(deltaY) > 2) { // Animate any meaningful movement
+                // Set initial position immediately
+                row.style.transition = 'none';
+                row.style.transform = `translateY(${deltaY}px)`;
+                row.classList.add('moving');
+                row.setAttribute('data-animation-id', currentAnimationId);
+                
+                // Force reflow
+                row.offsetHeight;
+                
+                // Start animation
+                requestAnimationFrame(() => {
+                    // Check if this animation is still valid
+                    if (parseInt(row.getAttribute('data-animation-id')) === currentAnimationId) {
+                        row.style.transition = 'transform 250ms cubic-bezier(0.25, 0.46, 0.45, 0.94)';
+                        row.style.transform = 'translateY(0)';
+                        
+                        // Clean up after animation
+                        setTimeout(() => {
+                            // Double-check animation is still valid before cleanup
+                            if (parseInt(row.getAttribute('data-animation-id')) === currentAnimationId) {
+                                row.style.transform = '';
+                                row.style.transition = '';
+                                row.classList.remove('moving');
+                                row.removeAttribute('data-animation-id');
+                            }
+                        }, 270);
+                    }
+                });
+            }
+        } else {
+            // New team - fade in
+            row.style.opacity = '0';
+            row.classList.add('new-team');
+            row.setAttribute('data-animation-id', currentAnimationId);
+            
+            requestAnimationFrame(() => {
+                if (parseInt(row.getAttribute('data-animation-id')) === currentAnimationId) {
+                    row.style.transition = 'opacity 200ms ease-out';
+                    row.style.opacity = '1';
+                    
+                    setTimeout(() => {
+                        if (parseInt(row.getAttribute('data-animation-id')) === currentAnimationId) {
+                            row.style.opacity = '';
+                            row.style.transition = '';
+                            row.classList.remove('new-team');
+                            row.removeAttribute('data-animation-id');
+                        }
+                    }, 220);
+                }
+            });
+        }
+    });
+}
+
+// Debounce timer for rapid team updates
+let updateTeamsTimer = null;
 
 function updateActiveTeams(teams) {
     // If teams streaming is disabled, don't update the UI
@@ -883,11 +998,26 @@ function updateActiveTeams(teams) {
         teams = [];
     }
 
+    // Light debouncing to prevent excessive rapid updates (but still responsive)
+    if (updateTeamsTimer) {
+        clearTimeout(updateTeamsTimer);
+    }
+    
+    updateTeamsTimer = setTimeout(() => {
+        updateTeamsImmediate(teams);
+        updateTeamsTimer = null;
+    }, 50); // Very short debounce - just enough to batch rapid calls
+}
+
+function updateTeamsImmediate(teams) {
     // Ensure table headers are set correctly for current game mode
     updateTableHeaders(currentGameMode);
 
     const showInactive = document.getElementById('show-inactive').checked;
     const sortBy = document.getElementById('sort-teams').value;
+    
+    // Capture current team positions for animation
+    const oldPositions = captureTeamPositions();
     
     // Filter teams based on status
     let filteredTeams = showInactive ? teams : teams.filter(team =>
@@ -1151,7 +1281,13 @@ function updateActiveTeams(teams) {
         detailsBtn.textContent = 'View';
         detailsBtn.onclick = () => showTeamDetails(team);
         detailsCell.appendChild(detailsBtn);
+        
+        // Add team ID for animation tracking
+        row.setAttribute('data-team-name', team.team_name);
     });
+    
+    // Apply animations for position changes
+    animateTeamPositions(oldPositions);
 }
 
 function addAnswerToLog(answer) {
@@ -1247,8 +1383,8 @@ function updateTeamsStreamingUI() {
         
         // Show appropriate message based on teams data and populate table
         if (lastReceivedTeams && lastReceivedTeams.length > 0) {
-            // Actually update the teams table with current data
-            updateActiveTeams(lastReceivedTeams);
+            // Actually update the teams table with current data (user-initiated, immediate)
+            updateTeamsImmediate(lastReceivedTeams);
         } else {
             noTeamsMsg.style.display = 'block';
         }
