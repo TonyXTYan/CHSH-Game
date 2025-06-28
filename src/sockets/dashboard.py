@@ -1893,7 +1893,12 @@ def emit_dashboard_team_update() -> None:
             
             time_since_last_update = current_time - _last_team_update_time
             
-            # Check if we can use cached data
+            # FIXED: Return early if within throttling window to prevent redundant emissions
+            if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
+                logger.debug(f"Throttling team update: {time_since_last_update:.2f}s < {REFRESH_DELAY_QUICK}s")
+                return
+            
+            # Check if we can use cached data (but still emit since we passed throttling check)
             use_cached_data = time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None
             
             if use_cached_data:
@@ -1901,34 +1906,19 @@ def emit_dashboard_team_update() -> None:
                 cached_active_count = _cached_team_metrics.get('active_teams_count', 0)
                 cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
             
-            # If computation in progress, use current cache (avoid duplicate work)
+            # If computation in progress, return early to avoid duplicate emissions
             elif _team_update_computation_in_progress:
-                if _cached_team_metrics is not None:
-                    cached_teams = _cached_team_metrics.get('cached_teams', [])
-                    cached_active_count = _cached_team_metrics.get('active_teams_count', 0)
-                    cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
-                    use_cached_data = True
-                else:
-                    # No cache available, will need to compute lightweight metrics outside lock
-                    use_cached_data = False
-                    need_lightweight_fallback = True
+                logger.debug("Team update computation in progress, skipping emission")
+                return
             
-            # Mark computation starting if needed  
-            elif not use_cached_data and not locals().get('need_lightweight_fallback', False):
+            # Mark computation starting
+            else:
                 _team_update_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
-        # Handle lightweight fallback first (computation in progress but no cache)
-        if locals().get('need_lightweight_fallback', False):
-            # Lightweight metrics computation outside lock
-            serialized_teams = []
-            active_teams = [team_info for team_info in state.active_teams.values() 
-                          if team_info.get('status') in ['active', 'waiting_pair']]
-            active_teams_count = len(active_teams)
-            ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
-        elif not use_cached_data:
-            # Compute fresh data outside lock
+        # Since we passed throttling, we need fresh data
+        if not use_cached_data:
             if streaming_clients:
                 # Get expensive teams data only if streaming clients need it
                 serialized_teams = get_all_teams()  # Already optimized to minimize locks
@@ -1960,6 +1950,10 @@ def emit_dashboard_team_update() -> None:
             serialized_teams = cached_teams
             active_teams_count = cached_active_count
             ready_players_count = cached_ready_count
+            
+            # Update timestamp for throttling even when using cached data
+            with _safe_dashboard_operation():
+                _last_team_update_time = time()
         
         # === SOCKET EMISSIONS OUTSIDE LOCK ===
         # SocketIO handles thread safety internally
@@ -2024,7 +2018,12 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
             
             time_since_last_update = current_time - _last_full_update_time
             
-            # Check if we can use cached data
+            # FIXED: Return early if within throttling window to prevent redundant emissions
+            if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
+                logger.debug(f"Throttling full update: {time_since_last_update:.2f}s < {REFRESH_DELAY_FULL}s")
+                return
+            
+            # Check if we can use cached data (but still emit since we passed throttling check)
             use_cached_data = time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None
             
             if use_cached_data:
@@ -2033,35 +2032,19 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                 cached_active_count = _cached_full_metrics.get('active_teams_count', 0)
                 cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
             
-            # If computation in progress, use current cache (avoid duplicate work)
+            # If computation in progress, return early to avoid duplicate emissions
             elif _full_update_computation_in_progress:
-                if _cached_full_metrics is not None:
-                    cached_teams = _cached_full_metrics.get('cached_teams', [])
-                    cached_total_answers = _cached_full_metrics.get('total_answers', 0)
-                    cached_active_count = _cached_full_metrics.get('active_teams_count', 0)
-                    cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
-                    use_cached_data = True
-                else:
-                    # No cache available, will need to compute minimal data outside lock
-                    use_cached_data = False
-                    need_minimal_fallback = True
+                logger.debug("Full update computation in progress, skipping emission")
+                return
             
-            # Mark computation starting if needed
-            elif not use_cached_data and not locals().get('need_minimal_fallback', False):
+            # Mark computation starting
+            else:
                 _full_update_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
-        # Handle minimal fallback first (computation in progress but no cache)
-        if locals().get('need_minimal_fallback', False):
-            # Minimal data computation outside lock
-            all_teams_for_metrics = []
-            total_answers = 0  # No database query in fallback mode
-            active_teams = [team_info for team_info in state.active_teams.values() 
-                          if team_info.get('status') in ['active', 'waiting_pair']]
-            active_teams_count = len(active_teams)
-            ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
-        elif not use_cached_data:
+        # Since we passed throttling, we need fresh data
+        if not use_cached_data:
             # Database query (thread-safe, doesn't need lock)
             with app.app_context():
                 total_answers = Answers.query.count()
@@ -2100,6 +2083,10 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
             total_answers = cached_total_answers
             active_teams_count = cached_active_count
             ready_players_count = cached_ready_count
+            
+            # Update timestamp for throttling even when using cached data
+            with _safe_dashboard_operation():
+                _last_full_update_time = time()
 
         # Prepare base update data (outside lock)
         base_update_data = {
