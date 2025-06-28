@@ -11,6 +11,7 @@ let currentTeamStatus = null; // Track current team status
 let currentGameMode = 'new'; // Track current game mode
 let currentGameTheme = 'classic'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
+let lastRoundResults = null; // Track last round results for display
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -159,6 +160,7 @@ function resetToInitialView() {
     playerPosition = null; // Reset player position
     currentGameMode = 'new'; // Reset to new mode
     currentGameTheme = 'classic'; // Reset to classic theme
+    lastRoundResults = null; // Reset last round results
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
     updateGameMode('new');
@@ -180,6 +182,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         // Ensure all controls are in their initial state after reset
         currentRound = null;
         lastClickedButton = null;  // Reset on game reset
+        lastRoundResults = null; // Reset last round results
         trueBtn.disabled = false;
         falseBtn.disabled = false;
         waitingMessage.classList.remove('visible');
@@ -237,7 +240,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 waitingMessage.textContent = "Game is paused";
                 waitingMessage.classList.add('visible');
             } else {
-                waitingMessage.textContent = "Waiting for next round...";
+                waitingMessage.textContent = formatLastRoundMessage(lastRoundResults);
             }
         }
     } else if (gameStarted) {
@@ -288,6 +291,7 @@ function resetGameControls() {
     waitingMessage.classList.remove('visible');
     questionItem.textContent = '';
     currentRound = null;
+    lastRoundResults = null;
     
     // Apply default theme styling
     if (window.themeManager) {
@@ -431,6 +435,76 @@ function updateTeamStatus(status) {
     }
 }
 
+// Format last round results message based on theme
+function formatLastRoundMessage(roundResults) {
+    if (!roundResults || !roundResults.round_results) {
+        return "Waiting for next round...";
+    }
+
+    const { round_results } = roundResults;
+    const { player1_item, player2_item, answers } = round_results;
+    
+    if (!answers || !answers.player1 || !answers.player2) {
+        return "Waiting for next round...";
+    }
+
+    const theme = window.themeManager ? window.themeManager.getTheme() : null;
+    const isFood = theme && theme.name === 'Food Ingredients';
+    
+    // Get themed item displays
+    const p1ItemDisplay = theme ? theme.items[player1_item] || player1_item : player1_item;
+    const p2ItemDisplay = theme ? theme.items[player2_item] || player2_item : player2_item;
+    
+    // Format answers based on theme
+    let p1AnswerText, p2AnswerText;
+    if (isFood) {
+        p1AnswerText = answers.player1.answer ? "Choose" : "Skip";
+        p2AnswerText = answers.player2.answer ? "Choose" : "Skip";
+    } else {
+        p1AnswerText = answers.player1.answer ? "True" : "False";
+        p2AnswerText = answers.player2.answer ? "True" : "False";
+    }
+    
+    if (isFood) {
+        // Food theme: special outcome messages
+        const bothChose = answers.player1.answer && answers.player2.answer;
+        const bothSkipped = !answers.player1.answer && !answers.player2.answer;
+        const oneChoseOneSkipped = (answers.player1.answer && !answers.player2.answer) || 
+                                   (!answers.player1.answer && answers.player2.answer);
+        
+        let outcome;
+        if (bothChose) {
+            // Both chose - check if it's a "yuck" combination (🥟/🍫) or "yum" combination
+            const isYuckCombo = (player1_item === 'B' && player2_item === 'Y') || 
+                               (player1_item === 'Y' && player2_item === 'B');
+            outcome = isYuckCombo ? "that was yuck 🤮" : "that was yum 😋";
+        } else if (oneChoseOneSkipped) {
+            // One chose, one skipped - check combinations for outcome
+            const isGoodCombo = (player1_item === 'B' && player2_item === 'Y') || 
+                               (player1_item === 'Y' && player2_item === 'B');
+            outcome = isGoodCombo ? "that was yum 😋" : "that was bad 😭";
+        } else {
+            // Both skipped
+            outcome = "that was bad 😭";
+        }
+        
+        return `Last round, your team (P1/P2) were asked ${p1ItemDisplay}/${p2ItemDisplay} and decisions was ${p1AnswerText}/${p2AnswerText}, ${outcome}`;
+    } else {
+        // Classic theme: simple format
+        return `Last round, your team (P1/P2) were asked ${p1ItemDisplay}/${p2ItemDisplay} and answer was ${p1AnswerText}/${p2AnswerText}`;
+    }
+}
+
+// Handle round completion and store results
+function onRoundComplete(data) {
+    lastRoundResults = data;
+    // Update waiting message if it's currently visible
+    if (waitingMessage.classList.contains('visible')) {
+        const messageText = formatLastRoundMessage(lastRoundResults);
+        waitingMessage.textContent = messageText;
+    }
+}
+
 // Enable or disable answer buttons
 function setAnswerButtonsEnabled(enabled) {
     gamePaused = !enabled;
@@ -466,7 +540,7 @@ function setAnswerButtonsEnabled(enabled) {
         waitingMessage.textContent = "Game is paused";
         waitingMessage.classList.add('visible');
     } else {
-        waitingMessage.textContent = "Waiting for next round...";
+        waitingMessage.textContent = formatLastRoundMessage(lastRoundResults);
         if (!currentRound?.alreadyAnswered) {
             waitingMessage.classList.remove('visible');
         }
@@ -485,6 +559,7 @@ const callbacks = {
     setAnswerButtonsEnabled,
     getCurrentRoundInfo: () => currentRound,
     resetToInitialView,
+    onRoundComplete,
     
     onConnectionEstablished: (data) => {
         // Handle initial connection with game state
@@ -652,6 +727,7 @@ const callbacks = {
         lastClickedButton = null;
         currentTeamStatus = null; // Reset team status
         playerPosition = null; // Reset player position
+        lastRoundResults = null; // Reset last round results
         localStorage.removeItem('quizSessionData');
         updatePlayerPosition(null);
         showStatus(data.message, 'error');
@@ -664,6 +740,7 @@ const callbacks = {
         currentRound = null;
         currentTeamStatus = null; // Reset team status
         playerPosition = null; // Reset player position
+        lastRoundResults = null; // Reset last round results
         localStorage.removeItem('quizSessionData');
         updatePlayerPosition(null);
         showStatus(data.message, 'success');
