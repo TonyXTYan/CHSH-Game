@@ -560,8 +560,17 @@ def test_join_team_already_member(mock_request_context, active_team):
 def test_handle_disconnect_dashboard_client(mock_request_context):
     """Test disconnect logic for dashboard clients"""
     from src.sockets.team_management import handle_disconnect
+    from unittest.mock import patch
+    
+    # Set up test dashboard client
     state.dashboard_clients.add('test_sid')
-    handle_disconnect()
+    
+    # Mock request.sid to return our test client ID
+    with patch('src.sockets.team_management.request') as mock_request:
+        mock_request.sid = 'test_sid'
+        handle_disconnect()
+    
+    # Dashboard client should be removed
     assert 'test_sid' not in state.dashboard_clients
 
 def test_handle_disconnect_team_no_players_left(mock_request_context, active_team):
