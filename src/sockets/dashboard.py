@@ -1646,7 +1646,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
             # Update cache under lock and return
             with _safe_dashboard_operation():
                 _cached_teams_result = []
-                _last_refresh_time = current_time  # Use original timestamp for consistent timing
+                _last_refresh_time = time()  # Use fresh timestamp reflecting actual cache completion
                 _teams_computation_in_progress = False  # Clear computation flag
             return []
         
@@ -1713,7 +1713,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
         # Update cache under minimal lock
         with _safe_dashboard_operation():
             _cached_teams_result = teams_list
-            _last_refresh_time = current_time  # Use original timestamp for consistent timing
+            _last_refresh_time = time()  # Use fresh timestamp reflecting actual cache completion
             _teams_computation_in_progress = False  # Clear computation flag
         
         return teams_list
@@ -1909,21 +1909,25 @@ def emit_dashboard_team_update() -> None:
                     cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
                     use_cached_data = True
                 else:
-                    # No cache available, compute lightweight metrics
-                    cached_teams = []
-                    active_teams = [team_info for team_info in state.active_teams.values() 
-                                  if team_info.get('status') in ['active', 'waiting_pair']]
-                    cached_active_count = len(active_teams)
-                    cached_ready_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
-                    use_cached_data = True
+                    # No cache available, will need to compute lightweight metrics outside lock
+                    use_cached_data = False
+                    need_lightweight_fallback = True
             
-            # Mark computation starting if needed
-            elif not use_cached_data:
+            # Mark computation starting if needed  
+            elif not use_cached_data and not locals().get('need_lightweight_fallback', False):
                 _team_update_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
-        if not use_cached_data:
+        # Handle lightweight fallback first (computation in progress but no cache)
+        if locals().get('need_lightweight_fallback', False):
+            # Lightweight metrics computation outside lock
+            serialized_teams = []
+            active_teams = [team_info for team_info in state.active_teams.values() 
+                          if team_info.get('status') in ['active', 'waiting_pair']]
+            active_teams_count = len(active_teams)
+            ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
+        elif not use_cached_data:
             # Compute fresh data outside lock
             if streaming_clients:
                 # Get expensive teams data only if streaming clients need it
@@ -1949,7 +1953,7 @@ def emit_dashboard_team_update() -> None:
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
-                _last_team_update_time = current_time  # Use original timestamp for consistent timing
+                _last_team_update_time = time()  # Use fresh timestamp reflecting actual cache completion
                 _team_update_computation_in_progress = False  # Clear computation flag
         else:
             # Use cached data (already retrieved under lock above)
@@ -2038,22 +2042,26 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                     cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
                     use_cached_data = True
                 else:
-                    # No cache available, use minimal data
-                    cached_teams = []
-                    cached_total_answers = 0  # Will need to be computed later if needed
-                    active_teams = [team_info for team_info in state.active_teams.values() 
-                                  if team_info.get('status') in ['active', 'waiting_pair']]
-                    cached_active_count = len(active_teams)
-                    cached_ready_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
-                    use_cached_data = True
+                    # No cache available, will need to compute minimal data outside lock
+                    use_cached_data = False
+                    need_minimal_fallback = True
             
             # Mark computation starting if needed
-            elif not use_cached_data:
+            elif not use_cached_data and not locals().get('need_minimal_fallback', False):
                 _full_update_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
-        if not use_cached_data:
+        # Handle minimal fallback first (computation in progress but no cache)
+        if locals().get('need_minimal_fallback', False):
+            # Minimal data computation outside lock
+            all_teams_for_metrics = []
+            total_answers = 0  # No database query in fallback mode
+            active_teams = [team_info for team_info in state.active_teams.values() 
+                          if team_info.get('status') in ['active', 'waiting_pair']]
+            active_teams_count = len(active_teams)
+            ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
+        elif not use_cached_data:
             # Database query (thread-safe, doesn't need lock)
             with app.app_context():
                 total_answers = Answers.query.count()
@@ -2084,7 +2092,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
-                _last_full_update_time = current_time  # Use original timestamp for consistent timing
+                _last_full_update_time = time()  # Use fresh timestamp reflecting actual cache completion
                 _full_update_computation_in_progress = False  # Clear computation flag
         else:
             # Use cached data (already retrieved under lock above)
