@@ -2,8 +2,13 @@
 Test dynamic statistics functionality for dashboard mode switching.
 """
 import pytest
-from unittest.mock import patch, MagicMock
-from src.sockets.dashboard import _process_single_team, _calculate_team_statistics, _calculate_success_statistics
+from unittest.mock import patch, MagicMock, call
+from datetime import datetime, UTC
+import time
+
+from src.sockets.dashboard_utils import _process_single_team
+from src.sockets.dashboard_statistics import _calculate_team_statistics, _calculate_success_statistics
+from src.sockets.dashboard import clear_team_caches
 from src.models.quiz_models import ItemEnum
 from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
 
@@ -21,12 +26,19 @@ class TestDynamicStatistics:
 
     @pytest.fixture(autouse=True)
     def clear_caches(self):
-        """Clear LRU caches before each test."""
-        from src.sockets.dashboard import _process_single_team, _calculate_team_statistics, _calculate_success_statistics
+        """Clear all caches before each test"""
+        from src.sockets.dashboard_utils import _process_single_team
+        from src.sockets.dashboard_statistics import _calculate_team_statistics, _calculate_success_statistics
+        
         _process_single_team.cache_clear()
         _calculate_team_statistics.cache_clear()
         _calculate_success_statistics.cache_clear()
+        
         yield
+        
+        _process_single_team.cache_clear()
+        _calculate_team_statistics.cache_clear()
+        _calculate_success_statistics.cache_clear()
 
     @pytest.fixture
     def mock_compute_functions(self):

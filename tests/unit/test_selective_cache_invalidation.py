@@ -1,18 +1,35 @@
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch, MagicMock, call
+from datetime import datetime
+import time
+import threading
 import sys
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from src.sockets.dashboard_cache import (
+    SelectiveCache,
+    selective_cache,
+    _hash_cache,
+    _correlation_cache,
+    _success_cache,
+    _classic_stats_cache,
+    _new_stats_cache,
+    _team_process_cache,
+    _make_cache_key
+)
+from src.sockets.dashboard import (
+    compute_team_hashes,
+    compute_correlation_matrix,
+    compute_success_metrics,
+    _calculate_team_statistics,
+    _calculate_success_statistics,
+    invalidate_team_caches,
+    clear_team_caches
+)
 
 # Add src to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', '..', 'src'))
-
-from src.sockets.dashboard import (
-    SelectiveCache, 
-    selective_cache,
-    invalidate_team_caches,
-    clear_team_caches,
-    _make_cache_key
-)
 
 
 class TestSelectiveCache:
@@ -349,13 +366,12 @@ class TestMakeCacheKey:
 class TestIntegrationWithDashboardFunctions:
     """Integration tests with actual dashboard functions."""
     
-    @pytest.fixture(autouse=True)
+    @pytest.fixture
     def setup_mocks(self):
-        """Set up mocks for dashboard functions."""
-        # Mock database and app context requirements
-        with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
-            mock_get_id.return_value = None  # Return None to avoid DB queries
-            yield
+        """Setup common mocks for integration tests"""
+        with patch('src.sockets.dashboard_statistics._get_team_id_from_name') as mock_get_id:
+            mock_get_id.return_value = 1
+            yield mock_get_id
     
     def test_invalidate_team_caches_function(self):
         """Test the global invalidate_team_caches function."""

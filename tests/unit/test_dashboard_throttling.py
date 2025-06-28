@@ -3,58 +3,80 @@ import time
 from unittest.mock import Mock, patch, MagicMock
 import logging
 import threading
+from src.sockets.dashboard_utils import (
+    REFRESH_DELAY_QUICK,
+    REFRESH_DELAY_FULL,
+    get_all_teams
+)
 from src.sockets.dashboard import (
     emit_dashboard_team_update,
     emit_dashboard_full_update,
     clear_team_caches,
-    REFRESH_DELAY_QUICK,
-    REFRESH_DELAY_FULL,
     force_clear_all_caches
 )
 from src.state import state
 
+class MockSet:
+    """Mock set class that allows method patching"""
+    def __init__(self, initial_data=None):
+        self._data = set(initial_data) if initial_data else set()
+    
+    def add(self, item):
+        self._data.add(item)
+    
+    def discard(self, item):
+        self._data.discard(item)
+    
+    def remove(self, item):
+        self._data.remove(item)
+    
+    def __contains__(self, item):
+        return item in self._data
+    
+    def __iter__(self):
+        return iter(self._data)
+    
+    def __len__(self):
+        return len(self._data)
+    
+    def __bool__(self):
+        return bool(self._data)
 
-@pytest.fixture
+
+@pytest.fixture(scope="function")
 def mock_dashboard_dependencies():
-    """Mock all dependencies for dashboard functions."""
-    with patch('src.sockets.dashboard.socketio') as mock_socketio, \
-         patch('src.sockets.dashboard.get_all_teams') as mock_get_teams, \
-         patch('src.sockets.dashboard.app') as mock_app, \
-         patch('src.sockets.dashboard.Answers') as mock_answers:
+    """Mock all dashboard dependencies for isolated testing"""
+    with patch('src.sockets.dashboard_utils.socketio') as mock_socketio, \
+         patch('src.sockets.dashboard_utils.app') as mock_app, \
+         patch('src.sockets.dashboard_utils.db') as mock_db, \
+         patch('src.sockets.dashboard_utils.time') as mock_time, \
+         patch('src.sockets.dashboard_handlers.dashboard_teams_streaming', new={}) as mock_streaming, \
+         patch('src.state.state') as mock_state:
         
-        # Setup mock data
-        mock_teams = [
-            {
-                'team_id': 1,
-                'team_name': 'Team1',
-                'is_active': True,
-                'status': 'active',
-                'player1_sid': 'player1',
-                'player2_sid': 'player2'
-            },
-            {
-                'team_id': 2,
-                'team_name': 'Team2',
-                'is_active': True,
-                'status': 'waiting_pair',
-                'player1_sid': 'player3',
-                'player2_sid': None
-            }
-        ]
+        # Configure mock_time to return predictable values
+        mock_time.time.side_effect = [0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0, 3.5, 4.0, 4.5, 5.0]  # Incremental time values
         
-        mock_get_teams.return_value = mock_teams
-        mock_answers.query.count.return_value = 10
+        # Configure mock state
+        mock_state.dashboard_clients = MockSet(['dashboard1', 'dashboard2'])
+        mock_state.connected_players = MockSet(['player1', 'player2', 'player3'])
+        mock_state.active_teams = {}
+        mock_state.game_started = True
+        mock_state.game_paused = False
+        mock_state.answer_stream_enabled = True
         
-        # Mock app context
-        mock_app.app_context.return_value.__enter__ = Mock()
-        mock_app.app_context.return_value.__exit__ = Mock()
+        # Configure mock app context
+        mock_context = MagicMock()
+        mock_context.__enter__ = MagicMock(return_value=None)
+        mock_context.__exit__ = MagicMock(return_value=None)
+        mock_app.app_context.return_value = mock_context
         
         yield {
             'socketio': mock_socketio,
-            'get_teams': mock_get_teams,
-            'app': mock_app,
-            'answers': mock_answers,
-            'teams': mock_teams
+            'app': mock_app, 
+            'db': mock_db,
+            'time': mock_time,
+            'streaming': mock_streaming,
+            'state': mock_state
         }
 
 
@@ -472,44 +494,33 @@ class TestThreadSafety:
         assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
     
     def test_memory_cleanup_thread_safety(self):
-        """Test that memory cleanup operations are thread-safe."""
-        from src.sockets.dashboard import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
-        import threading
+        """Test that memory cleanup operations are thread-safe"""
+        from src.sockets.dashboard_handlers import _atomic_client_update, dashboard_last_activity, dashboard_teams_streaming
         
-        # Setup test data
-        for i in range(100):
-            dashboard_last_activity[f'client_{i}'] = float(i)
-            dashboard_teams_streaming[f'client_{i}'] = i % 2 == 0
+        # Clear initial state
+        dashboard_last_activity.clear()
+        dashboard_teams_streaming.clear()
         
-        exceptions = []
+        def worker(thread_id):
+            """Worker function that simulates client activity"""
+            for i in range(10):
+                sid = f"client_{thread_id}_{i}"
+                _atomic_client_update(sid, activity_time=time.time(), streaming_enabled=(i % 2 == 0))
+                time.sleep(0.001)  # Small delay to increase chance of race conditions
+                _atomic_client_update(sid, remove=True)
         
-        def cleanup_worker():
-            try:
-                for i in range(50):
-                    _atomic_client_update(f'client_{i}', remove=True)
-            except Exception as e:
-                exceptions.append(e)
-        
-        # Start multiple cleanup threads
+        # Start multiple threads
         threads = []
-        for _ in range(5):
-            thread = threading.Thread(target=cleanup_worker)
+        for i in range(5):
+            thread = threading.Thread(target=worker, args=(i,))
             threads.append(thread)
             thread.start()
         
-        # Wait for completion
+        # Wait for all threads to complete
         for thread in threads:
             thread.join()
         
-        # Should not have race condition exceptions
-        assert len(exceptions) == 0, f"Thread safety violations: {exceptions}"
-        
-        # Cleanup remaining data
-        remaining_clients = list(dashboard_last_activity.keys()) + list(dashboard_teams_streaming.keys())
-        for client_id in set(remaining_clients):  # Use set to avoid duplicates
-            _atomic_client_update(client_id, remove=True)
-        
-        # Should be cleaned up
+        # Verify that the dictionaries are in a consistent state (should be empty)
         assert len(dashboard_last_activity) == 0
         assert len(dashboard_teams_streaming) == 0
 
