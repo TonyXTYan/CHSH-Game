@@ -33,8 +33,8 @@ dashboard_teams_streaming: Dict[str, bool] = {}
 
 # Cache configuration and throttling constants
 CACHE_SIZE = 1024  # LRU cache size for team calculations
-REFRESH_DELAY_QUICK = 1.0  # seconds - maximum refresh rate for team updates and data fetching
-REFRESH_DELAY_FULL = 3.0  # seconds - maximum refresh rate for expensive full dashboard updates
+REFRESH_DELAY_QUICK = 0.5  # seconds - maximum refresh rate for team updates and data fetching
+REFRESH_DELAY_FULL = 1.0  # seconds - maximum refresh rate for expensive full dashboard updates
 MIN_STD_DEV = 1e-10  # Minimum standard deviation to avoid zero uncertainty warnings
 
 # Single lock for all dashboard operations to prevent deadlocks
