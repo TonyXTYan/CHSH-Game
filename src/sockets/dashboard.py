@@ -1632,7 +1632,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
             # Update cache under lock and return
             with _safe_dashboard_operation():
                 _cached_teams_result = []
-                _last_refresh_time = current_time  # Update timestamp AFTER cache is populated
+                _last_refresh_time = time()  # Update timestamp AFTER cache is populated
             return []
         
         # Extract team IDs for bulk queries
@@ -1698,7 +1698,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
         # Update cache under minimal lock
         with _safe_dashboard_operation():
             _cached_teams_result = teams_list
-            _last_refresh_time = current_time  # Update timestamp AFTER cache is populated
+            _last_refresh_time = time()  # Update timestamp AFTER cache is populated
         
         return teams_list
         
@@ -1896,7 +1896,7 @@ def emit_dashboard_team_update() -> None:
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
-                _last_team_update_time = current_time  # Update timestamp AFTER cache is populated
+                _last_team_update_time = time()  # Update timestamp AFTER cache is populated
         else:
             # Use cached data (already retrieved under lock above)
             serialized_teams = cached_teams
@@ -2003,7 +2003,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
-                _last_full_update_time = current_time  # Update timestamp AFTER cache is populated
+                _last_full_update_time = time()  # Update timestamp AFTER cache is populated
         else:
             # Use cached data (already retrieved under lock above)
             all_teams_for_metrics = cached_teams

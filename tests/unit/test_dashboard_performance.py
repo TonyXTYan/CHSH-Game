@@ -5,6 +5,7 @@ Tests lock contention reduction and performance with multiple clients.
 import pytest
 import time
 import threading
+from contextlib import contextmanager
 from unittest.mock import patch, MagicMock
 from src.sockets.dashboard import (
     get_all_teams, emit_dashboard_team_update, emit_dashboard_full_update,
@@ -60,11 +61,28 @@ class TestLockOptimizations:
         # Track what happens inside vs outside locks
         operations_in_lock = []
         operations_outside_lock = []
+        lock_active = False
         
-        def track_lock_operation():
+        def track_lock_state():
+            # Monitor when the lock context manager is active
+            original_safe_operation = _safe_dashboard_operation
+            
+            @contextmanager
+            def mock_safe_operation():
+                nonlocal lock_active
+                lock_active = True
+                try:
+                    with original_safe_operation():
+                        yield
+                finally:
+                    lock_active = False
+            
+            return mock_safe_operation
+        
+        def track_db_operation():
             # Mock expensive operations to track when they're called
             def mock_db_query():
-                if threading.current_thread().name.endswith('_lock_thread'):
+                if lock_active:
                     operations_in_lock.append('db_query')
                 else:
                     operations_outside_lock.append('db_query')
@@ -72,13 +90,14 @@ class TestLockOptimizations:
             
             return mock_db_query
         
-        with patch('src.sockets.dashboard.Teams') as mock_teams, \
+        with patch('src.sockets.dashboard._safe_dashboard_operation', track_lock_state()), \
+             patch('src.sockets.dashboard.Teams') as mock_teams, \
              patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds, \
              patch('src.sockets.dashboard.Answers') as mock_answers:
             
-            mock_teams.query.all = track_lock_operation()
-            mock_rounds.query.filter.return_value.order_by.return_value.all = track_lock_operation()
-            mock_answers.query.filter.return_value.order_by.return_value.all = track_lock_operation()
+            mock_teams.query.all = track_db_operation()
+            mock_rounds.query.filter.return_value.order_by.return_value.all = track_db_operation()
+            mock_answers.query.filter.return_value.order_by.return_value.all = track_db_operation()
             
             get_all_teams()
             
