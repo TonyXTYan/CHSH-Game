@@ -7,7 +7,7 @@ This ensures that existing imports like `from src.sockets.dashboard import ...` 
 # Re-export everything from the split modules for backward compatibility
 
 # Database models and state that tests expect to mock
-from src.models.quiz_models import Teams, Answers, PairQuestionRounds
+from src.models.quiz_models import Teams, Answers, PairQuestionRounds, ItemEnum
 from src.state import state
 
 # Flask and SocketIO components that tests expect to mock
@@ -17,8 +17,8 @@ from flask import request
 import time
 import logging
 
-# Game logic functions
-from src.game_logic import start_new_round_for_pair
+# Game logic functions and constants that tests expect to mock
+from src.game_logic import start_new_round_for_pair, QUESTION_ITEMS, TARGET_COMBO_REPEATS
 
 # Create logger for compatibility
 logger = logging.getLogger(__name__)
@@ -70,13 +70,13 @@ from .routes import get_dashboard_data, download_csv
 # Re-export all public functions and variables
 __all__ = [
     # Database models and state
-    'Teams', 'Answers', 'PairQuestionRounds', 'state',
+    'Teams', 'Answers', 'PairQuestionRounds', 'ItemEnum', 'state',
     
     # Flask and SocketIO
     'socketio', 'app', 'db', 'emit', 'request', 'time', 'logger',
     
     # Game logic
-    'start_new_round_for_pair',
+    'start_new_round_for_pair', 'QUESTION_ITEMS', 'TARGET_COMBO_REPEATS',
     
     # Cache system
     'SelectiveCache', 'selective_cache', '_safe_dashboard_operation',
