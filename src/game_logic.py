@@ -104,8 +104,8 @@ def start_new_round_for_pair(team_name):
         db.session.commit()
         
         # Clear caches after database commit
-        from src.sockets.dashboard import clear_team_caches
-        clear_team_caches()
+        from src.sockets.dashboard import invalidate_team_caches
+        invalidate_team_caches(team_name)
 
         team_info['current_db_round_id'] = new_round_db.round_id
         team_info['answered_current_round'] = {}
