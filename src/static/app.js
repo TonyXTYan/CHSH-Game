@@ -466,26 +466,32 @@ function formatLastRoundMessage(roundResults) {
     }
     
     if (isFood) {
-        // Food theme: special outcome messages
-        const bothChose = answers.player1.answer && answers.player2.answer;
-        const bothSkipped = !answers.player1.answer && !answers.player2.answer;
-        const oneChoseOneSkipped = (answers.player1.answer && !answers.player2.answer) || 
-                                   (!answers.player1.answer && answers.player2.answer);
+        // Food theme: determine outcome based on CHSH strategy success
+        const isBY_or_YB = (player1_item === 'B' && player2_item === 'Y') || 
+                          (player1_item === 'Y' && player2_item === 'B');
+        
+        let isSuccessful;
+        if (isBY_or_YB) {
+            // B,Y or Y,B combinations: Should have DIFFERENT answers for success
+            isSuccessful = answers.player1.answer !== answers.player2.answer;
+        } else {
+            // All other combinations: Should have SAME answers for success
+            isSuccessful = answers.player1.answer === answers.player2.answer;
+        }
         
         let outcome;
-        if (bothChose) {
-            // Both chose - check if it's a "yuck" combination (🥟/🍫) or "yum" combination
-            const isYuckCombo = (player1_item === 'B' && player2_item === 'Y') || 
-                               (player1_item === 'Y' && player2_item === 'B');
-            outcome = isYuckCombo ? "that was yuck 🤮" : "that was yum 😋";
-        } else if (oneChoseOneSkipped) {
-            // One chose, one skipped - check combinations for outcome
-            const isGoodCombo = (player1_item === 'B' && player2_item === 'Y') || 
-                               (player1_item === 'Y' && player2_item === 'B');
-            outcome = isGoodCombo ? "that was yum 😋" : "that was bad 😭";
-        } else {
-            // Both skipped
+        if (!isSuccessful) {
+            // Any failed strategy
             outcome = "that was bad 😭";
+        } else if (player1_item === 'B' && player2_item === 'Y') {
+            // Successful B,Y (🥟🍫): yuck - bad food combo but strategically correct
+            outcome = "that was yuck 🤮";
+        } else if (player1_item === 'Y' && player2_item === 'B') {
+            // Successful Y,B (🍫🥟): yum - good combo and strategically correct
+            outcome = "that was yum 😋";
+        } else {
+            // Other successful combinations
+            outcome = "that was yum �";
         }
         
         return `Last round, your team (P1/P2) were asked ${p1ItemDisplay}/${p2ItemDisplay} and decisions was ${p1AnswerText}/${p2AnswerText}, ${outcome}`;
