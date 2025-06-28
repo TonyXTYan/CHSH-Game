@@ -1614,16 +1614,13 @@ def get_all_teams() -> List[Dict[str, Any]]:
     
     try:
         # First, check cache under minimal lock
+        current_time = time()
         with _safe_dashboard_operation():
-            current_time = time()
             time_since_last_refresh = current_time - _last_refresh_time
             
             # Return cached result if throttling applies
             if time_since_last_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
                 return _cached_teams_result
-            
-            # Mark that we're computing fresh data (prevents duplicate work)
-            _last_refresh_time = current_time
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         # These are thread-safe and don't need synchronization
@@ -1635,6 +1632,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
             # Update cache under lock and return
             with _safe_dashboard_operation():
                 _cached_teams_result = []
+                _last_refresh_time = current_time  # Update timestamp AFTER cache is populated
             return []
         
         # Extract team IDs for bulk queries
@@ -1700,6 +1698,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
         # Update cache under minimal lock
         with _safe_dashboard_operation():
             _cached_teams_result = teams_list
+            _last_refresh_time = current_time  # Update timestamp AFTER cache is populated
         
         return teams_list
         
@@ -1854,11 +1853,11 @@ def emit_dashboard_team_update() -> None:
         connected_players_count = len(state.connected_players)
         
         # Check client streaming preferences and throttling under minimal lock
+        current_time = time()
         with _safe_dashboard_operation():
             streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
             non_streaming_clients = [sid for sid in state.dashboard_clients if not dashboard_teams_streaming.get(sid, False)]
             
-            current_time = time()
             time_since_last_update = current_time - _last_team_update_time
             
             # Check if we can use cached data
@@ -1868,9 +1867,6 @@ def emit_dashboard_team_update() -> None:
                 cached_teams = _cached_team_metrics.get('cached_teams', [])
                 cached_active_count = _cached_team_metrics.get('active_teams_count', 0)
                 cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
-            else:
-                # Mark that we're computing fresh data
-                _last_team_update_time = current_time
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
@@ -1900,6 +1896,7 @@ def emit_dashboard_team_update() -> None:
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
+                _last_team_update_time = current_time  # Update timestamp AFTER cache is populated
         else:
             # Use cached data (already retrieved under lock above)
             serialized_teams = cached_teams
@@ -1954,6 +1951,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         connected_players_count = len(state.connected_players)
         
         # Determine client needs and check throttling under minimal lock
+        current_time = time()
         with _safe_dashboard_operation():
             if client_sid:
                 clients_needing_teams = [client_sid] if dashboard_teams_streaming.get(client_sid, False) else []
@@ -1961,7 +1959,6 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                 clients_needing_teams = [sid for sid in state.dashboard_clients 
                                        if dashboard_teams_streaming.get(sid, False) and sid != exclude_sid]
             
-            current_time = time()
             time_since_last_update = current_time - _last_full_update_time
             
             # Check if we can use cached data
@@ -1972,9 +1969,6 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                 cached_total_answers = _cached_full_metrics.get('total_answers', 0)
                 cached_active_count = _cached_full_metrics.get('active_teams_count', 0)
                 cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
-            else:
-                # Mark that we're computing fresh data
-                _last_full_update_time = current_time
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
@@ -2009,6 +2003,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
+                _last_full_update_time = current_time  # Update timestamp AFTER cache is populated
         else:
             # Use cached data (already retrieved under lock above)
             all_teams_for_metrics = cached_teams
