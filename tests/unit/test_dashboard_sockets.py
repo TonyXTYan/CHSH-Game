@@ -207,7 +207,7 @@ def test_compute_correlation_matrix_empty_team(mock_team, mock_db_session):
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
                 
                 result = compute_correlation_matrix(mock_team.team_name)
@@ -250,7 +250,7 @@ def test_compute_correlation_matrix_multiple_rounds(mock_team, mock_db_session):
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = compute_correlation_matrix(mock_team.team_name)
@@ -292,7 +292,7 @@ def test_compute_correlation_matrix_cross_term_stat(mock_team, mock_db_session):
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = compute_correlation_matrix(mock_team.team_name)
@@ -331,7 +331,7 @@ def test_compute_correlation_matrix_same_item_balance_mixed(mock_team, mock_db_s
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = compute_correlation_matrix(mock_team.team_name)
@@ -360,7 +360,7 @@ def test_compute_correlation_matrix_invalid_data(mock_team, mock_db_session):
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = [round1]
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = invalid_answers
                 
                 result = compute_correlation_matrix(mock_team.team_name)
@@ -501,7 +501,7 @@ def test_on_dashboard_join_with_callback(mock_request, mock_state, mock_socketio
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = [{'team_name': 'team1'}]
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 10
             
             # Call on_dashboard_join with callback
@@ -555,7 +555,7 @@ def test_get_all_teams(mock_state, mock_db_session):
             with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
                 mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
                 
-                with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+                with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                     mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                     
                     # Mock the optimized hash computation
@@ -620,7 +620,7 @@ def test_emit_dashboard_full_update(mock_state, mock_socketio):
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = [{'team_name': 'team1'}]
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 10
             
             # Test update for specific client without teams streaming
@@ -716,22 +716,26 @@ def test_teams_streaming_socket_events(mock_request, mock_state, mock_socketio):
     # Ensure client is authorized (already set in mock_state fixture)
     assert 'test_dashboard_sid' in mock_state.dashboard_clients
     
-    # Test set_teams_streaming
-    on_set_teams_streaming({'enabled': True})
-    assert dashboard_teams_streaming['test_dashboard_sid'] == True
-    
-    on_set_teams_streaming({'enabled': False})
-    assert dashboard_teams_streaming['test_dashboard_sid'] == False
-    
-    # Test request_teams_update with streaming disabled - should not emit
-    on_request_teams_update()
-    mock_socketio.emit.assert_not_called()
-    
-    # Test request_teams_update with streaming enabled
-    dashboard_teams_streaming['test_dashboard_sid'] = True
-    with patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
+    # Patch state for client_management module
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
+        
+        # Test set_teams_streaming
+        on_set_teams_streaming({'enabled': True})
+        assert dashboard_teams_streaming['test_dashboard_sid'] == True
+        
+        on_set_teams_streaming({'enabled': False})
+        assert dashboard_teams_streaming['test_dashboard_sid'] == False
+        
+        # Test request_teams_update with streaming disabled - should not emit
         on_request_teams_update()
-        mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
+        mock_socketio.emit.assert_not_called()
+        
+        # Test request_teams_update with streaming enabled
+        dashboard_teams_streaming['test_dashboard_sid'] = True
+        with patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
+            on_request_teams_update()
+            mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
 
 def test_on_dashboard_join_error_handling(mock_request, mock_state, mock_emit):
     """Test error handling in dashboard join"""
@@ -987,13 +991,17 @@ def test_disconnect_cleans_up_teams_streaming(mock_request, mock_state):
     dashboard_last_activity['test_dashboard_sid'] = 12345
     dashboard_teams_streaming['test_dashboard_sid'] = True
     
-    # Disconnect
-    handle_dashboard_disconnect('test_dashboard_sid')
-    
-    # Verify all client data was cleaned up
-    assert 'test_dashboard_sid' not in mock_state.dashboard_clients
-    assert 'test_dashboard_sid' not in dashboard_last_activity
-    assert 'test_dashboard_sid' not in dashboard_teams_streaming
+    # Patch state for client_management module
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
+        
+        # Disconnect
+        handle_dashboard_disconnect('test_dashboard_sid')
+        
+        # Verify all client data was cleaned up
+        assert 'test_dashboard_sid' not in mock_state.dashboard_clients
+        assert 'test_dashboard_sid' not in dashboard_last_activity
+        assert 'test_dashboard_sid' not in dashboard_teams_streaming
 
 def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
     """Test teams streaming behavior with clients in various states"""
@@ -1010,7 +1018,7 @@ def test_teams_streaming_with_mixed_client_states(mock_state, mock_socketio):
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = [{'team_name': 'team1'}]
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 10
             
             # Test update for streaming client
@@ -1088,7 +1096,7 @@ def test_metrics_sent_regardless_of_teams_streaming_state(mock_state, mock_socke
         # get_all_teams should NOT be called since no streaming clients
         mock_get_teams.return_value = []
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 10
             
             emit_dashboard_full_update('test_client')
@@ -1132,7 +1140,7 @@ def test_dashboard_join_respects_client_streaming_preference(mock_request, mock_
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Test with callback function
@@ -1168,7 +1176,7 @@ def test_dashboard_join_new_client_gets_default_streaming_disabled(mock_request,
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Test with callback function
@@ -1239,7 +1247,7 @@ def test_dashboard_join_no_duplicate_updates_without_callback(mock_request, mock
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Clear socketio mock to track calls
@@ -1282,7 +1290,7 @@ def test_dashboard_join_other_clients_receive_updates(mock_request, mock_state, 
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Clear socketio mock to track calls
@@ -1328,7 +1336,7 @@ def test_dashboard_join_with_callback_no_duplicate(mock_request, mock_state, moc
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Clear socketio mock
@@ -1367,7 +1375,7 @@ def test_emit_dashboard_full_update_exclude_sid_parameter(mock_state, mock_socke
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Clear socketio mock
@@ -1401,7 +1409,7 @@ def test_emit_dashboard_full_update_exclude_sid_with_client_sid(mock_state, mock
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Clear socketio mock
@@ -1428,7 +1436,7 @@ def test_dashboard_join_multiple_clients_no_duplicates(mock_request, mock_state,
     with patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams:
         mock_get_teams.return_value = mock_teams
         
-        with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+        with patch('src.sockets.dashboard.events.Answers') as mock_answers:
             mock_answers.query.count.return_value = 5
             
             # Simulate multiple clients joining
@@ -1855,7 +1863,7 @@ def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                 
                 # Track database calls to verify throttling
@@ -1902,7 +1910,7 @@ def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                 
                 # Track database calls to verify caching
@@ -1988,7 +1996,7 @@ def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_se
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                 
                 # Track database calls to verify throttling behavior
@@ -2065,7 +2073,7 @@ def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session)
         with patch('src.sockets.dashboard.team_processing.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
             
-            with patch('src.sockets.dashboard.team_processing.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.events.Answers') as mock_answers:
                 mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                 
                 # Track database calls to verify throttling
