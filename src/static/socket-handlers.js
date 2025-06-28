@@ -190,4 +190,20 @@ function initializeSocketHandlers(socket, callbacks) {
             callbacks.onGameModeChanged(data);
         }
     });
+
+    // Handle game theme changes
+    socket.on('game_theme_changed', (data) => {
+        console.log('Game theme changed:', data);
+        if (callbacks.onGameThemeChanged) {
+            callbacks.onGameThemeChanged(data);
+        }
+    });
+
+    // Handle complete game state sync
+    socket.on('game_state_sync', (data) => {
+        console.log('Game state sync:', data);
+        if (callbacks.onGameStateSync) {
+            callbacks.onGameStateSync(data);
+        }
+    });
 }

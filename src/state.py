@@ -8,6 +8,7 @@ class AppState:
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
         self.game_mode = 'new'  # Track current game mode: 'classic' or 'new'
+        self.game_theme = 'classic'  # Track current game theme: 'classic', 'food', etc.
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
@@ -24,6 +25,7 @@ class AppState:
         self.game_paused = False
         self.answer_stream_enabled = False
         self.game_mode = 'new'  # Reset game mode to new
+        self.game_theme = 'classic'  # Reset game theme to classic
 
     def get_player_slot(self, team_name, sid):
         """Get the database player slot (1 or 2) for a session ID in a team"""

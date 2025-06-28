@@ -216,6 +216,29 @@
                     </div>
                 </div>
 
+                <!-- Theme Control -->
+                <div class="control-section">
+                    <h4>Theme</h4>
+                    <div class="theme-controls">
+                        <div class="current-theme-display">
+                            <span>Current Theme: </span>
+                            <span id="current-game-theme" class="theme-indicator">Classic</span>
+                        </div>
+                        <div class="theme-selector">
+                            <label for="theme-dropdown">Select Theme:</label>
+                            <select id="theme-dropdown" class="control-btn theme-dropdown">
+                                <option value="classic">Classic (A, B, X, Y)</option>
+                                <option value="food">Food Ingredients (🍞, 🥟, 🥬, 🍫)</option>
+                            </select>
+                        </div>
+                        <div class="theme-description">
+                            <div id="theme-description-text">
+                                <strong>Classic Theme:</strong> Traditional ABXY notation for questions and game rules.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
                 <!-- Data Export Control -->
                 <div class="control-section">
                     <h4>Data Export</h4>
@@ -260,6 +283,7 @@
     </footer>
 
     <script src="https://cdn.socket.io/4.6.0/socket.io.min.js"></script>
+    <script src="/static/themes.js"></script>
     <script src="/static/dashboard.js"></script>
 </body>
 </html>

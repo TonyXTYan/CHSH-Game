@@ -9,6 +9,7 @@ let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
 let currentGameMode = 'new'; // Track current game mode
+let currentGameTheme = 'classic'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 
 // DOM elements
@@ -74,6 +75,25 @@ function updatePlayerPosition(position) {
 function updateGameMode(mode) {
     currentGameMode = mode;
     console.log('Game mode:', mode);
+    
+    // Update theme manager mode
+    if (window.themeManager) {
+        window.themeManager.setMode(mode);
+    }
+    
+    updatePlayerResponsibilityMessage();
+}
+
+// Update game theme
+function updateGameTheme(theme) {
+    currentGameTheme = theme;
+    console.log('Game theme:', theme);
+    
+    // Update theme manager theme
+    if (window.themeManager) {
+        window.themeManager.setTheme(theme);
+    }
+    
     updatePlayerResponsibilityMessage();
 }
 
@@ -96,14 +116,20 @@ function updatePlayerResponsibilityMessage() {
     }
 
     let message = '';
-    if (currentGameMode === 'new') {
-        if (playerPosition === 1) {
-            message = 'You are responsible for answering A and B questions';
-        } else if (playerPosition === 2) {
-            message = 'You are responsible for answering X and Y questions';
+    if (window.themeManager) {
+        // Use theme manager to get the themed hint
+        message = window.themeManager.getPlayerHint(playerPosition);
+    } else {
+        // Fallback for when theme manager is not available
+        if (currentGameMode === 'new') {
+            if (playerPosition === 1) {
+                message = 'You are responsible for answering A and B questions';
+            } else if (playerPosition === 2) {
+                message = 'You are responsible for answering X and Y questions';
+            }
+        } else if (currentGameMode === 'classic') {
+            message = 'You will need to answer questions from all categories (A, B, X, Y)';
         }
-    } else if (currentGameMode === 'classic') {
-        message = 'You will need to answer questions from all categories (A, B, X, Y)';
     }
 
     if (message) {
@@ -132,9 +158,11 @@ function resetToInitialView() {
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
     currentGameMode = 'new'; // Reset to new mode
+    currentGameTheme = 'classic'; // Reset to classic theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
     updateGameMode('new');
+    updateGameTheme('classic');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
 }
@@ -172,7 +200,23 @@ function updateGameState(newGameStarted = null, isReset = false) {
         // Show question section
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
-        questionItem.textContent = currentRound.item;
+        
+        // Apply themed display to the question item
+        if (window.themeManager && currentRound.item) {
+            const themedItem = window.themeManager.getItemDisplay(currentRound.item);
+            questionItem.textContent = themedItem;
+            
+            // Apply theme colors
+            const questionDiv = questionItem.closest('.question');
+            if (questionDiv) {
+                const bgColor = window.themeManager.getQuestionBoxColor(playerPosition);
+                const textColor = window.themeManager.getQuestionTextColor();
+                questionDiv.style.backgroundColor = bgColor;
+                questionDiv.style.color = textColor;
+            }
+        } else {
+            questionItem.textContent = currentRound.item;
+        }
         
         // If already answered this round
         if (currentRound.alreadyAnswered) {
@@ -201,6 +245,17 @@ function updateGameState(newGameStarted = null, isReset = false) {
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
         questionItem.textContent = "...";
+        
+        // Apply theme colors even for placeholder
+        if (window.themeManager) {
+            const questionDiv = questionItem.closest('.question');
+            if (questionDiv) {
+                const bgColor = window.themeManager.getQuestionBoxColor(playerPosition);
+                const textColor = window.themeManager.getQuestionTextColor();
+                questionDiv.style.backgroundColor = bgColor;
+                questionDiv.style.color = textColor;
+            }
+        }
         
         if (teamIncomplete) {
             // Team is incomplete - disable input and show appropriate message
@@ -233,6 +288,17 @@ function resetGameControls() {
     waitingMessage.classList.remove('visible');
     questionItem.textContent = '';
     currentRound = null;
+    
+    // Apply default theme styling
+    if (window.themeManager) {
+        const questionDiv = questionItem.closest('.question');
+        if (questionDiv) {
+            const bgColor = window.themeManager.getQuestionBoxColor(null); // null = default gray
+            const textColor = window.themeManager.getQuestionTextColor();
+            questionDiv.style.backgroundColor = bgColor;
+            questionDiv.style.color = textColor;
+        }
+    }
 }
 
 // Update available teams list
@@ -425,6 +491,9 @@ const callbacks = {
         if (data.game_mode) {
             updateGameMode(data.game_mode);
         }
+        if (data.game_theme) {
+            updateGameTheme(data.game_theme);
+        }
         updateGameState(data.game_started);
         updateTeamsList(data.available_teams);
     },
@@ -447,6 +516,11 @@ const callbacks = {
         // Update game mode if provided
         if (data.game_mode) {
             updateGameMode(data.game_mode);
+        }
+        
+        // Update theme if provided
+        if (data.game_theme) {
+            updateGameTheme(data.game_theme);
         }
         
         // Hide both create and join team sections when creating a new team
@@ -476,6 +550,11 @@ const callbacks = {
         // Update game mode if provided
         if (data.game_mode) {
             updateGameMode(data.game_mode);
+        }
+        
+        // Update theme if provided  
+        if (data.game_theme) {
+            updateGameTheme(data.game_theme);
         }
 
         showStatus(data.message, 'success');
@@ -538,6 +617,25 @@ const callbacks = {
         currentRound = data;
         currentRound.alreadyAnswered = false;
         lastClickedButton = null; // Reset last clicked button for new round
+        
+        // Apply themed display to the question item
+        if (window.themeManager && data.item) {
+            const themedItem = window.themeManager.getItemDisplay(data.item);
+            questionItem.textContent = themedItem;
+            
+            // Apply theme colors
+            const questionDiv = questionItem.closest('.question');
+            if (questionDiv) {
+                const bgColor = window.themeManager.getQuestionBoxColor(playerPosition);
+                const textColor = window.themeManager.getQuestionTextColor();
+                questionDiv.style.backgroundColor = bgColor;
+                questionDiv.style.color = textColor;
+            }
+        } else {
+            // Fallback to raw item
+            questionItem.textContent = data.item;
+        }
+        
         showStatus(`Round ${data.round_number}`, 'info');
         updateGameState();
     },
@@ -575,6 +673,20 @@ const callbacks = {
     onGameModeChanged: (data) => {
         updateGameMode(data.mode);
         showStatus(`Game mode changed to: ${data.mode.charAt(0).toUpperCase() + data.mode.slice(1)}`, 'info');
+    },
+
+    onGameThemeChanged: (data) => {
+        updateGameTheme(data.theme);
+        showStatus(`Game theme changed to: ${data.theme.charAt(0).toUpperCase() + data.theme.slice(1)}`, 'info');
+    },
+    
+    onGameStateSync: (data) => {
+        if (data.mode && data.mode !== currentGameMode) {
+            updateGameMode(data.mode);
+        }
+        if (data.theme && data.theme !== currentGameTheme) {
+            updateGameTheme(data.theme);
+        }
     }
 };
 
