@@ -7,6 +7,7 @@ on:
 
 permissions:
   contents: write  # Required for creating releases
+  models: read    # Required for using GitHub AI models
 
 jobs:
   release:
@@ -44,6 +45,69 @@ jobs:
           echo "$COMMITS" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
+      - name: Generate AI summary of changes
+        id: ai_summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Prepare the prompt for AI summarization
+          COMMIT_LIST="${{ env.commit_messages }}"
+          REPO_NAME="${{ github.repository }}"
+          VERSION="${{ steps.get_version.outputs.version }}"
+          
+          # Create a JSON payload for the AI model
+          JSON_PAYLOAD=$(cat <<EOF
+          {
+            "messages": [
+              {
+                "role": "user",
+                "content": "You are analyzing commit messages for a software release. Please provide a comprehensive, professional summary of the changes for repository '$REPO_NAME' version $VERSION.\n\nAnalyze the following commit messages and create a detailed release summary that includes:\n\n1. **Overview**: A brief summary of what this release accomplishes\n2. **New Features**: Any new functionality or capabilities added\n3. **Bug Fixes**: Issues that were resolved\n4. **Improvements**: Enhancements to existing features\n5. **Technical Changes**: Infrastructure, dependencies, or technical improvements\n6. **Breaking Changes**: Any changes that might affect existing users (if any)\n\nFormat the response as clean markdown with clear sections. Be specific about what changed and why it matters to users.\n\nCommit messages:\n$COMMIT_LIST\n\nPlease provide a comprehensive summary suitable for professional release notes."
+              }
+            ],
+            "model": "openai/gpt-4o",
+            "max_tokens": 2000,
+            "temperature": 0.3
+          }
+          EOF
+          )
+          
+          # Call GitHub's AI model with error handling
+          RESPONSE=$(curl -s -w "%{http_code}" "https://models.github.ai/inference/chat/completions" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $GITHUB_TOKEN" \
+            -d "$JSON_PAYLOAD")
+          
+          # Extract HTTP status code and response body
+          HTTP_CODE="${RESPONSE: -3}"
+          RESPONSE_BODY="${RESPONSE%???}"
+          
+          # Check if the request was successful and AI model responded
+          if [ "$HTTP_CODE" = "200" ] && [ -n "$RESPONSE_BODY" ]; then
+            # Extract the summary from the response
+            SUMMARY=$(echo "$RESPONSE_BODY" | jq -r '.choices[0].message.content // empty')
+            
+            if [ -n "$SUMMARY" ] && [ "$SUMMARY" != "null" ]; then
+              echo "ai_summary<<EOF" >> $GITHUB_ENV
+              echo "$SUMMARY" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+              echo "AI Summary generated successfully"
+            else
+              # Fallback to simple commit list
+              echo "ai_summary<<EOF" >> $GITHUB_ENV
+              echo "## Changes in this release:" >> $GITHUB_ENV
+              echo "$COMMIT_LIST" >> $GITHUB_ENV
+              echo "EOF" >> $GITHUB_ENV
+              echo "AI model response was empty, using fallback summary"
+            fi
+          else
+            # Fallback to simple commit list
+            echo "ai_summary<<EOF" >> $GITHUB_ENV
+            echo "## Changes in this release:" >> $GITHUB_ENV
+            echo "$COMMIT_LIST" >> $GITHUB_ENV
+            echo "EOF" >> $GITHUB_ENV
+            echo "AI model unavailable (HTTP $HTTP_CODE), using fallback summary"
+          fi
+
       - name: Create GitHub Pre-release
         uses: softprops/action-gh-release@v1
         with:
@@ -52,9 +116,12 @@ jobs:
           draft: false
           prerelease: true
           body: |
-            Automated pre-release for version ${{ steps.get_version.outputs.version }}
+            # Release ${{ steps.get_version.outputs.version }}
             
-            Commits in this release:
+            ## Summary
+            ${{ env.ai_summary }}
+            
+            ## Detailed Changes
             ${{ env.commit_messages }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
