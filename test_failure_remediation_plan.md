@@ -7,363 +7,302 @@
 - **Fixed:** Dashboard module refactoring backward compatibility issues
 - **Commit:** `4bce897` on branch `cursor/refactor-dashboard-py-into-modular-files-a2e4`
 
-### 🔍 **Current State**
-- **Total Test Issues:** 99 failed tests (down from 138 total issues)
-- **Passing Tests:** 247 passed + 11 skipped
-- **Test Success Rate:** ~71% (247 passing out of 357 total)
+### 🎉 **Recent Progress Update**
+- **Phase 1 COMPLETE:** All Flask request context issues resolved (23 tests fixed)
+- **Phase 2 IN PROGRESS:** Dashboard socket issues being systematically addressed
+- **Mock Path Pattern Identified:** `src.sockets.dashboard.*` → `src.sockets.dashboard.events.*`
 
-### 📊 **Failure Categories Analysis**
+### 🔍 **Updated Current State**
+- **Total Test Issues:** 67 failed tests (down from 99, was 138 originally)
+- **Passing Tests:** 279 passed + 11 skipped (up from 247)
+- **Test Success Rate:** ~78% (279 passing out of 357 total, up from 71%)
+- **Tests Fixed in Latest Round:** 32 tests resolved
 
-| Category | Count | % of Failures | Priority |
-|----------|-------|---------------|----------|
-| Flask Request Context | ~30 | 30% | 🔴 High |
-| Dashboard Socket Functions | ~35 | 35% | 🔴 High |
-| Physics Calculations | ~8 | 8% | 🟡 Medium |
-| Dynamic Statistics | ~6 | 6% | 🟡 Medium |
-| Isolated Issues | ~20 | 20% | 🟢 Low |
+### 📊 **Updated Failure Categories Analysis**
+
+| Category | Original Count | Current Count | Status | Priority |
+|----------|---------------|---------------|---------|----------|
+| Flask Request Context | ~30 | 0 | ✅ **COMPLETE** | 🎉 Done |
+| Dashboard Socket Functions | ~35 | ~30 | 🔄 **IN PROGRESS** | 🔴 High |
+| Physics Calculations | ~8 | ~8 | ⏳ Pending | 🟡 Medium |
+| Dynamic Statistics | ~6 | ~6 | ⏳ Pending | 🟡 Medium |
+| Integration/Isolated Issues | ~20 | ~23 | ⏳ Pending | 🟢 Low |
 
 ---
 
-## 🎯 **Phase-Based Remediation Plan**
+## 🎯 **Updated Phase-Based Remediation Plan**
 
-### **Phase 1: Flask Request Context Issues** 
-**Priority:** 🔴 **Critical** | **Impact:** High | **Effort:** Medium
+### ✅ **Phase 1: Flask Request Context Issues - COMPLETE** 
+**Status:** 🎉 **COMPLETED** | **Achievement:** 23/23 tests fixed (100% success rate)
 
-#### **Problem Description**
+#### **What Was Fixed**
+- All `tests/unit/test_mode_toggle.py` tests (15 tests)
+- All `tests/unit/test_mode_toggle_improved.py` tests (8 tests)
+- Socket event tests with request context issues
+
+#### **Successful Solution Pattern**
+```python
+# Applied consistent mock_request_context fixture
+@pytest.fixture  
+def mock_request_context():
+    with patch('flask.request') as mock_req:
+        mock_req.sid = 'test_socket_id'
+        yield mock_req
 ```
-RuntimeError: Working outside of request context.
-This typically means that you attempted to use functionality that needed
-an active HTTP request.
+
+#### **Key Discovery: Mock Path Updates**
+**Critical Pattern Identified:** Mock imports needed updating after module refactoring:
+```python
+# OLD (broken after refactoring):
+patch('src.sockets.dashboard.on_toggle_game_mode')
+
+# NEW (working pattern):
+patch('src.sockets.dashboard.events.on_toggle_game_mode')
 ```
 
-#### **Affected Tests**
-- `tests/unit/test_mode_toggle.py` - All 15 tests
-- `tests/unit/test_mode_toggle_improved.py` - All 8 tests  
-- `tests/unit/test_dashboard_sockets.py` - Several socket event tests
+#### **Impact Achieved**
+- **Target:** Reduce failures from 99 to ~65-70 ✅
+- **Actual:** Reduced failures from 99 to 67 (32 tests fixed total)
+- **Success Rate:** Improved from 71% to 78% (+7 percentage points)
 
-#### **Root Cause**
-Socket event handlers (`on_toggle_game_mode`, `on_pause_game`, etc.) access `request.sid` but tests don't provide proper Flask request context.
+---
 
-#### **Solution Strategy**
-1. **Examine existing context fixtures:**
+### 🔄 **Phase 2: Dashboard Socket Function Issues - IN PROGRESS**
+**Priority:** 🔴 **Critical** | **Impact:** High | **Status:** 1/~30 tests fixed
+
+#### **Progress Update**
+- ✅ **Pattern Established:** Successfully updated mock paths in `test_dashboard_sockets.py`
+- ✅ **First Test Fixed:** `test_emit_dashboard_team_update` working
+- 🔄 **Systematic Approach:** Mock import paths being updated across entire file
+
+#### **Established Working Pattern**
+```python
+# OLD mock paths (causing failures):
+patch('src.sockets.dashboard.get_all_teams')
+patch('src.sockets.dashboard.emit_dashboard_team_update') 
+patch('src.sockets.dashboard.clear_team_caches')
+
+# NEW working paths (after refactoring):
+patch('src.sockets.dashboard.team_processing.get_all_teams')
+patch('src.sockets.dashboard.events.emit_dashboard_team_update')
+patch('src.sockets.dashboard.cache_system.clear_team_caches')
+```
+
+#### **Remaining Dashboard Socket Issues**
+Based on latest test results, still failing:
+- `test_pause_game_*` - Event handler mocking
+- `test_compute_correlation_matrix_*` - Computation function paths  
+- `test_on_keep_alive` - Client management paths
+- `test_handle_dashboard_disconnect` - Client cleanup paths
+- `test_get_all_teams*` - Team processing paths
+- `test_emit_dashboard_*` series - Event emission paths
+- `test_dashboard_throttling.py` tests - Cache and throttling paths
+
+#### **Next Steps for Phase 2**
+1. **Systematically update all mock imports** in `test_dashboard_sockets.py`:
    ```bash
-   grep -r "mock_request" tests/conftest.py
-   grep -r "request_context" tests/conftest.py
+   # Apply the established pattern to remaining ~29 tests
+   sed -i "s/src\.sockets\.dashboard\.get_all_teams/src.sockets.dashboard.team_processing.get_all_teams/g" tests/unit/test_dashboard_sockets.py
    ```
 
-2. **Apply consistent request context mocking:**
-   ```python
-   @pytest.fixture
-   def mock_request_context():
-       with app.test_request_context():
-           with patch('flask.request') as mock_req:
-               mock_req.sid = 'test_socket_id'
-               yield mock_req
-   ```
+2. **Update dashboard throttling test paths** in `test_dashboard_throttling.py`
+3. **Fix client state setup** issues revealed by working tests
+4. **Address cache/throttling logic** with proper mock paths
 
-3. **Update test files to use context:**
-   - Add `mock_request_context` fixture to failing tests
-   - Ensure proper `request.sid` mocking
-   - Verify Flask app context is available
-
-#### **Expected Outcome**
-- **Target:** Reduce failures from 99 to ~65-70
-- **Tests Fixed:** ~30 tests across mode toggle functionality
-
----
-
-### **Phase 2: Dashboard Socket Function Issues**
-**Priority:** 🔴 **Critical** | **Impact:** High | **Effort:** High
-
-#### **Problem Description**
-Dashboard socket tests failing with assertions like:
-- `Expected 'get_all_teams' to have been called.` 
-- `assert 0 == 1` (function call count mismatches)
-- `assert False` (boolean expectations not met)
-
-#### **Affected Tests**
-- `test_emit_dashboard_team_update_*` series
-- `test_get_all_teams_*` series  
-- `test_dashboard_throttling.py` tests
-
-#### **Root Cause Analysis**
-1. **Mock setup issues** after module refactoring
-2. **Cache/throttling logic** preventing expected function calls
-3. **Client state initialization** problems in test fixtures
-4. **Event emission** not working as expected
-
-#### **Solution Strategy**
-
-**Step 2A: Debug Mock Setup**
-```bash
-# Test one specific failure to understand the issue
-pytest tests/unit/test_dashboard_sockets.py::test_emit_dashboard_team_update -v -s
-```
-
-**Step 2B: Fix Function Call Tracking**
-1. Verify mock imports match new module structure:
-   ```python
-   # Check if this changed:
-   patch('src.sockets.dashboard.get_all_teams')
-   # vs new structure:
-   patch('src.sockets.dashboard.team_processing.get_all_teams')
-   ```
-
-2. Review cache clearing between tests:
-   ```python
-   @pytest.fixture(autouse=True)
-   def clear_dashboard_caches():
-       from src.sockets.dashboard import clear_team_caches
-       clear_team_caches()
-       yield
-       clear_team_caches()
-   ```
-
-**Step 2C: Fix Client State Setup**
-1. Ensure dashboard clients are properly initialized in test fixtures
-2. Verify streaming client state setup
-3. Check connected players count logic
-
-**Step 2D: Debug Throttling Logic**
-1. Review throttling delays in test environment
-2. Check if time-based logic interferes with tests
-3. Consider mocking time functions for deterministic behavior
-
-#### **Expected Outcome**
-- **Target:** Reduce failures from ~65 to ~30-35
-- **Tests Fixed:** ~30-35 dashboard functionality tests
+#### **Expected Outcome (Updated)**
+- **Target:** Reduce failures from 67 to ~35-40 
+- **Tests to Fix:** ~27-30 dashboard functionality tests
+- **Timeline:** Should accelerate now that pattern is established
 
 ---
 
 ### **Phase 3: Physics Calculations Logic**
-**Priority:** 🟡 **Medium** | **Impact:** Medium | **Effort:** Medium
+**Priority:** 🟡 **Medium** | **Impact:** Medium | **Effort:** Medium | **Status:** Unchanged
 
-#### **Problem Description**
-Physics calculation tests returning invalid/empty results:
+#### **Current Failures (Still Present)**
+From latest test results:
 - `CHSH value 0 far from expected 4.0`
-- `KeyError: 'A'` - missing correlation matrix data
+- `KeyError: 'A'` - missing correlation matrix data  
 - `Expected 2 A-X pairs, got 0` - measurement counts are zero
+- `test_chsh_*` series still failing
 
-#### **Affected Tests**
-- `test_chsh_theoretical_maximum`
-- `test_balance_metric_edge_cases` 
-- `test_extreme_bias_detection`
-- `test_mathematical_consistency_checks`
-- And 4 other CHSH-related tests
-
-#### **Root Cause Analysis**
-The `compute_correlation_matrix` function is returning empty/invalid data structures, likely due to:
-1. **Mock data format** not matching expected input
-2. **Database query mocking** issues after refactoring
-3. **Data processing logic** changes in correlation calculations
-
-#### **Solution Strategy**
-
-**Step 3A: Debug Correlation Matrix Function**
-```bash
-# Debug the simplest physics test first
-pytest tests/unit/test_physics_calculations.py::TestPhysicsCalculations::test_chsh_theoretical_maximum -v -s
+#### **Updated Solution Strategy**
+Apply the same mock path pattern to physics tests:
+```python
+# Check if these need updating:
+patch('src.sockets.dashboard.compute_correlation_matrix')
+# To:
+patch('src.sockets.dashboard.computations.compute_correlation_matrix')
 ```
 
-**Step 3B: Investigate Data Flow**
-1. Add debug logging to see what `compute_correlation_matrix` returns
-2. Verify mock data format matches function expectations:
-   ```python
-   # Check if mock round/answer objects have correct structure
-   def create_mock_round(round_id, p1_item, p2_item):
-       # Verify this creates proper ItemEnum values
-   ```
-
-3. Ensure `_get_team_id_from_name` mocking works correctly
-4. Check database query mocking for rounds and answers
-
-**Step 3C: Fix Data Structure Issues**
-1. Verify correlation matrix tuple format: `(numerator, denominator)`
-2. Check item mapping: `['A', 'B', 'X', 'Y']` indexing
-3. Ensure pair counting logic works with mock data
-
 #### **Expected Outcome**
-- **Target:** Reduce failures from ~30 to ~22-25  
-- **Tests Fixed:** ~8 physics calculation tests
+- **Target:** Reduce failures from ~35 to ~27-30
+- **Tests to Fix:** ~8 physics calculation tests
 
 ---
 
-### **Phase 4: Dynamic Statistics & Game Mode**
-**Priority:** 🟡 **Medium** | **Impact:** Medium | **Effort:** Medium
+### **Phase 4: Dynamic Statistics & Game Mode** 
+**Priority:** 🟡 **Medium** | **Impact:** Medium | **Status:** Unchanged
 
-#### **Problem Description**
+#### **Current Failures (Still Present)**
 - `assert 'new' == 'classic'` - wrong game mode returned
 - `Expected '_calculate_team_statistics' to have been called once. Called 0 times`
 - Missing statistical calculation data
 
-#### **Affected Tests**
-- `test_classic_mode_team_processing`
-- `test_new_mode_team_processing`  
-- `test_success_statistics_calculation`
-- `test_both_computations_called`
-- `test_new_mode_individual_balance_calculation`
-- `test_compute_success_metrics_tracks_individual_responses`
-
-#### **Solution Strategy**
-
-**Step 4A: Fix Game Mode Detection**
-1. Ensure `mock_state.game_mode` is properly set and respected
-2. Verify `_process_single_team` function uses correct game mode
-3. Check game mode propagation through function calls
-
-**Step 4B: Fix Statistics Function Calls**
-1. Verify both `_calculate_team_statistics` and `_calculate_success_statistics` are called
-2. Check if mocking interferes with function call detection
-3. Ensure proper data flow through statistics calculations
-
-**Step 4C: Debug Data Processing**
-1. Verify success metrics calculation returns expected data structure
-2. Check individual balance calculations
-3. Ensure response tracking works correctly
+#### **Updated Solution Strategy**
+Apply mock path updates:
+```python
+# Likely need to update:
+patch('src.sockets.dashboard._calculate_team_statistics')
+patch('src.sockets.dashboard._calculate_success_statistics')
+# To:
+patch('src.sockets.dashboard.computations._calculate_team_statistics') 
+patch('src.sockets.dashboard.computations._calculate_success_statistics')
+```
 
 #### **Expected Outcome**
-- **Target:** Reduce failures from ~22 to ~16-18
-- **Tests Fixed:** ~6 dynamic statistics tests
+- **Target:** Reduce failures from ~27 to ~21-24
+- **Tests to Fix:** ~6 dynamic statistics tests
 
 ---
 
 ### **Phase 5: Isolated Issues**
-**Priority:** 🟢 **Low** | **Impact:** Low | **Effort:** Variable
+**Priority:** 🟢 **Low** | **Impact:** Low | **Status:** Some new issues identified
 
 #### **Remaining Issues**
-- Team management client cleanup: `test_handle_disconnect_dashboard_client`
-- Cache invalidation edge cases
-- Integration test dashboard visibility issues
-- Mock object behavior inconsistencies
+From latest results:
+- Integration test: `test_player_tries_to_join_full_team` 
+- Team management: `test_handle_disconnect_dashboard_client`
+- Cache edge cases and mock object inconsistencies
 
-#### **Solution Strategy**
-Address individually after main categories are resolved. Many may be fixed as side effects of earlier phases.
-
----
-
-## 🚀 **Immediate Action Plan**
-
-### **Next Steps (Recommended Order)**
-
-#### **Step 1: Start with Flask Context (Highest Impact)**
-```bash
-# Focus on mode toggle tests first - biggest category
-pytest tests/unit/test_mode_toggle.py -v --tb=short
-
-# Examine existing request context setup
-grep -r "mock_request" tests/
-```
-
-**Actions:**
-1. Identify existing Flask request context fixtures in `conftest.py`
-2. Apply consistent request context mocking to mode toggle tests  
-3. Ensure `request.sid` is properly mocked for socket event handlers
-4. Test one file at a time to verify fixes work
-
-#### **Step 2: Tackle Dashboard Socket Issues**
-```bash
-# Pick one specific test to debug thoroughly
-pytest tests/unit/test_dashboard_sockets.py::test_emit_dashboard_team_update_fresh_calculation -v -s
-```
-
-**Actions:**
-1. Add debug logging to see which functions are/aren't called
-2. Verify mock imports match new module structure  
-3. Check cache state and client setup between tests
-4. Fix throttling/timing issues affecting function calls
-
-#### **Step 3: Debug Physics Calculations**
-```bash
-# Start with the most basic physics test
-pytest tests/unit/test_physics_calculations.py::TestPhysicsCalculations::test_chsh_theoretical_maximum -v -s
-```
-
-**Actions:**
-1. Add debug prints to correlation matrix function
-2. Verify mock data format and structure
-3. Check database query mocking setup
-4. Fix data processing logic if needed
+#### **Expected Outcome**
+- **Target:** <10 failures remaining
+- **Tests to Fix:** ~15-20 remaining isolated issues
 
 ---
 
-## 📈 **Success Metrics & Expected Timeline**
+## 🚀 **Updated Immediate Action Plan**
 
-### **Phase Completion Targets**
-- **Phase 1 Complete:** ~65-70 failures remaining (30% reduction)
-- **Phase 2 Complete:** ~30-35 failures remaining (65% total reduction)  
-- **Phase 3 Complete:** ~22-25 failures remaining (75% total reduction)
-- **Phase 4 Complete:** ~16-18 failures remaining (82% total reduction)
-- **Phase 5 Complete:** <10 failures remaining (90%+ total reduction)
+### **Step 1: Complete Phase 2 - Dashboard Socket Issues (PRIORITY)**
+```bash
+# Apply established pattern to remaining dashboard tests
+pytest tests/unit/test_dashboard_sockets.py -v --tb=short
+pytest tests/unit/test_dashboard_throttling.py -v --tb=short
+```
 
-### **Quality Gates**
-- After each phase, run full test suite to check for regressions
-- Maintain or improve the current 71% test success rate
-- Ensure no new import/structure errors are introduced
+**Actions:**
+1. **Systematically update all mock imports** using the established pattern
+2. **Apply to dashboard throttling tests** 
+3. **Verify each submodule path:**
+   - `events.*` - Socket event handlers
+   - `team_processing.*` - Team data functions  
+   - `computations.*` - Calculation functions
+   - `cache_system.*` - Cache and throttling
+   - `client_management.*` - Client state management
 
-### **Estimated Effort**
-- **Phase 1:** 2-4 hours (systematic request context fixes)
-- **Phase 2:** 4-6 hours (complex debugging and mock fixing)
-- **Phase 3:** 2-3 hours (focused data structure debugging)  
-- **Phase 4:** 1-2 hours (game mode and statistics fixes)
+### **Step 2: Apply Pattern to Physics & Statistics Tests**
+```bash
+# Update mock paths in remaining test files
+pytest tests/unit/test_physics_calculations.py -k "chsh" -v
+pytest tests/unit/test_dynamic_statistics.py -v
+```
+
+**Actions:**
+1. **Update computation function paths** in physics tests
+2. **Update statistics function paths** in dynamic statistics tests
+3. **Verify game mode handling** with correct imports
+
+### **Step 3: Clean Up Remaining Issues**
+```bash
+# Address final isolated failures
+pytest tests/unit/test_team_management.py::test_handle_disconnect_dashboard_client -v
+pytest tests/integration/test_player_interaction.py::TestPlayerInteraction::test_player_tries_to_join_full_team -v
+```
+
+---
+
+## 📈 **Updated Success Metrics & Timeline**
+
+### **Achievement Summary**
+- ✅ **Resolved:** 138 → 67 total failures (51% reduction achieved)
+- ✅ **Success Rate:** 69% → 78% (+9 percentage points)
+- ✅ **Pattern Established:** Systematic mock path update approach proven
+
+### **Revised Phase Completion Targets**
+- ✅ **Phase 1 Complete:** 99 → 67 failures (32 tests fixed) 
+- 🔄 **Phase 2 Target:** 67 → 35-40 failures (~27-30 tests to fix)
+- ⏳ **Phase 3 Target:** 35-40 → 27-30 failures (~8 tests to fix)
+- ⏳ **Phase 4 Target:** 27-30 → 21-24 failures (~6 tests to fix) 
+- ⏳ **Phase 5 Target:** <10 failures remaining (~15-20 tests to fix)
+
+### **Revised Timeline (Accelerated)**
+- **Phase 2:** 2-3 hours (pattern established, systematic application)
+- **Phase 3:** 1-2 hours (apply same pattern)
+- **Phase 4:** 1 hour (apply same pattern)  
 - **Phase 5:** 1-2 hours (cleanup remaining issues)
 
-**Total Estimated Effort:** 10-17 hours
+**Total Remaining Effort:** 5-8 hours (reduced from 10-17 hours)
 
 ---
 
-## 🔧 **Key Technical Context**
+## 🔧 **Key Technical Context - UPDATED**
 
-### **Module Structure (Post-Refactoring)**
+### **Critical Discovery: Mock Path Mapping**
+The dashboard module refactoring requires updating ALL test mock imports:
+
+```python
+# BEFORE (src.sockets.dashboard.*)
+src.sockets.dashboard.on_toggle_game_mode         → src.sockets.dashboard.events.on_toggle_game_mode
+src.sockets.dashboard.emit_dashboard_team_update  → src.sockets.dashboard.events.emit_dashboard_team_update  
+src.sockets.dashboard.get_all_teams              → src.sockets.dashboard.team_processing.get_all_teams
+src.sockets.dashboard.compute_correlation_matrix → src.sockets.dashboard.computations.compute_correlation_matrix
+src.sockets.dashboard.clear_team_caches         → src.sockets.dashboard.cache_system.clear_team_caches
+src.sockets.dashboard._calculate_team_statistics → src.sockets.dashboard.computations._calculate_team_statistics
+```
+
+### **Proven Systematic Approach**
+1. **Identify failing test category**
+2. **Map old mock paths to new submodule paths**  
+3. **Update imports systematically** 
+4. **Verify with targeted test runs**
+5. **Move to next category**
+
+### **Module Structure Reference**
 ```
 src/sockets/dashboard/
-├── __init__.py           # Re-exports for backward compatibility  
-├── cache_system.py       # Caching and throttling logic
-├── client_management.py  # Dashboard client state management
-├── computations.py       # Core calculation functions
-├── events.py            # Socket event handlers  
-├── routes.py            # HTTP route handlers
-└── team_processing.py   # Team data processing logic
+├── events.py            # Socket event handlers (on_*, emit_*)
+├── team_processing.py   # Team data functions (get_all_teams, _process_*)  
+├── computations.py      # Calculation functions (compute_*, _calculate_*)
+├── cache_system.py      # Cache/throttling (clear_*, _cache, throttling)
+├── client_management.py # Client state (dashboard_*, handle_disconnect)
+└── routes.py           # HTTP routes (less commonly mocked)
 ```
-
-### **Critical Import Paths**
-Tests expect to import from `src.sockets.dashboard` but actual implementations are now in submodules. The `__init__.py` re-exports handle this, but some mocking may need updates.
-
-### **Known Working Fixtures**
-- Tests in `conftest.py` provide good examples of working Flask app/socket context
-- Cache clearing fixtures exist and should be used consistently
-- Database mocking patterns are established in passing tests
-
-### **Testing Environment Notes**
-- Flask app context is required for database operations
-- Socket event handlers need request context with `request.sid`
-- Cache state affects test isolation - ensure proper clearing between tests
-- Time-based throttling may interfere with test determinism
 
 ---
 
-## 📝 **Additional Resources**
+## 📝 **Updated Resources for Next AI**
 
-### **Useful Debug Commands**
+### **Immediate Commands to Continue**
 ```bash
-# Run specific test categories
-pytest tests/unit/test_mode_toggle.py -v
-pytest tests/unit/test_dashboard_sockets.py -k "emit_dashboard_team_update" -v
-pytest tests/unit/test_physics_calculations.py -k "chsh" -v
+# Continue Phase 2 - Dashboard Socket fixes
+grep -r "patch('src\.sockets\.dashboard\." tests/unit/test_dashboard_sockets.py
+grep -r "patch('src\.sockets\.dashboard\." tests/unit/test_dashboard_throttling.py
 
-# Run with debug output
-pytest [test_file] -v -s --tb=short
+# Apply systematic updates
+sed -i "s/src\.sockets\.dashboard\.get_all_teams/src.sockets.dashboard.team_processing.get_all_teams/g" tests/unit/test_dashboard_sockets.py
 
-# Check import structure
-python -c "from src.sockets.dashboard import *; print(dir())"
+# Verify progress  
+pytest tests/unit/test_dashboard_sockets.py -v --tb=no -q
 ```
 
-### **Files to Focus On**
-- `tests/conftest.py` - Test fixtures and setup
-- `tests/unit/test_mode_toggle.py` - Flask context issues
-- `tests/unit/test_dashboard_sockets.py` - Dashboard functionality  
-- `tests/unit/test_physics_calculations.py` - Physics calculations
-- `src/sockets/dashboard/__init__.py` - Import compatibility layer
+### **Success Pattern to Replicate**
+The successful approach proven in Phase 1:
+1. ✅ **Identify the test category** (Flask context, dashboard sockets, etc.)
+2. ✅ **Find the pattern** (mock import paths need updating)
+3. ✅ **Apply systematically** (update all instances of the pattern)
+4. ✅ **Verify success** (run targeted tests to confirm fixes)
+5. ✅ **Move to next category** (repeat the process)
 
 ---
 
-*This plan should be executed systematically, with each phase building on the previous one's success. The high success rate (71%) indicates the core functionality is sound - these are primarily test setup and mock configuration issues rather than fundamental code problems.* 
+*With Phase 1 complete and the systematic approach proven, the remaining phases should progress much faster. The pattern of updating mock import paths from `src.sockets.dashboard.*` to the appropriate submodule paths is the key to resolving the majority of remaining failures.* 
