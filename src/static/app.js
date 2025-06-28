@@ -224,7 +224,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
             trueBtn.disabled = true;
             falseBtn.disabled = true;
             
-            // Show last round results if available
+            // Show last round results if available (graceful fallback for null data)
             const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
             if (lastRoundMessage) {
                 waitingMessage.textContent = lastRoundMessage;
@@ -246,7 +246,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 waitingMessage.textContent = "Game is paused";
                 waitingMessage.classList.add('visible');
             } else {
-                // Show last round results if available, otherwise default message
+                // Show last round results if available (graceful fallback for null data)
                 const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
                 if (lastRoundMessage) {
                     waitingMessage.textContent = lastRoundMessage;
@@ -482,7 +482,7 @@ function setAnswerButtonsEnabled(enabled) {
         waitingMessage.textContent = "Game is paused";
         waitingMessage.classList.add('visible');
     } else {
-        // Show last round results if available, otherwise default message
+        // Show last round results if available (graceful fallback for null data)
         const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
         if (lastRoundMessage && currentRound?.alreadyAnswered) {
             waitingMessage.textContent = lastRoundMessage;
@@ -789,10 +789,11 @@ function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
 }
 
 // Function to generate last round result message
+// Safely handles None/null values from backend when answer data is incomplete
 function generateLastRoundMessage(lastRound, theme, playerPos) {
     if (!lastRound || !lastRound.p1_item || !lastRound.p2_item || 
         lastRound.p1_answer === null || lastRound.p2_answer === null) {
-        return null;
+        return null; // Falls back to "Waiting for next round..." message
     }
     
     const p1Item = lastRound.p1_item;

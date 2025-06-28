@@ -126,7 +126,7 @@ function initializeSocketHandlers(socket, callbacks) {
     socket.on('round_complete', (data) => {
         callbacks.showStatus(`Round ${data.round_number} complete! Next round coming up...`, 'success');
         
-        // Store last round details if available
+        // Store last round details if available (safely handles incomplete data)
         if (data.last_round_details && typeof callbacks.setLastRoundResults === 'function') {
             callbacks.setLastRoundResults(data.last_round_details);
         }

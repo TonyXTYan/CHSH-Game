@@ -119,21 +119,23 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                     p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
                     
                     for answer in round_answers:
-                        # Correctly match answers to players using session ID
+                        # CRITICAL: Match answers by session ID, not item value, to handle duplicate items
+                        # (e.g., when both players receive the same item like "A" or "X")
                         if answer.player_session_id == db_team.player1_session_id:
                             p1_answer = answer.response_value
                         elif answer.player_session_id == db_team.player2_session_id:
                             p2_answer = answer.response_value
                     
                     # Emit enhanced round_complete event with detailed results
+                    # Note: Client safely handles None values in answers via generateLastRoundMessage()
                     socketio.emit('round_complete', {
                         'team_name': team_name,
                         'round_number': team_info['current_round_number'],
                         'last_round_details': {
                             'p1_item': p1_item,
                             'p2_item': p2_item,
-                            'p1_answer': p1_answer,
-                            'p2_answer': p2_answer
+                            'p1_answer': p1_answer,  # May be None if session ID mismatch
+                            'p2_answer': p2_answer   # May be None if session ID mismatch
                         }
                     }, to=team_name)  # type: ignore
                 else:
