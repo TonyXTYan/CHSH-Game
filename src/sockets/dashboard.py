@@ -335,6 +335,37 @@ def on_toggle_game_mode() -> None:
         logger.error(f"Error in on_toggle_game_mode: {str(e)}", exc_info=True)
         emit('error', {'message': 'An error occurred while toggling game mode'})  # type: ignore
 
+@socketio.on('change_game_theme')
+def on_change_game_theme(data: Dict[str, Any]) -> None:
+    """Change the game theme and broadcast to all clients."""
+    try:
+        sid = request.sid  # type: ignore
+        if sid not in state.dashboard_clients:
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
+            return
+
+        new_theme = data.get('theme')
+        if not new_theme or not isinstance(new_theme, str):
+            emit('error', {'message': 'Invalid theme specified'})  # type: ignore
+            return
+
+        # Update theme state
+        state.game_theme = new_theme
+        logger.info(f"Game theme changed to: {new_theme}")
+        
+        # Notify all clients (players and dashboards) about the theme change
+        socketio.emit('game_theme_changed', {'theme': new_theme})
+        
+        # Also send mode with theme for complete synchronization
+        socketio.emit('game_state_sync', {
+            'mode': state.game_mode,
+            'theme': state.game_theme
+        })
+        
+    except Exception as e:
+        logger.error(f"Error in on_change_game_theme: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while changing game theme'})  # type: ignore
+
 @selective_cache(_hash_cache)
 def compute_team_hashes(team_name: str) -> Tuple[str, str]:
     """Generate unique history hashes for team data consistency checking."""
@@ -2011,7 +2042,8 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                 'started': state.game_started,
                 'paused': state.game_paused,
                 'streaming_enabled': state.answer_stream_enabled,
-                'mode': state.game_mode  # Include current game mode
+                'mode': state.game_mode,  # Include current game mode
+                'theme': state.game_theme  # Include current game theme
             }
         }
 
