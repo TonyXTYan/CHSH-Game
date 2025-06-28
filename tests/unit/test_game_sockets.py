@@ -125,6 +125,7 @@ def test_round_completion_when_both_players_answer(mock_request_context):
          patch('src.sockets.game.socketio.emit') as mock_socketio_emit, \
          patch('src.sockets.game.db.session') as mock_session, \
          patch('src.sockets.game.PairQuestionRounds') as mock_rounds, \
+         patch('src.sockets.game.Teams') as mock_teams, \
          patch('src.sockets.game.Answers') as mock_answers, \
          patch('src.sockets.game.start_new_round_for_pair') as mock_start_new_round:
         
@@ -147,14 +148,22 @@ def test_round_completion_when_both_players_answer(mock_request_context):
         mock_round.player2_item.value = 'B'
         mock_rounds.query.get.return_value = mock_round
         
+        # Mock team query
+        mock_team = MagicMock()
+        mock_team.player1_session_id = 'test_sid'
+        mock_team.player2_session_id = 'other_player_sid'
+        mock_teams.query.get.return_value = mock_team
+        
         # Mock answers query
         mock_answer1 = MagicMock()
         mock_answer1.assigned_item.value = 'A'
         mock_answer1.response_value = True
+        mock_answer1.player_session_id = 'test_sid'  # Player 1
         
         mock_answer2 = MagicMock()
         mock_answer2.assigned_item.value = 'B'
         mock_answer2.response_value = False
+        mock_answer2.player_session_id = 'other_player_sid'  # Player 2
         
         mock_answers.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
         

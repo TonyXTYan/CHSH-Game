@@ -4,14 +4,41 @@
 
 This feature enhances the CHSH Game waiting message to show results from the last completed round, providing players with immediate feedback on their team's performance.
 
+## ⚠️ **CRITICAL BUG FIX APPLIED**
+
+**Issue Resolved**: Fixed a serious bug in player answer matching logic that occurred when both players received the same item (e.g., both get "A" or both get "X").
+
+**Previous Broken Logic**:
+```python
+# BROKEN - matched by item only
+for answer in round_answers:
+    if answer.assigned_item.value == p1_item:
+        p1_answer = answer.response_value  # Both answers could match here!
+    elif answer.assigned_item.value == p2_item:
+        p2_answer = answer.response_value
+```
+
+**Fixed Logic**:
+```python
+# FIXED - matches by player session ID
+for answer in round_answers:
+    if answer.player_session_id == db_team.player1_session_id:
+        p1_answer = answer.response_value
+    elif answer.player_session_id == db_team.player2_session_id:
+        p2_answer = answer.response_value
+```
+
+**Why This Was Critical**: When both players receive the same item, the old logic would cause one answer to overwrite the other, resulting in data loss and incorrect results display.
+
 ## Features Implemented
 
 ### 1. Enhanced `round_complete` Event
 
 **Backend Changes (`src/sockets/game.py`):**
 - Enhanced the `round_complete` event to include detailed last round information
-- Fetches both players' questions and answers from the database
-- Includes fallback handling when round data is not available
+- **FIXED**: Uses `player_session_id` to correctly match answers to players
+- Fetches team data to map session IDs to player positions
+- Includes multiple fallback layers when data is unavailable
 
 **Data Structure:**
 ```json
@@ -73,6 +100,7 @@ The waiting message shows last round results in these scenarios:
 - ✅ Food theme message generation (suboptimal results)
 - ✅ Food evaluation for all item combinations
 - ✅ Incomplete round data handling
+- ✅ **NEW**: Duplicate item scenario (both players get same item)
 
 **Updated Tests:**
 - ✅ Updated existing `test_game_sockets.py` to work with enhanced round_complete event
@@ -80,12 +108,14 @@ The waiting message shows last round results in these scenarios:
 ## Technical Details
 
 ### Database Queries
-The implementation adds two database queries when a round completes:
+The implementation adds queries when a round completes:
 1. Fetch round details (`PairQuestionRounds.query.get()`)
-2. Fetch player answers (`Answers.query.filter_by()`)
+2. **NEW**: Fetch team data (`Teams.query.get()`) to map session IDs
+3. Fetch player answers (`Answers.query.filter_by()`)
 
 ### Error Handling
 - Graceful fallback when round data is not found
+- Graceful fallback when team data is incomplete
 - Handles incomplete or missing answer data
 - Maintains backward compatibility
 
@@ -94,11 +124,25 @@ The implementation adds two database queries when a round completes:
 - No additional queries during normal gameplay
 - Client-side caching of last round results
 
+## Duplicate Item Scenarios (Now Fixed!)
+
+**Example Scenario**: Both players receive item "A"
+- Player 1 (session: 'player1_sid') answers True
+- Player 2 (session: 'player2_sid') answers False
+
+**Result**: 
+```
+Last round, your team (P1/P2) were asked A/A and answer was True/False
+```
+
+**Critical**: Answers are correctly matched to the right players regardless of having the same item.
+
 ## Usage Examples
 
 ### Classic Theme Examples
 ```
 Last round, your team (P1/P2) were asked A/X and answer was True/False
+Last round, your team (P1/P2) were asked A/A and answer was True/False  ← Duplicate items now work!
 Last round, your team (P1/P2) were asked B/Y and answer was False/True
 ```
 
@@ -106,13 +150,13 @@ Last round, your team (P1/P2) were asked B/Y and answer was False/True
 ```
 Last round, your team (P1/P2) were asked 🍞/🥬 and decisions was Choose/Skip, that was yum 😋
 Last round, your team (P1/P2) were asked 🥟/🍫 and decisions was Choose/Choose, that was bad 😭
-Last round, your team (P1/P2) were asked 🥟/🍫 and decisions was Choose/Skip, that was yum 😋
+Last round, your team (P1/P2) were asked 🍞/� and decisions was Choose/Skip, that was yuck 🤮  ← Duplicate items work!
 ```
 
 ## Files Modified
 
 ### Backend
-- `src/sockets/game.py` - Enhanced round_complete event
+- `src/sockets/game.py` - **FIXED**: Enhanced round_complete event with correct player matching
 - `tests/unit/test_game_sockets.py` - Updated existing test
 
 ### Frontend  
@@ -120,12 +164,12 @@ Last round, your team (P1/P2) were asked 🥟/🍫 and decisions was Choose/Skip
 - `src/static/socket-handlers.js` - Enhanced round_complete handler
 
 ### Tests
-- `tests/unit/test_last_round_results.py` - Comprehensive new test suite
+- `tests/unit/test_last_round_results.py` - Comprehensive test suite with duplicate item test
 
 ## Verification
 
 All tests pass:
-- ✅ 8/8 new tests in `test_last_round_results.py`
+- ✅ 9/9 tests in `test_last_round_results.py` (including new duplicate item test)
 - ✅ 8/8 existing tests in `test_game_sockets.py`
 
-The feature is fully functional and ready for use in both classic and food themes.
+**Critical bug fixed**: The feature now correctly handles all CHSH game scenarios, including when both players receive identical items.

@@ -41,6 +41,7 @@ class TestLastRoundResults:
              patch('src.sockets.game.socketio.emit') as mock_socketio_emit, \
              patch('src.sockets.game.db.session') as mock_session, \
              patch('src.sockets.game.PairQuestionRounds') as mock_rounds_class, \
+             patch('src.sockets.game.Teams') as mock_teams_class, \
              patch('src.sockets.game.Answers') as mock_answers_class, \
              patch('src.sockets.game.start_new_round_for_pair') as mock_start_new_round:
             
@@ -64,14 +65,22 @@ class TestLastRoundResults:
             mock_round.player2_item = ItemEnum.X
             mock_rounds_class.query.get.return_value = mock_round
             
+            # Mock the team database entry
+            mock_team = MagicMock()
+            mock_team.player1_session_id = 'test_sid'
+            mock_team.player2_session_id = 'other_player_sid'
+            mock_teams_class.query.get.return_value = mock_team
+            
             # Mock the answers
             mock_answer1 = MagicMock()
             mock_answer1.assigned_item = ItemEnum.A
             mock_answer1.response_value = True
+            mock_answer1.player_session_id = 'test_sid'  # Player 1
             
             mock_answer2 = MagicMock()
             mock_answer2.assigned_item = ItemEnum.X
             mock_answer2.response_value = False
+            mock_answer2.player_session_id = 'other_player_sid'  # Player 2
             
             mock_answers_class.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
             
@@ -347,3 +356,89 @@ class TestLastRoundResults:
                 result = "some message"  # Would generate actual message
             
             assert result is None, f"Should return None for incomplete data: {incomplete_data}"
+
+    def test_round_complete_with_duplicate_items(self, mock_request_context):
+        """Test that round_complete correctly handles when both players receive the same item"""
+        with patch('src.sockets.game.emit') as mock_emit, \
+             patch('src.sockets.game.socketio.emit') as mock_socketio_emit, \
+             patch('src.sockets.game.db.session') as mock_session, \
+             patch('src.sockets.game.PairQuestionRounds') as mock_rounds_class, \
+             patch('src.sockets.game.Teams') as mock_teams_class, \
+             patch('src.sockets.game.Answers') as mock_answers_class, \
+             patch('src.sockets.game.start_new_round_for_pair') as mock_start_new_round:
+            
+            # Set up team state
+            test_team = 'Test Team'
+            test_round_id = 1
+            state.player_to_team['test_sid'] = test_team
+            state.player_to_team['other_player_sid'] = test_team
+            state.active_teams[test_team] = {
+                'team_id': 1,
+                'players': ['test_sid', 'other_player_sid'],
+                'current_db_round_id': test_round_id,
+                'current_round_number': 1,
+                'answered_current_round': {},
+                'status': 'active'
+            }
+            
+            # Mock the round database entry - BOTH PLAYERS GET THE SAME ITEM
+            mock_round = MagicMock()
+            mock_round.player1_item = ItemEnum.A  # Both players get A
+            mock_round.player2_item = ItemEnum.A  # Both players get A
+            mock_rounds_class.query.get.return_value = mock_round
+            
+            # Mock the team database entry
+            mock_team = MagicMock()
+            mock_team.player1_session_id = 'test_sid'
+            mock_team.player2_session_id = 'other_player_sid'
+            mock_teams_class.query.get.return_value = mock_team
+            
+            # Mock the answers - both have same assigned_item but different session_ids
+            mock_answer1 = MagicMock()
+            mock_answer1.assigned_item = ItemEnum.A
+            mock_answer1.response_value = True
+            mock_answer1.player_session_id = 'test_sid'  # Player 1 answered True
+            
+            mock_answer2 = MagicMock()
+            mock_answer2.assigned_item = ItemEnum.A  # Same item as player 1!
+            mock_answer2.response_value = False
+            mock_answer2.player_session_id = 'other_player_sid'  # Player 2 answered False
+            
+            mock_answers_class.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
+            
+            # First player submits answer
+            data = {
+                'round_id': test_round_id,
+                'item': 'A',
+                'answer': True
+            }
+            on_submit_answer(data)
+            
+            # Switch to second player and submit answer
+            request.sid = 'other_player_sid'
+            data = {
+                'round_id': test_round_id,
+                'item': 'A',  # Same item as player 1!
+                'answer': False
+            }
+            on_submit_answer(data)
+            
+            # Verify enhanced round_complete was emitted with CORRECT last round details
+            expected_call = mock_socketio_emit.call_args_list[-1]  # Get the last call
+            assert expected_call[0][0] == 'round_complete'
+            
+            round_complete_data = expected_call[0][1]
+            assert round_complete_data['team_name'] == test_team
+            assert round_complete_data['round_number'] == 1
+            assert 'last_round_details' in round_complete_data
+            
+            last_round = round_complete_data['last_round_details']
+            # Both players should have item 'A'
+            assert last_round['p1_item'] == 'A'
+            assert last_round['p2_item'] == 'A'
+            # But answers should be correctly matched to players using session ID
+            assert last_round['p1_answer'] == True   # Player 1 (test_sid) answered True
+            assert last_round['p2_answer'] == False  # Player 2 (other_player_sid) answered False
+            
+            # Verify new round was started
+            mock_start_new_round.assert_called_once_with(test_team)

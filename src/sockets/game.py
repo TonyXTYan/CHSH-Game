@@ -106,33 +106,42 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
             # Get the completed round details from database
             round_db_entry = PairQuestionRounds.query.get(round_id)
             if round_db_entry:
-                # Get both players' answers for this round
-                round_answers = Answers.query.filter_by(question_round_id=round_id).all()
-                
-                # Organize the answer data by player position
-                p1_answer = None
-                p2_answer = None
-                p1_item = round_db_entry.player1_item.value if round_db_entry.player1_item else None
-                p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
-                
-                for answer in round_answers:
-                    # Determine which player this answer belongs to based on assigned item
-                    if answer.assigned_item.value == p1_item:
-                        p1_answer = answer.response_value
-                    elif answer.assigned_item.value == p2_item:
-                        p2_answer = answer.response_value
-                
-                # Emit enhanced round_complete event with detailed results
-                socketio.emit('round_complete', {
-                    'team_name': team_name,
-                    'round_number': team_info['current_round_number'],
-                    'last_round_details': {
-                        'p1_item': p1_item,
-                        'p2_item': p2_item,
-                        'p1_answer': p1_answer,
-                        'p2_answer': p2_answer
-                    }
-                }, to=team_name)  # type: ignore
+                # Get team info to map session IDs to player positions
+                db_team = Teams.query.get(team_info['team_id'])
+                if db_team and db_team.player1_session_id and db_team.player2_session_id:
+                    # Get both players' answers for this round
+                    round_answers = Answers.query.filter_by(question_round_id=round_id).all()
+                    
+                    # Organize the answer data by player position using session IDs
+                    p1_answer = None
+                    p2_answer = None
+                    p1_item = round_db_entry.player1_item.value if round_db_entry.player1_item else None
+                    p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
+                    
+                    for answer in round_answers:
+                        # Correctly match answers to players using session ID
+                        if answer.player_session_id == db_team.player1_session_id:
+                            p1_answer = answer.response_value
+                        elif answer.player_session_id == db_team.player2_session_id:
+                            p2_answer = answer.response_value
+                    
+                    # Emit enhanced round_complete event with detailed results
+                    socketio.emit('round_complete', {
+                        'team_name': team_name,
+                        'round_number': team_info['current_round_number'],
+                        'last_round_details': {
+                            'p1_item': p1_item,
+                            'p2_item': p2_item,
+                            'p1_answer': p1_answer,
+                            'p2_answer': p2_answer
+                        }
+                    }, to=team_name)  # type: ignore
+                else:
+                    # Fallback if team data is incomplete
+                    socketio.emit('round_complete', {
+                        'team_name': team_name,
+                        'round_number': team_info['current_round_number']
+                    }, to=team_name)  # type: ignore
             else:
                 # Fallback to basic round_complete event
                 socketio.emit('round_complete', {
