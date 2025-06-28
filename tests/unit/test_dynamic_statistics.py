@@ -38,9 +38,9 @@ class TestDynamicStatistics:
     @pytest.fixture
     def mock_compute_functions(self):
         """Mock the computation functions."""
-        with patch('src.sockets.dashboard.compute_team_hashes') as mock_hashes, \
-             patch('src.sockets.dashboard.compute_correlation_matrix') as mock_corr, \
-             patch('src.sockets.dashboard.compute_success_metrics') as mock_success, \
+        with patch('src.sockets.dashboard.computations.compute_team_hashes') as mock_hashes, \
+             patch('src.sockets.dashboard.computations.compute_correlation_matrix') as mock_corr, \
+             patch('src.sockets.dashboard.computations.compute_success_metrics') as mock_success, \
              patch('src.sockets.dashboard.ItemEnum') as mock_item_enum, \
              patch('src.sockets.dashboard.QUESTION_ITEMS') as mock_question_items, \
              patch('src.sockets.dashboard.TARGET_COMBO_REPEATS', 3):
@@ -84,8 +84,8 @@ class TestDynamicStatistics:
         """Test that classic mode returns appropriate data structure."""
         mock_state.game_mode = 'classic'
         
-        with patch('src.sockets.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {
                 'trace_average_statistic': 0.6,
@@ -127,8 +127,8 @@ class TestDynamicStatistics:
         """Test that new mode returns appropriate data structure."""
         mock_state.game_mode = 'new'
         
-        with patch('src.sockets.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {
                 'trace_average_statistic': 0.6,
@@ -180,7 +180,7 @@ class TestDynamicStatistics:
         )
         
         # Mock the compute_success_metrics to return our test data
-        with patch('src.sockets.dashboard.compute_success_metrics') as mock_compute:
+        with patch('src.sockets.dashboard.computations.compute_success_metrics') as mock_compute:
             mock_compute.return_value = success_data
             result = _calculate_success_statistics("test_team")
         
@@ -198,8 +198,8 @@ class TestDynamicStatistics:
         """Test that both classic and new computations are called regardless of mode."""
         mock_state.game_mode = 'classic'
         
-        with patch('src.sockets.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {}
             mock_calc_success.return_value = {}
@@ -217,8 +217,8 @@ class TestDynamicStatistics:
 
     def test_mode_toggle_preserves_data_structure(self, mock_state, mock_compute_functions):
         """Test that switching modes preserves the data structure."""
-        with patch('src.sockets.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {'classic_stat': 1.0}
             mock_calc_success.return_value = {'new_stat': 2.0}
@@ -265,7 +265,7 @@ class TestDynamicStatistics:
         )
         
         # Mock the compute_success_metrics to return our test data
-        with patch('src.sockets.dashboard.compute_success_metrics') as mock_compute:
+        with patch('src.sockets.dashboard.computations.compute_success_metrics') as mock_compute:
             mock_compute.return_value = success_data
             result = _calculate_success_statistics("test_team")
         

@@ -206,7 +206,7 @@ class TestDashboardThrottling:
         dashboard_teams_streaming['dashboard1'] = True
         
         # Test team update throttling with REFRESH_DELAY_QUICK
-        with patch('src.sockets.dashboard.time') as mock_time:
+        with patch('src.sockets.dashboard.events.time') as mock_time:
             base_time = 1000.0
             mock_time.return_value = base_time
             
@@ -227,7 +227,7 @@ class TestDashboardThrottling:
         clear_team_caches()
         mock_answers = mock_dashboard_dependencies['answers']
         
-        with patch('src.sockets.dashboard.time') as mock_time:
+        with patch('src.sockets.dashboard.events.time') as mock_time:
             base_time = 2000.0
             mock_time.return_value = base_time
             
@@ -368,7 +368,7 @@ class TestDashboardThrottling:
         emit_dashboard_full_update()
         assert mock_answers.query.count.call_count > initial_db_count
     
-    @patch('src.sockets.dashboard.logger')
+    @patch('src.sockets.dashboard.events.logger')
     def test_error_handling(self, mock_logger, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that errors are handled gracefully."""
         from src.sockets.dashboard import dashboard_teams_streaming
