@@ -3,7 +3,8 @@ name: Automated Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.2.3
+      - 'v*.*.*'    # Trigger on version tags like v1.2.3
+      - 'v*.*.*.*'  # Trigger on version tags like v2.0.0.1
 
 permissions:
   contents: write  # Required for creating releases
