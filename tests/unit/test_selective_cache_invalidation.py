@@ -67,6 +67,66 @@ class TestSelectiveCache:
         assert cache.get("key2") is None
         assert len(cache._cache) == 0
         assert len(cache._access_order) == 0
+        assert len(cache._stale_keys) == 0
+    
+    def test_stale_but_usable_behavior(self):
+        """Test the new stale-but-usable cache behavior."""
+        cache = SelectiveCache()
+        
+        # Populate cache
+        cache.set("('Team1',)", "data1")
+        cache.set("('Team2',)", "data2")
+        
+        # Mark Team1 as stale
+        cache.invalidate_by_team("Team1")
+        
+        # Should return stale data by default
+        assert cache.get("('Team1',)") == "data1"
+        assert cache.get("('Team1',)", allow_stale=True) == "data1"
+        
+        # Should return None when stale not allowed
+        assert cache.get("('Team1',)", allow_stale=False) is None
+        
+        # Should be marked as stale
+        assert cache.is_stale("('Team1',)") == True
+        
+        # Non-stale entries should work normally
+        assert cache.get("('Team2',)") == "data2"
+        assert cache.is_stale("('Team2',)") == False
+    
+    def test_remove_stale_entries(self):
+        """Test the remove_stale_entries method."""
+        cache = SelectiveCache()
+        
+        # Populate cache
+        cache.set("('Team1',)", "data1")
+        cache.set("('Team2',)", "data2")
+        cache.set("('Team3',)", "data3")
+        
+        # Mark some as stale
+        cache.invalidate_by_team("Team1")
+        cache.invalidate_by_team("Team3")
+        
+        # Verify stale entries exist but are marked stale
+        assert cache.get("('Team1',)") == "data1"  # Stale but returned
+        assert cache.get("('Team3',)") == "data3"  # Stale but returned
+        assert cache.is_stale("('Team1',)") == True
+        assert cache.is_stale("('Team3',)") == True
+        
+        # Remove stale entries
+        removed_count = cache.remove_stale_entries()
+        assert removed_count == 2
+        
+        # Now stale entries should be actually gone
+        assert cache.get("('Team1',)") is None
+        assert cache.get("('Team3',)") is None
+        
+        # Non-stale entry should be preserved
+        assert cache.get("('Team2',)") == "data2"
+        assert cache.is_stale("('Team2',)") == False
+        
+        # Stale keys set should be empty
+        assert len(cache._stale_keys) == 0
 
 
 class TestTeamKeyMatching:
@@ -158,10 +218,18 @@ class TestSelectiveCacheInvalidation:
         invalidated = cache.invalidate_by_team("Team1")
         
         assert invalidated == 1
-        assert cache.get("('Team1',)") is None      # Invalidated
+        # With stale-but-usable cache: invalidated entries return stale data by default
+        assert cache.get("('Team1',)") == "result1"  # Returns stale data
+        assert cache.get("('Team1',)", allow_stale=False) is None  # But None when stale not allowed
+        assert cache.is_stale("('Team1',)") == True  # Marked as stale
+        
+        # Non-invalidated entries should work normally and not be stale
         assert cache.get("('Team2',)") == "result2"  # Preserved
+        assert cache.is_stale("('Team2',)") == False  # Not stale
         assert cache.get("('Team11',)") == "result11"  # Preserved (this is the key test!)
+        assert cache.is_stale("('Team11',)") == False  # Not stale
         assert cache.get("('OtherTeam',)") == "other"  # Preserved
+        assert cache.is_stale("('OtherTeam',)") == False  # Not stale
     
     def test_invalidate_by_team_multiple_entries(self):
         """Test invalidating multiple entries for the same team."""
@@ -180,13 +248,27 @@ class TestSelectiveCacheInvalidation:
         invalidated = cache.invalidate_by_team("Team1")
         
         assert invalidated == 3  # Should invalidate 3 Team1 entries
-        assert cache.get("('Team1',)") is None
-        assert cache.get("('Team1', 'correlation')") is None
-        assert cache.get("('Team1', 'stats')") is None
         
-        # Other teams should be preserved
+        # With stale-but-usable cache: invalidated entries return stale data by default
+        assert cache.get("('Team1',)") == "hash_result"  # Returns stale data
+        assert cache.get("('Team1', 'correlation')") == "correlation_result"  # Returns stale data
+        assert cache.get("('Team1', 'stats')") == "stats_result"  # Returns stale data
+        
+        # But return None when stale not allowed
+        assert cache.get("('Team1',)", allow_stale=False) is None
+        assert cache.get("('Team1', 'correlation')", allow_stale=False) is None
+        assert cache.get("('Team1', 'stats')", allow_stale=False) is None
+        
+        # Verify they are marked as stale
+        assert cache.is_stale("('Team1',)") == True
+        assert cache.is_stale("('Team1', 'correlation')") == True
+        assert cache.is_stale("('Team1', 'stats')") == True
+        
+        # Other teams should be preserved and not stale
         assert cache.get("('Team2',)") == "team2_result"
+        assert cache.is_stale("('Team2',)") == False
         assert cache.get("('Team11', 'stats')") == "team11_result"
+        assert cache.is_stale("('Team11', 'stats')") == False
     
     def test_substring_matching_bug_fix(self):
         """
@@ -216,14 +298,24 @@ class TestSelectiveCacheInvalidation:
         # Should only invalidate exactly 2 entries for "Team1"
         assert invalidated == 2
         
-        # Verify Team1 entries are gone
-        assert cache.get("('Team1',)") is None
-        assert cache.get("('Team1', 'extra')") is None
+        # Verify Team1 entries are marked as stale but still return stale data
+        assert cache.get("('Team1',)") == "Team1 should be invalidated"  # Returns stale data
+        assert cache.get("('Team1', 'extra')") == "Team1 should be invalidated - extra"  # Returns stale data
         
-        # Verify all other teams are preserved
+        # But return None when stale not allowed
+        assert cache.get("('Team1',)", allow_stale=False) is None
+        assert cache.get("('Team1', 'extra')", allow_stale=False) is None
+        
+        # Verify they are marked as stale
+        assert cache.is_stale("('Team1',)") == True
+        assert cache.is_stale("('Team1', 'extra')") == True
+        
+        # Verify all other teams are preserved and NOT stale
         for team_name, description in test_cases[1:]:  # Skip Team1
             assert cache.get(f"('{team_name}',)") == description
             assert cache.get(f"('{team_name}', 'extra')") == f"{description} - extra"
+            assert cache.is_stale(f"('{team_name}',)") == False  # Not stale
+            assert cache.is_stale(f"('{team_name}', 'extra')") == False  # Not stale
     
     def test_special_characters_in_team_names(self):
         """Test invalidation works correctly with special characters in team names."""
@@ -249,14 +341,24 @@ class TestSelectiveCacheInvalidation:
         # Invalidate Team.1
         invalidated = cache.invalidate_by_team("Team.1")
         assert invalidated == 1
-        assert cache.get("('Team.1',)") is None
+        # With stale-but-usable cache: returns stale data by default
+        assert cache.get("('Team.1',)") == "result_Team.1"  # Returns stale data
+        assert cache.get("('Team.1',)", allow_stale=False) is None  # None when stale not allowed
+        assert cache.is_stale("('Team.1',)") == True  # Marked as stale
+        # Other team should be preserved and not stale
         assert cache.get("('Team.11',)") == "should_not_be_invalidated"
+        assert cache.is_stale("('Team.11',)") == False
         
         # Invalidate Team+1  
         invalidated = cache.invalidate_by_team("Team+1")
         assert invalidated == 1
-        assert cache.get("('Team+1',)") is None
+        # With stale-but-usable cache: returns stale data by default
+        assert cache.get("('Team+1',)") == "result_Team+1"  # Returns stale data
+        assert cache.get("('Team+1',)", allow_stale=False) is None  # None when stale not allowed
+        assert cache.is_stale("('Team+1',)") == True  # Marked as stale
+        # Other team should be preserved and not stale
         assert cache.get("('Team+11',)") == "should_not_be_invalidated"
+        assert cache.is_stale("('Team+11',)") == False
 
 
 class TestSelectiveCacheDecorator:
@@ -313,13 +415,22 @@ class TestSelectiveCacheDecorator:
         invalidated = team_function.cache_invalidate_team("Team1")
         assert invalidated == 1
         
-        # Team1 should recompute, Team2 should use cache
-        new_result_team1 = team_function("Team1")
-        cached_result_team2 = team_function("Team2")
+        # With stale-but-usable cache: Team1 still returns stale data until explicitly marked to not allow stale
+        cached_stale_team1 = team_function("Team1")  # Should return stale data
+        cached_result_team2 = team_function("Team2")  # Should use fresh cache
         
-        assert new_result_team1 != result_team1  # Should be different (recomputed)
+        assert cached_stale_team1 == result_team1  # Should be same (stale but returned)
         assert cached_result_team2 == result_team2  # Should be same (cached)
-        assert call_count == 3  # Only Team1 was recomputed
+        assert call_count == 2  # Neither was recomputed yet due to stale-but-usable behavior
+        
+        # Test that the cache is marked as stale
+        from src.sockets.dashboard import _make_cache_key
+        cache_key_team1 = _make_cache_key("Team1")
+        
+        assert test_cache.is_stale(cache_key_team1) == True
+        
+        # Test that we can get None when stale not allowed, which would force recomputation
+        assert test_cache.get(cache_key_team1, allow_stale=False) is None
 
 
 class TestMakeCacheKey:
@@ -374,11 +485,20 @@ class TestIntegrationWithDashboardFunctions:
         # Test selective invalidation
         invalidate_team_caches("Team1")
         
-        # Verify Team1 caches are cleared, but Team11 and Team2 are preserved
-        assert _hash_cache.get("('Team1',)") is None
+        # With stale-but-usable cache: Team1 caches return stale data by default
+        assert _hash_cache.get("('Team1',)") == ("hash1", "hash2")  # Returns stale data
+        assert _hash_cache.get("('Team1',)", allow_stale=False) is None  # None when stale not allowed
+        assert _hash_cache.is_stale("('Team1',)") == True  # Marked as stale
+        
+        assert _correlation_cache.get("('Team1',)") == "correlation_data"  # Returns stale data
+        assert _correlation_cache.get("('Team1',)", allow_stale=False) is None  # None when stale not allowed
+        assert _correlation_cache.is_stale("('Team1',)") == True  # Marked as stale
+        
+        # Team11 and Team2 should be preserved and not stale
         assert _hash_cache.get("('Team11',)") == ("hash11", "hash22")  # Should be preserved!
-        assert _correlation_cache.get("('Team1',)") is None
+        assert _hash_cache.is_stale("('Team11',)") == False  # Not stale
         assert _correlation_cache.get("('Team2',)") == "correlation_data_2"  # Should be preserved!
+        assert _correlation_cache.is_stale("('Team2',)") == False  # Not stale
     
     def test_clear_team_caches_function(self):
         """Test the global clear_team_caches function."""
