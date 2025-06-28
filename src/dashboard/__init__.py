@@ -80,6 +80,13 @@ from .update_emitters import (
     REFRESH_DELAY_FULL
 )
 
+# Import models and constants for testing
+from .team_processing import (
+    ItemEnum,
+    QUESTION_ITEMS,
+    TARGET_COMBO_REPEATS
+)
+
 __all__ = [
     # Cache system
     'SelectiveCache', 'selective_cache', '_make_cache_key',
@@ -119,5 +126,6 @@ __all__ = [
     'get_dashboard_data', 'download_csv',
     
     # Constants
-    'REFRESH_DELAY_QUICK', 'REFRESH_DELAY_FULL'
+    'REFRESH_DELAY_QUICK', 'REFRESH_DELAY_FULL',
+    'ItemEnum', 'QUESTION_ITEMS', 'TARGET_COMBO_REPEATS'
 ]

@@ -63,7 +63,7 @@ def mock_emit():
 @pytest.fixture
 def mock_logger():
     """Mock logger"""
-    with patch('src.dashboard.logger') as mock_logger:
+    with patch('src.dashboard.socket_handlers.logger') as mock_logger:
         yield mock_logger
 
 @pytest.fixture(autouse=True)

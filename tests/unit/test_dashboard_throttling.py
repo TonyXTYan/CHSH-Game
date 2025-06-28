@@ -213,13 +213,13 @@ class TestDashboardThrottling:
             
             # Immediate second call should be throttled
             mock_time.return_value = base_time + REFRESH_DELAY_QUICK * 0.5
-            import src.dashboard as dashboard_module
-            initial_team_time = dashboard_module._last_team_update_time
+            import src.dashboard.update_emitters as update_module
+            initial_team_time = update_module._last_team_update_time
             
             emit_dashboard_team_update()
             
             # Should still be using cache (time not updated)
-            assert dashboard_module._last_team_update_time == initial_team_time
+            assert update_module._last_team_update_time == initial_team_time
             
         # Test full update throttling with REFRESH_DELAY_FULL
         clear_team_caches()
@@ -366,7 +366,7 @@ class TestDashboardThrottling:
         emit_dashboard_full_update()
         assert mock_answers.query.count.call_count > initial_db_count
     
-    @patch('src.dashboard.logger')
+    @patch('src.dashboard.update_emitters.logger')
     def test_error_handling(self, mock_logger, mock_dashboard_dependencies, setup_dashboard_state):
         """Test that errors are handled gracefully."""
         from src.dashboard import dashboard_teams_streaming

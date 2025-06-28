@@ -77,8 +77,8 @@ class TestDynamicStatistics:
         """Test that classic mode returns appropriate data structure."""
         mock_state.game_mode = 'classic'
         
-        with patch('src.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.dashboard.statistics._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.dashboard.statistics._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {
                 'trace_average_statistic': 0.6,
@@ -120,8 +120,8 @@ class TestDynamicStatistics:
         """Test that new mode returns appropriate data structure."""
         mock_state.game_mode = 'new'
         
-        with patch('src.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.dashboard.statistics._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.dashboard.statistics._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {
                 'trace_average_statistic': 0.6,
@@ -191,8 +191,8 @@ class TestDynamicStatistics:
         """Test that both classic and new computations are called regardless of mode."""
         mock_state.game_mode = 'classic'
         
-        with patch('src.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.dashboard.statistics._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.dashboard.statistics._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {}
             mock_calc_success.return_value = {}
@@ -210,8 +210,8 @@ class TestDynamicStatistics:
 
     def test_mode_toggle_preserves_data_structure(self, mock_state, mock_compute_functions):
         """Test that switching modes preserves the data structure."""
-        with patch('src.dashboard._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.dashboard._calculate_success_statistics') as mock_calc_success:
+        with patch('src.dashboard.statistics._calculate_team_statistics') as mock_calc_classic, \
+             patch('src.dashboard.statistics._calculate_success_statistics') as mock_calc_success:
             
             mock_calc_classic.return_value = {'classic_stat': 1.0}
             mock_calc_success.return_value = {'new_stat': 2.0}
