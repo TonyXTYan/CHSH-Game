@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write  # Required for creating releases
+  models: read    # Required for using GitHub AI models
 
 jobs:
   release:
@@ -34,11 +35,14 @@ jobs:
 
       - name: Generate release summary
         id: release_summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
-            # No previous tag, get all commits for this tag
-            COMMITS=$(git log --pretty=format:'- %s (%h)' --max-count=50)
-            RANGE_DESC="all commits (first release)"
+            # No previous tag, get commits from default branch to this tag
+            DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+            COMMITS=$(git log --pretty=format:'- %s (%h)' ${DEFAULT_BRANCH}..${GITHUB_SHA})
+            RANGE_DESC="commits since ${DEFAULT_BRANCH}"
           else
             COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ steps.prev_tag.outputs.prev_tag }}..${GITHUB_SHA})
             RANGE_DESC="commits since ${{ steps.prev_tag.outputs.prev_tag }}"
@@ -53,12 +57,65 @@ jobs:
             # Count commits
             COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
             
-            # Create summary
-            SUMMARY="## Release Summary
+            # Try to get AI summary
+            AI_SUMMARY=""
+            COMMIT_LIST=$(echo "$COMMITS" | sed 's/^- //' | head -20)  # Remove bullets and limit for AI
             
-            This release includes **$COMMIT_COUNT** $RANGE_DESC:
+            # Create JSON payload for AI
+            JSON_PAYLOAD=$(cat <<EOF
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Analyze these git commit messages and create a concise release summary in 2-3 sentences. Focus on the main features, fixes, and improvements. Be professional and clear:\n\n$COMMIT_LIST"
+    }
+  ],
+  "model": "openai/gpt-4o",
+  "max_tokens": 200,
+  "temperature": 0.3
+}
+EOF
+            )
             
-            $COMMITS"
+            # Call AI with error handling
+            RESPONSE=$(timeout 30 curl -s -w "%{http_code}" "https://models.github.ai/inference/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -d "$JSON_PAYLOAD" 2>/dev/null)
+            
+            if [ $? -eq 0 ]; then
+              HTTP_CODE="${RESPONSE: -3}"
+              RESPONSE_BODY="${RESPONSE%???}"
+              
+              if [ "$HTTP_CODE" = "200" ]; then
+                AI_SUMMARY=$(echo "$RESPONSE_BODY" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+              fi
+            fi
+            
+            # Create summary with AI or fallback
+            if [ -n "$AI_SUMMARY" ] && [ "$AI_SUMMARY" != "null" ] && [ "$AI_SUMMARY" != "empty" ]; then
+              SUMMARY="## Release Summary
+
+$AI_SUMMARY
+
+<details>
+<summary>📝 View all $COMMIT_COUNT commits</summary>
+
+$COMMITS
+
+</details>"
+            else
+              SUMMARY="## Release Summary
+              
+              This release includes **$COMMIT_COUNT** $RANGE_DESC.
+
+<details>
+<summary>📝 View all commits</summary>
+
+$COMMITS
+
+</details>"
+            fi
           fi
           
           echo "release_summary<<EOF" >> $GITHUB_ENV
