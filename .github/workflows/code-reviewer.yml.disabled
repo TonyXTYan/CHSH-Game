@@ -1,0 +1,140 @@
+name: CHSH-Game Code Reviewer
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+    inputs:
+      analysis_type:
+        description: 'Type of analysis to perform'
+        required: true
+        default: 'code_quality'
+        type: choice
+        options:
+          - code_quality
+          - game_logic_review
+          - security_audit
+          - performance_analysis
+          - architecture_review
+      target_files:
+        description: 'Specific files or directories to analyze (optional)'
+        required: false
+        type: string
+        default: ''
+
+permissions:
+  contents: read
+
+jobs:
+  analyze-code:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install jq
+
+      - name: Get repository structure
+        id: repo-structure
+        run: |
+          # Get the main directories and files
+          echo "REPO_STRUCTURE<<EOF" >> $GITHUB_OUTPUT
+          find . -type f \( -name "*.py" -o -name "*.js" -o -name "*.html" -o -name "*.css" \) | head -20 >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          # Get key files content
+          echo "MAIN_PY<<EOF" >> $GITHUB_OUTPUT
+          cat src/main.py >> $GITHUB_OUTPUT 2>/dev/null || echo "File not found"
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "GAME_LOGIC<<EOF" >> $GITHUB_OUTPUT
+          cat src/game_logic.py >> $GITHUB_OUTPUT 2>/dev/null || echo "File not found"
+          echo "EOF" >> $GITHUB_OUTPUT
+          
+          echo "README<<EOF" >> $GITHUB_OUTPUT
+          cat README.md >> $GITHUB_OUTPUT 2>/dev/null || echo "File not found"
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      - name: Analyze code structure
+        run: |
+          # Set analysis type - use input if available (manual trigger), otherwise default to code_quality
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ANALYSIS_TYPE="${{ github.event.inputs.analysis_type }}"
+            TARGET_FILES="${{ github.event.inputs.target_files }}"
+          else
+            ANALYSIS_TYPE="code_quality"
+            TARGET_FILES=""
+          fi
+          
+          echo "=== CHSH-Game Code Analysis ==="
+          echo "Analysis Type: $ANALYSIS_TYPE"
+          echo "Target Files: $TARGET_FILES"
+          echo ""
+          
+          # Basic code analysis
+          echo "Repository Structure:"
+          echo "${{ steps.repo-structure.outputs.REPO_STRUCTURE }}"
+          echo ""
+          
+          # Count files by type
+          echo "File Statistics:"
+          echo "Python files: $(find . -name "*.py" | wc -l)"
+          echo "JavaScript files: $(find . -name "*.js" | wc -l)"
+          echo "HTML files: $(find . -name "*.html" | wc -l)"
+          echo "CSS files: $(find . -name "*.css" | wc -l)"
+          echo ""
+          
+          # Check for common issues
+          echo "Basic Code Quality Checks:"
+          
+          # Check for TODO comments
+          TODO_COUNT=$(grep -r "TODO" . --include="*.py" --include="*.js" | wc -l)
+          echo "TODO comments found: $TODO_COUNT"
+          
+          # Check for print statements in Python files
+          PRINT_COUNT=$(grep -r "print(" . --include="*.py" | wc -l)
+          echo "Print statements found: $PRINT_COUNT"
+          
+          # Check for hardcoded credentials
+          CREDENTIAL_COUNT=$(grep -r -i "password\|secret\|key\|token" . --include="*.py" --include="*.js" | grep -v "TODO\|FIXME\|#.*password" | wc -l)
+          echo "Potential credential references: $CREDENTIAL_COUNT"
+          
+          echo ""
+          echo "Analysis completed. For detailed AI-powered analysis, consider using:"
+          echo "- GitHub Copilot Chat"
+          echo "- External code analysis tools"
+          echo "- Manual code review"
+
+      - name: Create analysis summary
+        run: |
+          # Determine analysis type and trigger info
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            ANALYSIS_TYPE="${{ github.event.inputs.analysis_type }}"
+            TRIGGER_INFO="Manual workflow dispatch"
+          else
+            ANALYSIS_TYPE="code_quality"
+            TRIGGER_INFO="${{ github.event_name }} event on ${{ github.ref }}"
+          fi
+          
+          echo "## CHSH-Game Code Analysis Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Analysis Type:** $ANALYSIS_TYPE" >> $GITHUB_STEP_SUMMARY
+          echo "**Trigger:** $TRIGGER_INFO" >> $GITHUB_STEP_SUMMARY
+          echo "**Repository:** CHSH-Game" >> $GITHUB_STEP_SUMMARY
+          echo "**Analysis completed successfully!**" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Check the logs above for detailed analysis results." >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Note:** This workflow provides basic code analysis. For AI-powered analysis, use GitHub Copilot Chat or external tools." >> $GITHUB_STEP_SUMMARY
