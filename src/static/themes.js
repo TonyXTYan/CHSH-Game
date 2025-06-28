@@ -192,7 +192,7 @@ const THEMES = {
 // Theme utility functions
 class ThemeManager {
     constructor() {
-        this.currentTheme = 'classic';
+        this.currentTheme = 'food';
         this.currentMode = 'new';
     }
     

@@ -2071,7 +2071,7 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
         state.dashboard_clients.add(sid)
         dashboard_last_activity[sid] = time()
         if sid not in dashboard_teams_streaming:
-            dashboard_teams_streaming[sid] = False  # Teams streaming off by default only for new clients
+            dashboard_teams_streaming[sid] = False  # Teams streaming off by default for new clients
         logger.info(f"Dashboard client connected: {sid}")
         
         # Notify OTHER dashboard clients about the new connection (exclude the joining client to prevent duplicates)
