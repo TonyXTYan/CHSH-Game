@@ -52,23 +52,18 @@ def test_client():
 
 @pytest.fixture
 def mock_request():
-    # Create a mock request object without patching the actual Flask request
-    mock_req = MagicMock()
-    mock_req.sid = 'test_dashboard_sid'
+    """Mock Flask request object with proper Flask context"""
+    from src.config import app
     
-    # Patch the Flask request object in a way that avoids context issues
-    with patch('src.sockets.dashboard.request', mock_req):
-        # Also patch the app context manager
-        with patch('src.sockets.dashboard.app') as mock_app:
-            mock_context = MagicMock()
-            mock_context.__enter__ = MagicMock(return_value=None)
-            mock_context.__exit__ = MagicMock(return_value=None)
-            mock_app.app_context.return_value = mock_context
-            
-            # Patch time function to return consistent value
-            with patch('src.sockets.dashboard.events.time') as mock_time:
-                mock_time.return_value = 12345.0
-                yield mock_req
+    with app.test_request_context('/') as ctx:
+        # Add SocketIO-specific attributes to the request context
+        ctx.request.sid = 'test_dashboard_sid'
+        ctx.request.namespace = '/'
+        
+        # Patch time function to return consistent value
+        with patch('src.sockets.dashboard.events.time') as mock_time:
+            mock_time.return_value = 12345.0
+            yield ctx.request
 
 
 @pytest.fixture
@@ -1418,7 +1413,7 @@ def test_dashboard_join_multiple_clients_no_duplicates(mock_request, mock_state,
             mock_socketio.emit.reset_mock()
             
             # First client joins
-            with patch('src.sockets.dashboard.request') as mock_req1:
+            with patch("src.sockets.dashboard.events.request") as mock_req1:
                 mock_req1.sid = 'client1'
                 on_dashboard_join(data=None, callback=None)
             
@@ -1435,7 +1430,7 @@ def test_dashboard_join_multiple_clients_no_duplicates(mock_request, mock_state,
             mock_socketio.emit.reset_mock()
             
             # Second client joins
-            with patch('src.sockets.dashboard.request') as mock_req2:
+            with patch("src.sockets.dashboard.events.request") as mock_req2:
                 mock_req2.sid = 'client2'
                 on_dashboard_join(data=None, callback=None)
             
@@ -1797,7 +1792,7 @@ def test_dashboard_socket_events_error_handling(mock_request, mock_state, mock_e
         on_keep_alive()  # Should not crash
     
     # Test on_set_teams_streaming with malformed data
-    with patch('src.sockets.dashboard.request') as mock_req:
+    with patch("src.sockets.dashboard.events.request", mock_req):
         mock_req.sid = 'test_sid'
         mock_state.dashboard_clients.add('test_sid')
         on_set_teams_streaming({'invalid': 'data'})  # Should handle gracefully

@@ -15,12 +15,19 @@ from src.state import state
 
 
 @pytest.fixture
-def mock_dashboard_dependencies():
+def mock_flask_context():
+    """Setup proper Flask application context."""
+    from src.config import app
+    
+    with app.test_request_context('/'):
+        yield
+
+@pytest.fixture
+def mock_dashboard_dependencies(mock_flask_context):
     """Mock all dependencies for dashboard functions."""
-    with patch('src.sockets.dashboard.socketio') as mock_socketio, \
-         patch('src.sockets.dashboard.get_all_teams') as mock_get_teams, \
-         patch('src.sockets.dashboard.app') as mock_app, \
-         patch('src.sockets.dashboard.Answers') as mock_answers:
+    with patch('src.sockets.dashboard.events.socketio') as mock_socketio, \
+         patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams, \
+         patch('src.sockets.dashboard.events.Answers') as mock_answers:
         
         # Setup mock data
         mock_teams = [
@@ -45,14 +52,9 @@ def mock_dashboard_dependencies():
         mock_get_teams.return_value = mock_teams
         mock_answers.query.count.return_value = 10
         
-        # Mock app context
-        mock_app.app_context.return_value.__enter__ = Mock()
-        mock_app.app_context.return_value.__exit__ = Mock()
-        
         yield {
             'socketio': mock_socketio,
             'get_teams': mock_get_teams,
-            'app': mock_app,
             'answers': mock_answers,
             'teams': mock_teams
         }
