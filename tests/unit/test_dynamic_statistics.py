@@ -84,87 +84,93 @@ class TestDynamicStatistics:
         """Test that classic mode returns appropriate data structure."""
         mock_state.game_mode = 'classic'
         
-        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._get_team_id_from_name') as mock_get_id:
+            mock_get_id.return_value = 1  # Ensure team ID lookup succeeds
             
-            mock_calc_classic.return_value = {
-                'trace_average_statistic': 0.6,
-                'trace_average_statistic_uncertainty': 0.1,
-                'same_item_balance': 0.8,
-                'same_item_balance_uncertainty': 0.05,
-                'cross_term_combination_statistic': 2.5,
-                'cross_term_combination_statistic_uncertainty': 0.2
-            }
-            
-            mock_calc_success.return_value = {
-                'trace_average_statistic': 0.75,
-                'trace_average_statistic_uncertainty': 0.08,
-                'chsh_value_statistic': 0.5,
-                'chsh_value_statistic_uncertainty': 0.1,
-                'same_item_balance': 0.7,
-                'same_item_balance_uncertainty': 0.06
-            }
-            
-            result = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
-            
-            assert result is not None
-            assert result['game_mode'] == 'classic'
-            
-            # Should have both classic and new stats
-            assert 'classic_stats' in result
-            assert 'new_stats' in result
-            assert 'classic_matrix' in result
-            assert 'new_matrix' in result
-            
-            # Display should use classic stats (correlation_stats points to classic)
-            assert result['correlation_stats'] == mock_calc_classic.return_value
-            
-            # Verify both stats are included
-            assert result['classic_stats']['trace_average_statistic'] == 0.6
-            assert result['new_stats']['trace_average_statistic'] == 0.75
+            with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+                 patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+                
+                mock_calc_classic.return_value = {
+                    'trace_average_statistic': 0.6,
+                    'trace_average_statistic_uncertainty': 0.1,
+                    'same_item_balance': 0.8,
+                    'same_item_balance_uncertainty': 0.05,
+                    'cross_term_combination_statistic': 2.5,
+                    'cross_term_combination_statistic_uncertainty': 0.2
+                }
+                
+                mock_calc_success.return_value = {
+                    'trace_average_statistic': 0.75,
+                    'trace_average_statistic_uncertainty': 0.08,
+                    'chsh_value_statistic': 0.5,
+                    'chsh_value_statistic_uncertainty': 0.1,
+                    'same_item_balance': 0.7,
+                    'same_item_balance_uncertainty': 0.06
+                }
+                
+                result = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
+                
+                assert result is not None
+                assert result['game_mode'] == 'classic'
+                
+                # Should have both classic and new stats
+                assert 'classic_stats' in result
+                assert 'new_stats' in result
+                assert 'classic_matrix' in result
+                assert 'new_matrix' in result
+                
+                # Display should use classic stats (correlation_stats points to classic)
+                assert result['correlation_stats'] == mock_calc_classic.return_value
+                
+                # Verify both stats are included
+                assert result['classic_stats']['trace_average_statistic'] == 0.6
+                assert result['new_stats']['trace_average_statistic'] == 0.75
 
     def test_new_mode_team_processing(self, mock_state, mock_compute_functions):
         """Test that new mode returns appropriate data structure."""
         mock_state.game_mode = 'new'
         
-        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._get_team_id_from_name') as mock_get_id:
+            mock_get_id.return_value = 1  # Ensure team ID lookup succeeds
             
-            mock_calc_classic.return_value = {
-                'trace_average_statistic': 0.6,
-                'trace_average_statistic_uncertainty': 0.1,
-                'same_item_balance': 0.8,
-                'same_item_balance_uncertainty': 0.05,
-                'cross_term_combination_statistic': 2.5,
-                'cross_term_combination_statistic_uncertainty': 0.2
-            }
-            
-            mock_calc_success.return_value = {
-                'trace_average_statistic': 0.75,
-                'trace_average_statistic_uncertainty': 0.08,
-                'chsh_value_statistic': 0.5,
-                'chsh_value_statistic_uncertainty': 0.1,
-                'same_item_balance': 0.7,
-                'same_item_balance_uncertainty': 0.06
-            }
-            
-            result = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
-            
-            assert result is not None
-            assert result['game_mode'] == 'new'
-            
-            # Should have both classic and new stats
-            assert 'classic_stats' in result
-            assert 'new_stats' in result
-            assert 'classic_matrix' in result
-            assert 'new_matrix' in result
-            
-            # Display should use new stats (correlation_stats points to new)
-            assert result['correlation_stats'] == mock_calc_success.return_value
-            
-            # Verify both stats are included
-            assert result['classic_stats']['trace_average_statistic'] == 0.6
-            assert result['new_stats']['trace_average_statistic'] == 0.75
+            with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+                 patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+                
+                mock_calc_classic.return_value = {
+                    'trace_average_statistic': 0.6,
+                    'trace_average_statistic_uncertainty': 0.1,
+                    'same_item_balance': 0.8,
+                    'same_item_balance_uncertainty': 0.05,
+                    'cross_term_combination_statistic': 2.5,
+                    'cross_term_combination_statistic_uncertainty': 0.2
+                }
+                
+                mock_calc_success.return_value = {
+                    'trace_average_statistic': 0.75,
+                    'trace_average_statistic_uncertainty': 0.08,
+                    'chsh_value_statistic': 0.5,
+                    'chsh_value_statistic_uncertainty': 0.1,
+                    'same_item_balance': 0.7,
+                    'same_item_balance_uncertainty': 0.06
+                }
+                
+                result = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
+                
+                assert result is not None
+                assert result['game_mode'] == 'new'
+                
+                # Should have both classic and new stats
+                assert 'classic_stats' in result
+                assert 'new_stats' in result
+                assert 'classic_matrix' in result
+                assert 'new_matrix' in result
+                
+                # Display should use new stats (correlation_stats points to new)
+                assert result['correlation_stats'] == mock_calc_success.return_value
+                
+                # Verify both stats are included
+                assert result['classic_stats']['trace_average_statistic'] == 0.6
+                assert result['new_stats']['trace_average_statistic'] == 0.75
 
     def test_success_statistics_calculation(self):
         """Test that success statistics are calculated correctly."""
