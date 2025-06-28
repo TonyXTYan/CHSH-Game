@@ -305,8 +305,8 @@ class TestDynamicStatistics:
         from src.models.quiz_models import PairQuestionRounds, Answers, ItemEnum
         
         # Mock the database queries
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds_model, \
-             patch('src.sockets.dashboard.Answers') as mock_answers_model:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds_model, \
+             patch('src.sockets.dashboard.computations.Answers') as mock_answers_model:
             
             # Mock rounds data - NEW mode pattern (Player 1: A,B; Player 2: X,Y)
             mock_round_1 = MagicMock()
@@ -353,7 +353,7 @@ class TestDynamicStatistics:
             mock_answers_model.query = mock_answers_query
             
             # Call the function with team name and mock the lookup
-            with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+            with patch('src.sockets.dashboard.computations._get_team_id_from_name') as mock_get_id:
                 mock_get_id.return_value = 1
                 result = compute_success_metrics("test_team")
             

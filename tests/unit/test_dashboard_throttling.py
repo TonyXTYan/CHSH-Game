@@ -26,7 +26,7 @@ def mock_flask_context():
 def mock_dashboard_dependencies(mock_flask_context):
     """Mock all dependencies for dashboard functions."""
     with patch('src.sockets.dashboard.events.socketio') as mock_socketio, \
-         patch('src.sockets.dashboard.events.get_all_teams') as mock_get_teams, \
+         patch('src.sockets.dashboard.team_processing.get_all_teams') as mock_get_teams, \
          patch('src.sockets.dashboard.events.Answers') as mock_answers:
         
         # Setup mock data
