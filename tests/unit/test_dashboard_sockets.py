@@ -546,41 +546,61 @@ def test_get_all_teams(mock_state, mock_db_session):
         with patch('src.sockets.dashboard.Teams') as mock_teams:
             mock_teams.query.all.return_value = [mock_team]
             
-            # Set up compute_correlation_matrix mock return values
-            corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
-            item_values = ['A', 'B', 'X', 'Y']
-            
-            with patch('src.sockets.dashboard.compute_correlation_matrix') as mock_compute:
-                mock_compute.return_value = (
-                    corr_matrix, item_values, 0.0, {}, {}, {}, {}
-                )
+            # Mock bulk queries for optimized version
+            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+                mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
                 
-                with patch('src.sockets.dashboard.compute_team_hashes') as mock_hashes:
-                    mock_hashes.return_value = ('hash1', 'hash2')
+                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                    mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
                     
-                    with patch('src.sockets.dashboard._calculate_team_statistics') as mock_stats:
-                        mock_stats.return_value = {
-                            'trace_average_statistic': 0.0,
-                            'trace_average_statistic_uncertainty': None,
-                            'chsh_value_statistic': 0.0,
-                            'chsh_value_statistic_uncertainty': None,
-                            'cross_term_combination_statistic': 0.0,
-                            'cross_term_combination_statistic_uncertainty': None,
-                            'same_item_balance': 0.0,
-                            'same_item_balance_uncertainty': None
-                        }
+                    # Mock the optimized hash computation
+                    with patch('src.sockets.dashboard._compute_team_hashes_optimized') as mock_hashes:
+                        mock_hashes.return_value = ('hash1', 'hash2')
                         
-                        result = get_all_teams()
-                        
-                        assert len(result) == 1
-                        team_data = result[0]
-                        assert team_data['team_name'] == "Test Team"
-                        assert team_data['team_id'] == 1
-                        assert team_data['is_active'] == True
-                        assert team_data['history_hash1'] == 'hash1'
-                        assert team_data['history_hash2'] == 'hash2'
-                        assert 'correlation_matrix' in team_data
-                        assert 'correlation_stats' in team_data
+                        # Mock the optimized computation functions
+                        with patch('src.sockets.dashboard._compute_correlation_matrix_optimized') as mock_corr:
+                            corr_matrix = [[(0, 0) for _ in range(4)] for _ in range(4)]
+                            item_values = ['A', 'B', 'X', 'Y']
+                            mock_corr.return_value = (corr_matrix, item_values, 0.0, {}, {}, {}, {})
+                            
+                            with patch('src.sockets.dashboard._compute_success_metrics_optimized') as mock_success:
+                                mock_success.return_value = (corr_matrix, item_values, 0.0, 0.0, {}, {}, {})
+                                
+                                with patch('src.sockets.dashboard._calculate_team_statistics_from_data') as mock_stats:
+                                    mock_stats.return_value = {
+                                        'trace_average_statistic': 0.0,
+                                        'trace_average_statistic_uncertainty': None,
+                                        'chsh_value_statistic': 0.0,
+                                        'chsh_value_statistic_uncertainty': None,
+                                        'cross_term_combination_statistic': 0.0,
+                                        'cross_term_combination_statistic_uncertainty': None,
+                                        'same_item_balance': 0.0,
+                                        'same_item_balance_uncertainty': None
+                                    }
+                                    
+                                    with patch('src.sockets.dashboard._calculate_success_statistics_from_data') as mock_new_stats:
+                                        mock_new_stats.return_value = {
+                                            'trace_average_statistic': 0.0,
+                                            'trace_average_statistic_uncertainty': None,
+                                            'chsh_value_statistic': 0.0,
+                                            'chsh_value_statistic_uncertainty': None,
+                                            'cross_term_combination_statistic': 0.0,
+                                            'cross_term_combination_statistic_uncertainty': None,
+                                            'same_item_balance': 0.0,
+                                            'same_item_balance_uncertainty': None
+                                        }
+                                        
+                                        result = get_all_teams()
+                                        
+                                        assert len(result) == 1
+                                        team_data = result[0]
+                                        assert team_data['team_name'] == "Test Team"
+                                        assert team_data['team_id'] == 1
+                                        assert team_data['is_active'] == True
+                                        assert team_data['history_hash1'] == 'hash1'
+                                        assert team_data['history_hash2'] == 'hash2'
+                                        assert 'correlation_matrix' in team_data
+                                        assert 'correlation_stats' in team_data
 
 def test_emit_dashboard_full_update(mock_state, mock_socketio):
     """Test full dashboard update emission"""
@@ -1815,21 +1835,41 @@ def test_get_all_teams_regular_throttling(mock_state, mock_db_session):
     with patch('src.sockets.dashboard.Teams') as mock_teams:
         mock_teams.query.all.return_value = []
         
-        # First call should compute fresh data
-        result1 = get_all_teams()
-        assert isinstance(result1, list)
-        
-        # Second call immediately after should return cached data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
-            result2 = get_all_teams()
-            assert result2 is result1  # Should be same cached object
-        
-        # Call after REFRESH_DELAY_QUICK should compute fresh data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.6  # 0.6 seconds later (> REFRESH_DELAY_QUICK)
-            result3 = get_all_teams()
-            assert isinstance(result3, list)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify throttling
+                db_call_count = 0
+                original_teams_all = mock_teams.query.all
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # First call should compute fresh data
+                result1 = get_all_teams()
+                assert isinstance(result1, list)
+                assert db_call_count == 1
+                
+                # Second call immediately after should use cached data (throttled)
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.2  # 0.2 seconds later (< REFRESH_DELAY_QUICK)
+                    result2 = get_all_teams()
+                    assert isinstance(result2, list)
+                    assert db_call_count == 1  # Should not increment due to throttling
+                
+                # Call after REFRESH_DELAY_QUICK should compute fresh data
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 1.2  # 1.2 seconds later (> REFRESH_DELAY_QUICK)
+                    result3 = get_all_teams()
+                    assert isinstance(result3, list)
+                    assert db_call_count == 2  # Should increment for fresh computation
 
 # Throttling constants test removed - duplicate of test in test_dashboard_throttling.py
 
@@ -1842,28 +1882,43 @@ def test_get_all_teams_mixed_refresh_types(mock_state, mock_db_session):
     clear_team_caches()
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_teams.query.all.return_value = []
-        
-        # Start with regular call
-        result1 = get_all_teams()
-        
-        # Another call immediately after should use cache
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
-            result2 = get_all_teams()
-            assert result2 is result1  # Should be cached
-        
-        # Another call quickly should still be cached
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
-            result3 = get_all_teams()
-            assert result3 is result1  # Should be cached
-        
-        # Call after delay should compute fresh data
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.6  # 0.6 seconds total
-            result4 = get_all_teams()
-            assert isinstance(result4, list)
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify caching
+                db_call_count = 0
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # Start with regular call
+                result1 = get_all_teams()
+                assert db_call_count == 1
+                
+                # Another call immediately after should use cache
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.1  # 0.1 seconds later
+                    result2 = get_all_teams()
+                    assert db_call_count == 1  # Should be cached, no new DB call
+                
+                # Another call quickly should still be cached
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.2  # 0.2 seconds total (< REFRESH_DELAY_QUICK)
+                    result3 = get_all_teams()
+                    assert db_call_count == 1  # Should still be cached
+                
+                # Call after delay should compute fresh data
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 1.2  # 1.2 seconds total (> REFRESH_DELAY_QUICK)
+                    result4 = get_all_teams()
+                    assert db_call_count == 2  # Should make new DB call
 
 def test_clear_team_caches_resets_throttling_timers(mock_state, mock_db_session):
     """Test that clear_team_caches resets throttling timers"""
@@ -1913,17 +1968,41 @@ def test_get_all_teams_throttling_with_exception_handling(mock_state, mock_db_se
     clear_team_caches()
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
-        # First call succeeds
-        mock_teams.query.all.return_value = []
-        result1 = get_all_teams()
-        assert isinstance(result1, list)
-        
-        # Second call would fail, but should return cached data due to throttling
-        mock_teams.query.all.side_effect = Exception("Database error")
-        with patch('src.sockets.dashboard.time') as mock_time:
-            mock_time.return_value = time.time() + 0.2  # Within throttling period
-            result2 = get_all_teams()
-            assert result2 is result1  # Should return cached data despite exception setup
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify throttling behavior
+                db_call_count = 0
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # First call succeeds
+                result1 = get_all_teams()
+                assert isinstance(result1, list)
+                assert db_call_count == 1
+                
+                # Second call would fail, but should return cached data due to throttling
+                def failing_teams_call():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    raise Exception("Database error")
+                
+                mock_teams.query.all = failing_teams_call
+                
+                with patch('src.sockets.dashboard.time') as mock_time:
+                    mock_time.return_value = time.time() + 0.2  # Within throttling period
+                    result2 = get_all_teams()
+                    # Should return cached data without calling DB (due to throttling)
+                    assert isinstance(result2, list)
+                    assert db_call_count == 1  # Should not increment due to throttling
 
 def test_emit_dashboard_team_update_uses_throttled_refresh(mock_state, mock_socketio):
     """Test that team updates use throttled refresh mechanism"""
@@ -1966,23 +2045,41 @@ def test_get_all_teams_concurrent_access_simulation(mock_state, mock_db_session)
     clear_team_caches()
     
     with patch('src.sockets.dashboard.Teams') as mock_teams:
-        mock_teams.query.all.return_value = []
-        
-        # Simulate multiple rapid calls as might happen in real usage
-        results = []
-        base_time = time.time()
-        
-        # Multiple calls within throttling windows
-        for i in range(5):
-            with patch('src.sockets.dashboard.time') as mock_time:
-                mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
-                result = get_all_teams()
-                results.append(result)
-        
-        # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
-        assert isinstance(results[0], list)
-        for i in range(1, 5):
-            assert results[i] is results[0], f"Result {i} should be cached"
+        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            mock_rounds.query.filter.return_value.order_by.return_value.all.return_value = []
+            
+            with patch('src.sockets.dashboard.Answers') as mock_answers:
+                mock_answers.query.filter.return_value.order_by.return_value.all.return_value = []
+                
+                # Track database calls to verify throttling
+                db_call_count = 0
+                
+                def count_teams_calls():
+                    nonlocal db_call_count
+                    db_call_count += 1
+                    return []
+                
+                mock_teams.query.all = count_teams_calls
+                
+                # Simulate multiple rapid calls as might happen in real usage
+                results = []
+                base_time = time.time()
+                
+                # Multiple calls within throttling windows
+                for i in range(5):
+                    with patch('src.sockets.dashboard.time') as mock_time:
+                        mock_time.return_value = base_time + (i * 0.1)  # 0.1 second intervals
+                        result = get_all_teams()
+                        results.append(result)
+                
+                # First call should compute, rest should be cached (within REFRESH_DELAY_QUICK)
+                assert isinstance(results[0], list)
+                assert db_call_count == 1  # Only first call should hit database
+                
+                # All results should be functionally equivalent (though not necessarily same object)
+                for i in range(1, 5):
+                    assert isinstance(results[i], list), f"Result {i} should be a list"
+                    assert len(results[i]) == len(results[0]), f"Result {i} should have same length as first result"
 
 def test_throttling_integration_with_team_events(mock_state, mock_socketio):
     """Test that the throttling works well with actual team management events"""
