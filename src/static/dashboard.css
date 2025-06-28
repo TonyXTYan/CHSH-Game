@@ -668,18 +668,17 @@ th {
 /* Team row animation styles */
 .team-row {
     position: relative;
-    transition: transform 500ms cubic-bezier(0.4, 0, 0.2, 1);
-    transform: translateY(0);
     z-index: 1;
-    will-change: transform;
 }
 
 .team-row.moving {
     z-index: 2; /* Ensure moving rows stay above others */
+    will-change: transform;
 }
 
-.team-row.animating {
-    pointer-events: none;
+.team-row.new-team {
+    z-index: 1;
+    will-change: opacity;
 }
 
 /* Styles moved from dashboard.html */

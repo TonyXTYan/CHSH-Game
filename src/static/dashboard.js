@@ -873,6 +873,90 @@ document.getElementById('sort-teams').addEventListener('change', () => {
     }
 });
 
+// Helper function to capture current team positions for animations
+function captureTeamPositions() {
+    const positions = new Map();
+    const rows = activeTeamsTableBody.querySelectorAll('.team-row');
+    
+    console.log('Capturing positions for', rows.length, 'existing rows');
+    
+    rows.forEach((row, index) => {
+        const teamName = row.getAttribute('data-team-name');
+        if (teamName) {
+            const rect = row.getBoundingClientRect();
+            positions.set(teamName, {
+                index,
+                top: rect.top,
+                element: row
+            });
+            console.log(`Captured position for ${teamName}: top = ${rect.top}`);
+        }
+    });
+    
+    return positions;
+}
+
+// Helper function to animate team position changes
+function animateTeamPositions(oldPositions) {
+    if (!oldPositions || oldPositions.size === 0) {
+        return; // No previous positions to animate from
+    }
+    
+    const newRows = activeTeamsTableBody.querySelectorAll('.team-row');
+    console.log('Animating positions for', newRows.length, 'rows');
+    
+    newRows.forEach((row) => {
+        const teamName = row.getAttribute('data-team-name');
+        const oldPos = oldPositions.get(teamName);
+        
+        if (oldPos) {
+            // Team existed before - animate position change
+            const newRect = row.getBoundingClientRect();
+            const deltaY = oldPos.top - newRect.top;
+            
+            console.log(`Team ${teamName}: deltaY = ${deltaY}`);
+            
+            if (Math.abs(deltaY) > 2) { // Animate any meaningful movement
+                // Set initial position
+                row.style.transform = `translateY(${deltaY}px)`;
+                row.style.transition = 'none';
+                row.classList.add('moving');
+                
+                // Force reflow
+                row.offsetHeight;
+                
+                // Animate to final position
+                setTimeout(() => {
+                    row.style.transition = 'transform 300ms ease-out';
+                    row.style.transform = 'translateY(0)';
+                    
+                    // Clean up after animation
+                    setTimeout(() => {
+                        row.style.transform = '';
+                        row.style.transition = '';
+                        row.classList.remove('moving');
+                    }, 320);
+                }, 10);
+            }
+        } else {
+            // New team - fade in
+            row.style.opacity = '0';
+            row.classList.add('new-team');
+            
+            setTimeout(() => {
+                row.style.transition = 'opacity 300ms ease-out';
+                row.style.opacity = '1';
+                
+                setTimeout(() => {
+                    row.style.opacity = '';
+                    row.style.transition = '';
+                    row.classList.remove('new-team');
+                }, 320);
+            }, 10);
+        }
+    });
+}
+
 function updateActiveTeams(teams) {
     // If teams streaming is disabled, don't update the UI
     if (!teamsStreamEnabled) {
@@ -888,6 +972,9 @@ function updateActiveTeams(teams) {
 
     const showInactive = document.getElementById('show-inactive').checked;
     const sortBy = document.getElementById('sort-teams').value;
+    
+    // Capture current team positions for animation
+    const oldPositions = captureTeamPositions();
     
     // Filter teams based on status
     let filteredTeams = showInactive ? teams : teams.filter(team =>
@@ -1151,7 +1238,13 @@ function updateActiveTeams(teams) {
         detailsBtn.textContent = 'View';
         detailsBtn.onclick = () => showTeamDetails(team);
         detailsCell.appendChild(detailsBtn);
+        
+        // Add team ID for animation tracking
+        row.setAttribute('data-team-name', team.team_name);
     });
+    
+    // Apply animations for position changes
+    animateTeamPositions(oldPositions);
 }
 
 function addAnswerToLog(answer) {
