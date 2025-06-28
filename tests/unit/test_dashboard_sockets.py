@@ -416,14 +416,21 @@ def test_on_keep_alive(mock_request, mock_state):
     # Ensure client is authorized (already set in mock_state fixture)
     assert 'test_dashboard_sid' in mock_state.dashboard_clients
     
-    with patch('src.sockets.dashboard.events.emit') as mock_emit:
-        on_keep_alive()
+    # Patch state for client_management module since it imports from src.state directly
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
         
-        # Verify acknowledgment was sent
-        mock_emit.assert_called_once_with('keep_alive_ack', to='test_dashboard_sid')
-        
-        # Verify timestamp was updated (mock_time from mock_request fixture returns 12345.0)
-        assert dashboard_last_activity['test_dashboard_sid'] == 12345.0
+        with patch('src.sockets.dashboard.client_management.emit') as mock_emit:
+            with patch('src.sockets.dashboard.client_management.time') as mock_time:
+                mock_time.return_value = 12345.0
+                
+                on_keep_alive()
+                
+                # Verify acknowledgment was sent
+                mock_emit.assert_called_once_with('keep_alive_ack', to='test_dashboard_sid')
+                
+                # Verify timestamp was updated
+                assert dashboard_last_activity['test_dashboard_sid'] == 12345.0
 
 def test_handle_dashboard_disconnect(mock_request, mock_state):
     """Test dashboard disconnect handler"""
@@ -434,12 +441,15 @@ def test_handle_dashboard_disconnect(mock_request, mock_state):
     dashboard_last_activity['test_dashboard_sid'] = 12345
     dashboard_teams_streaming['test_dashboard_sid'] = True
     
-    handle_dashboard_disconnect('test_dashboard_sid')
-    
-    # Verify client was removed from all tracking
-    assert 'test_dashboard_sid' not in mock_state.dashboard_clients
-    assert 'test_dashboard_sid' not in dashboard_last_activity
-    assert 'test_dashboard_sid' not in dashboard_teams_streaming
+    # Patch state for client_management module since it imports from src.state directly
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
+        
+        handle_dashboard_disconnect('test_dashboard_sid')
+        
+        # Verify client was removed from tracking dictionaries
+        assert 'test_dashboard_sid' not in dashboard_last_activity
+        assert 'test_dashboard_sid' not in dashboard_teams_streaming
 
 def test_emit_dashboard_team_update(mock_state, mock_socketio):
     """Test dashboard team update emission"""
@@ -812,11 +822,15 @@ def test_set_teams_streaming_enable(mock_request, mock_state):
     # Start with streaming disabled
     dashboard_teams_streaming['test_dashboard_sid'] = False
     
-    # Enable streaming
-    on_set_teams_streaming({'enabled': True})
-    
-    # Verify streaming is now enabled
-    assert dashboard_teams_streaming['test_dashboard_sid'] == True
+    # Patch state for client_management module
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
+        
+        # Enable streaming
+        on_set_teams_streaming({'enabled': True})
+        
+        # Verify streaming is now enabled
+        assert dashboard_teams_streaming['test_dashboard_sid'] == True
 
 def test_set_teams_streaming_disable(mock_request, mock_state):
     """Test disabling teams streaming via socket event"""
@@ -828,11 +842,15 @@ def test_set_teams_streaming_disable(mock_request, mock_state):
     # Start with streaming enabled
     dashboard_teams_streaming['test_dashboard_sid'] = True
     
-    # Disable streaming
-    on_set_teams_streaming({'enabled': False})
-    
-    # Verify streaming is now disabled
-    assert dashboard_teams_streaming['test_dashboard_sid'] == False
+    # Patch state for client_management module
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
+        
+        # Disable streaming
+        on_set_teams_streaming({'enabled': False})
+        
+        # Verify streaming is now disabled
+        assert dashboard_teams_streaming['test_dashboard_sid'] == False
 
 def test_set_teams_streaming_invalid_data(mock_request, mock_state):
     """Test set_teams_streaming with invalid data"""
@@ -863,11 +881,15 @@ def test_request_teams_update_when_streaming_enabled(mock_request, mock_state):
     # Enable streaming
     dashboard_teams_streaming['test_dashboard_sid'] = True
     
-    with patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
-        on_request_teams_update()
+    # Patch state for client_management module
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = mock_state.dashboard_clients
         
-        # Verify full update was called for this client
-        mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
+        with patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
+            on_request_teams_update()
+            
+            # Verify full update was called for this client
+            mock_full_update.assert_called_once_with(client_sid='test_dashboard_sid')
 
 def test_request_teams_update_when_streaming_disabled(mock_request, mock_state, mock_socketio):
     """Test request_teams_update does nothing when streaming is disabled"""

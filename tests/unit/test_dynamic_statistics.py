@@ -198,50 +198,56 @@ class TestDynamicStatistics:
         """Test that both classic and new computations are called regardless of mode."""
         mock_state.game_mode = 'classic'
         
-        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._get_team_id_from_name') as mock_get_id:
+            mock_get_id.return_value = 1  # Ensure team ID lookup succeeds
             
-            mock_calc_classic.return_value = {}
-            mock_calc_success.return_value = {}
-            
-            _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
-            
-            # Both calculation functions should be called
-            mock_calc_classic.assert_called_once()
-            mock_calc_success.assert_called_once()
-            
-            # Both computation functions should be called
-            mock_hashes, mock_corr, mock_success = mock_compute_functions
-            mock_corr.assert_called_once()
-            mock_success.assert_called_once()
+            with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+                 patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+                
+                mock_calc_classic.return_value = {}
+                mock_calc_success.return_value = {}
+                
+                _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
+                
+                # Both calculation functions should be called
+                mock_calc_classic.assert_called_once()
+                mock_calc_success.assert_called_once()
+                
+                # Both computation functions should be called
+                mock_hashes, mock_corr, mock_success = mock_compute_functions
+                mock_corr.assert_called_once()
+                mock_success.assert_called_once()
 
     def test_mode_toggle_preserves_data_structure(self, mock_state, mock_compute_functions):
         """Test that switching modes preserves the data structure."""
-        with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
-             patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+        with patch('src.sockets.dashboard.computations._get_team_id_from_name') as mock_get_id:
+            mock_get_id.return_value = 1  # Ensure team ID lookup succeeds
             
-            mock_calc_classic.return_value = {'classic_stat': 1.0}
-            mock_calc_success.return_value = {'new_stat': 2.0}
-            
-            # Test classic mode first
-            mock_state.game_mode = 'classic'
-            result_classic = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
-            
-            # Test new mode
-            mock_state.game_mode = 'new'
-            result_new = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
-            
-            # Both results should have the same structure
-            assert set(result_classic.keys()) == set(result_new.keys())
-            
-            # Both should contain all statistics
-            for result in [result_classic, result_new]:
-                assert 'classic_stats' in result
-                assert 'new_stats' in result
-                assert 'classic_matrix' in result
-                assert 'new_matrix' in result
-                assert 'correlation_stats' in result  # Current display stats
-                assert 'correlation_matrix' in result  # Current display matrix
+            with patch('src.sockets.dashboard.computations._calculate_team_statistics') as mock_calc_classic, \
+                 patch('src.sockets.dashboard.computations._calculate_success_statistics') as mock_calc_success:
+                
+                mock_calc_classic.return_value = {'classic_stat': 1.0}
+                mock_calc_success.return_value = {'new_stat': 2.0}
+                
+                # Test classic mode first
+                mock_state.game_mode = 'classic'
+                result_classic = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
+                
+                # Test new mode
+                mock_state.game_mode = 'new'
+                result_new = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
+                
+                # Both results should have the same structure
+                assert set(result_classic.keys()) == set(result_new.keys())
+                
+                # Both should contain all statistics
+                for result in [result_classic, result_new]:
+                    assert 'classic_stats' in result
+                    assert 'new_stats' in result
+                    assert 'classic_matrix' in result
+                    assert 'new_matrix' in result
+                    assert 'correlation_stats' in result  # Current display stats
+                    assert 'correlation_matrix' in result  # Current display matrix
 
     def test_new_mode_individual_balance_calculation(self):
         """Test that NEW mode correctly calculates individual player balance instead of same-question balance."""

@@ -119,6 +119,9 @@ def handle_dashboard_disconnect(sid: str) -> None:
     Called when a dashboard client disconnects to clean up their tracking state.
     """
     try:
+        # Remove from dashboard clients set
+        state.dashboard_clients.discard(sid)
+        # Remove from tracking dictionaries
         _atomic_client_update(sid, remove=True)
         logger.info(f"Cleaned up dashboard client data for disconnected client: {sid}")
     except Exception as e:
