@@ -153,6 +153,294 @@ _classic_stats_cache = SelectiveCache()
 _new_stats_cache = SelectiveCache()
 _team_process_cache = SelectiveCache()
 
+# ===== OPTIMIZED CLIENT PREFERENCE COLLECTION SYSTEM =====
+
+class DashboardClientManager:
+    """
+    Optimized dashboard client management with minimal locking.
+    Collects all client preferences upfront and computes data once.
+    """
+    def __init__(self):
+        self._lock = threading.RLock()
+        self._client_preferences: Dict[str, Dict[str, Any]] = {}
+    
+    def get_client_distribution(self) -> Dict[str, Any]:
+        """
+        Quickly collect all client preferences with minimal locking.
+        Returns aggregated information about what data needs to be computed.
+        """
+        with self._lock:
+            # Get snapshot of current clients and preferences
+            active_clients = set(state.dashboard_clients)
+            
+            streaming_clients = []
+            non_streaming_clients = []
+            
+            for sid in active_clients:
+                if dashboard_teams_streaming.get(sid, False):
+                    streaming_clients.append(sid)
+                else:
+                    non_streaming_clients.append(sid)
+            
+            return {
+                'streaming_clients': streaming_clients,
+                'non_streaming_clients': non_streaming_clients,
+                'needs_teams_data': len(streaming_clients) > 0,
+                'total_clients': len(active_clients)
+            }
+    
+    def update_client_preference(self, sid: str, **kwargs) -> None:
+        """Quick client preference update with minimal locking."""
+        with self._lock:
+            if 'activity_time' in kwargs:
+                dashboard_last_activity[sid] = kwargs['activity_time']
+            if 'streaming_enabled' in kwargs:
+                dashboard_teams_streaming[sid] = kwargs['streaming_enabled']
+            if kwargs.get('remove', False):
+                dashboard_last_activity.pop(sid, None)
+                dashboard_teams_streaming.pop(sid, None)
+
+# Global client manager instance
+_client_manager = DashboardClientManager()
+
+# ===== OPTIMIZED EMISSION FUNCTIONS =====
+
+def emit_dashboard_team_update_optimized() -> None:
+    """
+    Optimized team update that collects client preferences once and computes data once.
+    Eliminates redundant preference checking and data computation.
+    """
+    global _last_team_update_time, _cached_team_metrics
+    
+    try:
+        # Quick preference collection with minimal locking
+        client_dist = _client_manager.get_client_distribution()
+        
+        if client_dist['total_clients'] == 0:
+            return  # No clients to update
+        
+        # Always compute fresh connected_players_count (cheap operation)
+        connected_players_count = len(state.connected_players)
+        
+        # Check throttling and compute data only once based on collective client needs
+        current_time = time()
+        time_since_last_update = current_time - _last_team_update_time
+        
+        if client_dist['needs_teams_data']:
+            # Some clients need expensive teams data
+            if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
+                # Use cached data
+                serialized_teams = _cached_team_metrics.get('cached_teams', [])
+                active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
+                ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
+                logger.debug("Using cached team data for optimized update")
+            else:
+                # Compute expensive data once outside locks
+                serialized_teams = get_all_teams()
+                active_teams = [team for team in serialized_teams if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+                active_teams_count = len(active_teams)
+                ready_players_count = sum(
+                    (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                    for team in active_teams
+                )
+                
+                # Cache the computed data
+                with _client_manager._lock:
+                    _cached_team_metrics = {
+                        'cached_teams': serialized_teams,
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_team_update_time = current_time
+                logger.debug("Computed fresh team data for optimized update")
+        else:
+            # No clients need teams data - compute lightweight metrics only
+            serialized_teams = []
+            if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
+                active_teams_count = _cached_team_metrics.get('active_teams_count', 0)
+                ready_players_count = _cached_team_metrics.get('ready_players_count', 0)
+                logger.debug("Using cached metrics for optimized non-streaming update")
+            else:
+                # Compute lightweight metrics from state (no database queries)
+                active_teams = [team_info for team_info in state.active_teams.values() 
+                              if team_info.get('status') in ['active', 'waiting_pair']]
+                active_teams_count = len(active_teams)
+                ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
+                
+                with _client_manager._lock:
+                    _cached_team_metrics = {
+                        'cached_teams': [],
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_team_update_time = current_time
+                logger.debug("Computed lightweight metrics for optimized non-streaming update")
+        
+        # Prepare data payloads once
+        base_metrics = {
+            'connected_players_count': connected_players_count,
+            'active_teams_count': active_teams_count,
+            'ready_players_count': ready_players_count
+        }
+        
+        streaming_payload = {**base_metrics, 'teams': serialized_teams}
+        non_streaming_payload = {**base_metrics, 'teams': []}
+        
+        # Batch emit to all clients (no locks during network I/O)
+        if client_dist['streaming_clients']:
+            for sid in client_dist['streaming_clients']:
+                socketio.emit('team_status_changed_for_dashboard', streaming_payload, to=sid)
+        
+        if client_dist['non_streaming_clients']:
+            for sid in client_dist['non_streaming_clients']:
+                socketio.emit('team_status_changed_for_dashboard', non_streaming_payload, to=sid)
+                
+    except Exception as e:
+        logger.error(f"Error in emit_dashboard_team_update_optimized: {str(e)}", exc_info=True)
+
+def emit_dashboard_full_update_optimized(client_sid: Optional[str] = None, exclude_sid: Optional[str] = None) -> None:
+    """
+    Optimized full update that minimizes locking and computes data once.
+    Supports targeting specific clients while maintaining efficiency.
+    """
+    global _last_full_update_time, _cached_full_metrics
+    
+    try:
+        # Quick preference collection
+        if client_sid:
+            # Single client update
+            client_dist = {
+                'streaming_clients': [client_sid] if dashboard_teams_streaming.get(client_sid, False) else [],
+                'non_streaming_clients': [client_sid] if not dashboard_teams_streaming.get(client_sid, False) else [],
+                'needs_teams_data': dashboard_teams_streaming.get(client_sid, False),
+                'total_clients': 1
+            }
+        else:
+            # All clients update
+            client_dist = _client_manager.get_client_distribution()
+            if exclude_sid:
+                client_dist['streaming_clients'] = [sid for sid in client_dist['streaming_clients'] if sid != exclude_sid]
+                client_dist['non_streaming_clients'] = [sid for sid in client_dist['non_streaming_clients'] if sid != exclude_sid]
+                client_dist['total_clients'] = len(client_dist['streaming_clients']) + len(client_dist['non_streaming_clients'])
+        
+        if client_dist['total_clients'] == 0:
+            return  # No clients to update
+        
+        # Always compute fresh connected_players_count (cheap)
+        connected_players_count = len(state.connected_players)
+        
+        # Check throttling and compute data based on collective needs
+        current_time = time()
+        time_since_last_update = current_time - _last_full_update_time
+        
+        if client_dist['needs_teams_data']:
+            # Some clients need expensive data
+            if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
+                # Use cached data
+                all_teams_for_metrics = _cached_full_metrics.get('cached_teams', [])
+                total_answers = _cached_full_metrics.get('total_answers', 0)
+                active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
+                ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
+                logger.debug("Using cached data for optimized full update")
+            else:
+                # Compute expensive data once outside locks
+                all_teams_for_metrics = get_all_teams()
+                
+                with app.app_context():
+                    total_answers = Answers.query.count()
+                
+                active_teams = [team for team in all_teams_for_metrics if team.get('is_active', False) or team.get('status') == 'waiting_pair']
+                active_teams_count = len(active_teams)
+                ready_players_count = sum(
+                    (1 if team.get('player1_sid') else 0) + (1 if team.get('player2_sid') else 0)
+                    for team in active_teams
+                )
+                
+                # Cache the expensive data
+                with _client_manager._lock:
+                    _cached_full_metrics = {
+                        'cached_teams': all_teams_for_metrics,
+                        'total_answers': total_answers,
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_full_update_time = current_time
+                logger.debug("Computed fresh data for optimized full update")
+        else:
+            # No clients need teams data
+            all_teams_for_metrics = []
+            if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
+                total_answers = _cached_full_metrics.get('total_answers', 0)
+                active_teams_count = _cached_full_metrics.get('active_teams_count', 0)
+                ready_players_count = _cached_full_metrics.get('ready_players_count', 0)
+                logger.debug("Using cached metrics for optimized non-streaming full update")
+            else:
+                # Compute lightweight data
+                with app.app_context():
+                    total_answers = Answers.query.count()
+                
+                active_teams = [team_info for team_info in state.active_teams.values() 
+                              if team_info.get('status') in ['active', 'waiting_pair']]
+                active_teams_count = len(active_teams)
+                ready_players_count = sum(len(team_info.get('players', [])) for team_info in active_teams)
+                
+                with _client_manager._lock:
+                    _cached_full_metrics = {
+                        'cached_teams': [],
+                        'total_answers': total_answers,
+                        'active_teams_count': active_teams_count,
+                        'ready_players_count': ready_players_count,
+                    }
+                    _last_full_update_time = current_time
+                logger.debug("Computed lightweight data for optimized non-streaming full update")
+        
+        # Prepare base data once
+        base_update_data = {
+            'total_answers_count': total_answers,
+            'connected_players_count': connected_players_count,
+            'active_teams_count': active_teams_count,
+            'ready_players_count': ready_players_count,
+            'game_state': {
+                'started': state.game_started,
+                'paused': state.game_paused,
+                'streaming_enabled': state.answer_stream_enabled,
+                'mode': state.game_mode,
+                'theme': state.game_theme
+            }
+        }
+        
+        # Prepare payloads once
+        streaming_payload = {**base_update_data, 'teams': all_teams_for_metrics}
+        non_streaming_payload = {**base_update_data, 'teams': []}
+        
+        # Batch emit to all clients (no locks during network I/O)
+        if client_dist['streaming_clients']:
+            for sid in client_dist['streaming_clients']:
+                socketio.emit('dashboard_update', streaming_payload, to=sid)
+        
+        if client_dist['non_streaming_clients']:
+            for sid in client_dist['non_streaming_clients']:
+                socketio.emit('dashboard_update', non_streaming_payload, to=sid)
+                
+    except Exception as e:
+        logger.error(f"Error in emit_dashboard_full_update_optimized: {str(e)}", exc_info=True)
+
+# Update the _atomic_client_update function to use the new client manager
+def _atomic_client_update_optimized(sid: str, activity_time: Optional[float] = None, 
+                                   streaming_enabled: Optional[bool] = None, 
+                                   remove: bool = False) -> None:
+    """Optimized atomic client update using the client manager."""
+    _client_manager.update_client_preference(
+        sid, 
+        activity_time=activity_time,
+        streaming_enabled=streaming_enabled,
+        remove=remove
+    )
+    if remove:
+        logger.debug(f"Optimized removal of dashboard client data for {sid}")
+    else:
+        logger.debug(f"Optimized update of dashboard client data for {sid}")
+
 def _make_cache_key(*args, **kwargs) -> str:
     """Create a consistent cache key from function arguments."""
     key_parts = []
@@ -279,7 +567,7 @@ def on_keep_alive() -> None:
     try:
         sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
-            _atomic_client_update(sid, activity_time=time())
+            _atomic_client_update_optimized(sid, activity_time=time())
             emit('keep_alive_ack', to=sid)  # type: ignore
     except Exception as e:
         logger.error(f"Error in on_keep_alive: {str(e)}", exc_info=True)
@@ -291,7 +579,7 @@ def on_set_teams_streaming(data: Dict[str, Any]) -> None:
         sid = request.sid  # type: ignore
         if sid in state.dashboard_clients:
             enabled = data.get('enabled', False)
-            _atomic_client_update(sid, streaming_enabled=enabled)
+            _atomic_client_update_optimized(sid, streaming_enabled=enabled)
             logger.info(f"Dashboard client {sid} set teams streaming to: {enabled}")
     except Exception as e:
         logger.error(f"Error in on_set_teams_streaming: {str(e)}", exc_info=True)
@@ -2180,7 +2468,7 @@ def handle_dashboard_disconnect(sid: str) -> None:
             state.dashboard_clients.remove(sid)
             
         # Clean up all dashboard client tracking data atomically
-        _atomic_client_update(sid, remove=True)
+        _atomic_client_update_optimized(sid, remove=True)
         
     except Exception as e:
         logger.error(f"Error in handle_dashboard_disconnect: {str(e)}", exc_info=True)
