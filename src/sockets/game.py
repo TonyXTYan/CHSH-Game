@@ -104,10 +104,64 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
 
         if len(team_info['answered_current_round']) == 2:
             # print(f"Both players in team {team_name} answered round {team_info['current_round_number']}.")
-            socketio.emit('round_complete', {
+            
+            # Get the completed round data for result evaluation
+            completed_round_data = None
+            try:
+                round_db_entry = PairQuestionRounds.query.get(round_id)
+                if round_db_entry:
+                    # Get both player answers for this round
+                    round_answers = Answers.query.filter_by(question_round_id=round_id).all()
+                    
+                    if len(round_answers) == 2:
+                        # Determine which player is which based on database slots
+                        team_db = Teams.query.get(team_info['team_id'])
+                        if team_db:
+                            p1_item = round_db_entry.player1_item.value if round_db_entry.player1_item else None
+                            p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
+                            
+                            # Map answers to correct players
+                            p1_answer = None
+                            p2_answer = None
+                            
+                            for answer in round_answers:
+                                if answer.player_session_id == team_db.player1_session_id:
+                                    p1_answer = answer.response_value
+                                elif answer.player_session_id == team_db.player2_session_id:
+                                    p2_answer = answer.response_value
+                            
+                            if p1_item and p2_item and p1_answer is not None and p2_answer is not None:
+                                # Evaluate success using the same logic as compute_success_metrics
+                                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+                                players_answered_differently = p1_answer != p2_answer
+                                
+                                if is_by_combination:
+                                    # B,Y combination: players should answer differently
+                                    is_successful = players_answered_differently
+                                else:
+                                    # All other combinations: players should answer the same
+                                    is_successful = not players_answered_differently
+                                
+                                completed_round_data = {
+                                    'p1_item': p1_item,
+                                    'p2_item': p2_item,
+                                    'p1_answer': p1_answer,
+                                    'p2_answer': p2_answer,
+                                    'is_successful': is_successful
+                                }
+            except Exception as e:
+                logger.error(f"Error getting completed round data: {str(e)}")
+                completed_round_data = None
+            
+            # Emit round complete with optional previous round data
+            round_complete_data = {
                 'team_name': team_name,
                 'round_number': team_info['current_round_number']
-            }, to=team_name)  # type: ignore
+            }
+            if completed_round_data:
+                round_complete_data['previous_round'] = completed_round_data
+                
+            socketio.emit('round_complete', round_complete_data, to=team_name)  # type: ignore
             start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_submit_answer: {str(e)}", exc_info=True)

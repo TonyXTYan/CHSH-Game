@@ -11,6 +11,7 @@ let currentTeamStatus = null; // Track current team status
 let currentGameMode = 'new'; // Track current game mode
 let currentGameTheme = 'classic'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
+let previousRoundResult = null; // Track previous round result for display
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -149,6 +150,68 @@ function updatePlayerResponsibilityMessage() {
     }
 }
 
+// Generate themed previous round result message
+function generatePreviousRoundMessage(roundData) {
+    if (!roundData || !playerPosition) {
+        return "Waiting for next round...";
+    }
+    
+    const { p1_item, p2_item, p1_answer, p2_answer, is_successful } = roundData;
+    
+    // Get themed display items
+    let p1_display = p1_item;
+    let p2_display = p2_item;
+    let p1_answer_display = p1_answer ? "True" : "False";
+    let p2_answer_display = p2_answer ? "True" : "False";
+    
+    if (window.themeManager) {
+        p1_display = window.themeManager.getItemDisplay(p1_item);
+        p2_display = window.themeManager.getItemDisplay(p2_item);
+        
+        // For food theme, use Choose/Skip instead of True/False
+        if (currentGameTheme === 'food') {
+            p1_answer_display = p1_answer ? "Choose" : "Skip";
+            p2_answer_display = p2_answer ? "Choose" : "Skip";
+        }
+    }
+    
+    if (currentGameTheme === 'classic') {
+        return `Last round, your team (P1/P2) were asked ${p1_display}/${p2_display} and answer was ${p1_answer_display}/${p2_answer_display}`;
+    } else if (currentGameTheme === 'food') {
+        // Generate reaction emoji based on combination and success
+        let reaction = "";
+        const isByCombo = (p1_item === 'B' && p2_item === 'Y') || (p1_item === 'Y' && p2_item === 'B');
+        
+        if (is_successful) {
+            // Successful combinations
+            if (isByCombo) {
+                // BY/YB combination successful (different answers) - could be yum or yuck based on items
+                if ((p1_item === 'B' && p2_item === 'Y')) {
+                    reaction = "🤮"; // yuck (dumplings + chocolate = bad combo)
+                } else {
+                    reaction = "😋"; // yum (chocolate + dumplings = good combo)
+                }
+            } else {
+                // Non-BY combination successful (same answers)
+                reaction = "😋"; // yum
+            }
+        } else {
+            // Failed combinations
+            if (isByCombo) {
+                // BY/YB combination failed (same answers when should be different)
+                reaction = "😭"; // bad
+            } else {
+                // Non-BY combination failed (different answers when should be same)
+                reaction = "😭"; // bad
+            }
+        }
+        
+        return `Last round, your team (P1/P2) were asked ${p1_display}/${p2_display} and decisions was ${p1_answer_display}/${p2_answer_display}, that was ${reaction === "😋" ? "yum" : reaction === "🤮" ? "yuck" : "bad"} ${reaction}`;
+    }
+    
+    return "Waiting for next round...";
+}
+
 // Function to reset UI to initial state
 function resetToInitialView() {
     currentTeam = null;
@@ -157,6 +220,7 @@ function resetToInitialView() {
     teamId = null;
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
+    previousRoundResult = null; // Reset previous round result
     currentGameMode = 'new'; // Reset to new mode
     currentGameTheme = 'classic'; // Reset to classic theme
     localStorage.removeItem('quizSessionData');
@@ -237,7 +301,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 waitingMessage.textContent = "Game is paused";
                 waitingMessage.classList.add('visible');
             } else {
-                waitingMessage.textContent = "Waiting for next round...";
+                waitingMessage.textContent = generatePreviousRoundMessage(previousRoundResult);
             }
         }
     } else if (gameStarted) {
@@ -288,6 +352,7 @@ function resetGameControls() {
     waitingMessage.classList.remove('visible');
     questionItem.textContent = '';
     currentRound = null;
+    previousRoundResult = null; // Reset previous round result
     
     // Apply default theme styling
     if (window.themeManager) {
@@ -466,7 +531,7 @@ function setAnswerButtonsEnabled(enabled) {
         waitingMessage.textContent = "Game is paused";
         waitingMessage.classList.add('visible');
     } else {
-        waitingMessage.textContent = "Waiting for next round...";
+        waitingMessage.textContent = generatePreviousRoundMessage(previousRoundResult);
         if (!currentRound?.alreadyAnswered) {
             waitingMessage.classList.remove('visible');
         }
@@ -645,6 +710,13 @@ const callbacks = {
         showStatus(data.message, 'success');
     },
 
+    onRoundComplete: (data) => {
+        // Store previous round data for themed waiting message display
+        if (data.previous_round) {
+            previousRoundResult = data.previous_round;
+        }
+    },
+
     onTeamDisbanded: (data) => {
         currentTeam = null;
         isCreator = false;
@@ -652,6 +724,7 @@ const callbacks = {
         lastClickedButton = null;
         currentTeamStatus = null; // Reset team status
         playerPosition = null; // Reset player position
+        previousRoundResult = null; // Reset previous round result
         localStorage.removeItem('quizSessionData');
         updatePlayerPosition(null);
         showStatus(data.message, 'error');
@@ -664,6 +737,7 @@ const callbacks = {
         currentRound = null;
         currentTeamStatus = null; // Reset team status
         playerPosition = null; // Reset player position
+        previousRoundResult = null; // Reset previous round result
         localStorage.removeItem('quizSessionData');
         updatePlayerPosition(null);
         showStatus(data.message, 'success');

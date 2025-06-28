@@ -125,6 +125,11 @@ function initializeSocketHandlers(socket, callbacks) {
 
     socket.on('round_complete', (data) => {
         callbacks.showStatus(`Round ${data.round_number} complete! Next round coming up...`, 'success');
+        
+        // Store previous round data for display in waiting message
+        if (data.previous_round) {
+            callbacks.onRoundComplete(data);
+        }
     });
 
     socket.on('player_left', (data) => {
