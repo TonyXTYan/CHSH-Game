@@ -349,6 +349,12 @@ def on_change_game_theme(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'Invalid theme specified'})  # type: ignore
             return
 
+        # Validate theme against supported themes
+        supported_themes = ['classic', 'food']
+        if new_theme not in supported_themes:
+            emit('error', {'message': f'Unsupported theme "{new_theme}". Supported themes: {", ".join(supported_themes)}'})  # type: ignore
+            return
+
         # Update theme state
         state.game_theme = new_theme
         logger.info(f"Game theme changed to: {new_theme}")
