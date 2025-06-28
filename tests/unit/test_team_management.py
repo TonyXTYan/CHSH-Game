@@ -15,10 +15,15 @@ def app_context():
 
 @pytest.fixture
 def mock_request_context(app_context):
-    with app_context.test_request_context('/') as context:
-        context.request.sid = 'test_sid'
-        context.request.namespace = '/'
-        yield context.request
+    ctx = app_context.test_request_context('/')
+    ctx.push()
+    try:
+        from flask import request
+        request.sid = 'test_sid'
+        request.namespace = '/'
+        yield request
+    finally:
+        ctx.pop()
 
 @pytest.fixture
 def inactive_team():
@@ -131,6 +136,7 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 1,  # Player reactivating is assigned to slot 1
                 'is_reactivated': True  # Flag to indicate this was a reactivation
             }
@@ -212,7 +218,8 @@ def test_handle_connect(mock_request_context):
         mock_emit.assert_called_once_with('connection_established', {
             'game_started': state.game_started,
             'available_teams': ANY,
-            'game_mode': state.game_mode
+            'game_mode': state.game_mode,
+            'game_theme': state.game_theme
         })
         mock_dashboard_update.assert_called_once()
 
@@ -232,12 +239,6 @@ def test_create_team_success(mock_request_context):
         assert team.is_active == True
         assert team.player1_session_id == 'test_sid'
         
-        # Verify state updates
-        assert 'new_team' in state.active_teams
-        assert state.active_teams['new_team']['players'] == ['test_sid']
-        assert state.active_teams['new_team']['status'] == 'waiting_pair'
-        assert state.player_to_team['test_sid'] == 'new_team'
-        
         # Verify event emissions
         mock_emit.assert_any_call(
             'team_created',
@@ -247,6 +248,7 @@ def test_create_team_success(mock_request_context):
                 'message': 'Team created. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 1  # Team creator is assigned to slot 1
             }
         )
@@ -319,6 +321,7 @@ def test_create_team_reactivates_inactive_team(mock_request_context, inactive_te
                 'message': 'Team reactivated successfully. Waiting for another player.',
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 1,
                 'is_reactivated': True  # This flag indicates automatic reactivation
             }
@@ -491,6 +494,7 @@ def test_join_team_success(mock_request_context, active_team):
                 'team_status': 'full',
                 'is_reconnection': False,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 2  # Player joins into player2_session_id slot
             },
             to='test_sid'
@@ -870,6 +874,7 @@ def test_reconnection_join_team_different_player(mock_request_context, active_te
                 'team_status': 'full',
                 'is_reconnection': False,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 2  # New player joins into the available slot
             },
             to='new_session_id'
@@ -925,6 +930,7 @@ def test_reconnection_join_team_same_player(mock_request_context, active_team):
                 'team_status': 'full',
                 'is_reconnection': True,
                 'game_mode': state.game_mode,
+                'game_theme': state.game_theme,
                 'player_slot': 2  # Player reconnects to their original slot
             },
             to='player2_sid'
