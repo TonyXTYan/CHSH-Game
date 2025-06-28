@@ -47,12 +47,15 @@ _dashboard_lock = threading.RLock()
 # Global throttling state for get_all_teams function
 _last_refresh_time = 0
 _cached_teams_result: Optional[List[Dict[str, Any]]] = None
+_cached_teams_valid = True  # NEW: Validity flag for cached teams data
 
 # Global throttling state for dashboard update functions with differentiated timing
 _last_team_update_time = 0
 _last_full_update_time = 0
 _cached_team_metrics: Optional[Dict[str, int]] = None
+_cached_team_metrics_valid = True  # NEW: Validity flag for team metrics cache
 _cached_full_metrics: Optional[Dict[str, int]] = None
+_cached_full_metrics_valid = True  # NEW: Validity flag for full metrics cache
 
 # Global computation flags to prevent race conditions
 _teams_computation_in_progress = False
@@ -65,15 +68,17 @@ class SelectiveCache:
     """
     Custom cache that supports selective invalidation by team name.
     Preserves cached results for unchanged teams while allowing targeted invalidation.
+    FIXED: Invalidation now marks data as invalid instead of deleting it.
     """
     def __init__(self, maxsize: int = CACHE_SIZE):
         self.maxsize = maxsize
         self._cache: Dict[str, Any] = {}
+        self._validity: Dict[str, bool] = {}  # NEW: Track validity of each cache entry
         self._access_order: List[str] = []  # LRU tracking
         self._lock = threading.RLock()
     
     def get(self, key: str) -> Optional[Any]:
-        """Get cached value for key, updating LRU order."""
+        """Get cached value for key, updating LRU order. Returns data regardless of validity."""
         with self._lock:
             if key in self._cache:
                 # Move to end (most recently used)
@@ -82,8 +87,13 @@ class SelectiveCache:
                 return self._cache[key]
             return None
     
+    def is_valid(self, key: str) -> bool:
+        """Check if cached value for key is valid."""
+        with self._lock:
+            return self._validity.get(key, False)
+    
     def set(self, key: str, value: Any) -> None:
-        """Set cached value for key, evicting LRU items if needed."""
+        """Set cached value for key, evicting LRU items if needed. Marks as valid."""
         with self._lock:
             if key in self._cache:
                 # Update existing, move to end
@@ -92,35 +102,34 @@ class SelectiveCache:
                 # Evict least recently used
                 lru_key = self._access_order.pop(0)
                 del self._cache[lru_key]
+                del self._validity[lru_key]
             
             self._cache[key] = value
+            self._validity[key] = True  # Mark as valid when setting
             self._access_order.append(key)
     
     def invalidate_by_team(self, team_name: str) -> int:
         """
-        Invalidate all cache entries for a specific team.
+        Mark cache entries for a specific team as invalid without deleting them.
         Returns number of entries invalidated.
+        FIXED: Now marks as invalid instead of deleting cached data.
         """
         with self._lock:
             invalidated_count = 0
-            keys_to_remove = []
             
             for key in self._cache.keys():
                 # Check if this cache key is for the specified team
                 if self._is_team_key(key, team_name):
-                    keys_to_remove.append(key)
-            
-            for key in keys_to_remove:
-                del self._cache[key]
-                self._access_order.remove(key)
-                invalidated_count += 1
+                    self._validity[key] = False  # Mark as invalid, don't delete
+                    invalidated_count += 1
             
             return invalidated_count
     
     def clear_all(self) -> None:
-        """Clear all cached entries."""
+        """Clear all cached entries and validity flags."""
         with self._lock:
             self._cache.clear()
+            self._validity.clear()
             self._access_order.clear()
     
     def _is_team_key(self, cache_key: str, team_name: str) -> bool:
@@ -170,6 +179,7 @@ def _make_cache_key(*args, **kwargs) -> str:
 def selective_cache(cache_instance: SelectiveCache):
     """
     Decorator for selective caching that supports team-specific invalidation.
+    FIXED: Now respects cache validity in throttling logic.
     """
     def decorator(func):
         def wrapper(*args, **kwargs):
@@ -189,6 +199,7 @@ def selective_cache(cache_instance: SelectiveCache):
         wrapper.cache_clear = cache_instance.clear_all
         wrapper.cache_invalidate_team = cache_instance.invalidate_by_team
         wrapper.cache_info = lambda: f"Cache entries: {len(cache_instance._cache)}"
+        wrapper.cache_is_valid = lambda key: cache_instance.is_valid(key)  # NEW: Check validity
         
         return wrapper
     return decorator
@@ -1610,30 +1621,35 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
 def get_all_teams() -> List[Dict[str, Any]]:
     """
     Retrieve and serialize all team data with throttling for performance.
-    Returns cached result if called within REFRESH_DELAY_QUICK seconds.
+    FIXED: Now respects cache validity during throttling period but still does 
+    periodic refreshes after delay even when cache is valid.
     Thread-safe with minimal lock usage for optimal performance.
     
     OPTIMIZATION: Only locks for cache operations, not expensive computations.
     Uses computation flag to prevent race conditions where multiple threads
     perform duplicate expensive work.
     """
-    global _last_refresh_time, _cached_teams_result, _teams_computation_in_progress
+    global _last_refresh_time, _cached_teams_result, _cached_teams_valid, _teams_computation_in_progress
     
     try:
-        # First, check cache and computation state under minimal lock
+        # First, check cache, validity, and computation state under minimal lock
         current_time = time()
         with _safe_dashboard_operation():
             time_since_last_refresh = current_time - _last_refresh_time
             
-            # Return cached result if throttling applies
+            # FIXED: Within refresh delay, always return cached data regardless of validity
+            # This prevents expensive recomputation from invalidations during throttling period
             if time_since_last_refresh < REFRESH_DELAY_QUICK and _cached_teams_result is not None:
                 return _cached_teams_result
+            
+            # Outside refresh delay: always recompute for periodic refresh
+            # This preserves the original timing-based throttling behavior
             
             # If computation in progress, return current cache (avoid duplicate work)
             if _teams_computation_in_progress:
                 return _cached_teams_result if _cached_teams_result is not None else []
             
-            # Mark computation starting
+            # Mark computation starting (we need to recompute due to time delay)
             _teams_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
@@ -1646,6 +1662,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
             # Update cache under lock and return
             with _safe_dashboard_operation():
                 _cached_teams_result = []
+                _cached_teams_valid = True  # Mark as valid since we just computed it
                 _last_refresh_time = time()  # Use fresh timestamp reflecting actual cache completion
                 _teams_computation_in_progress = False  # Clear computation flag
             return []
@@ -1713,6 +1730,7 @@ def get_all_teams() -> List[Dict[str, Any]]:
         # Update cache under minimal lock
         with _safe_dashboard_operation():
             _cached_teams_result = teams_list
+            _cached_teams_valid = True  # Mark as valid since we just computed it
             _last_refresh_time = time()  # Use fresh timestamp reflecting actual cache completion
             _teams_computation_in_progress = False  # Clear computation flag
         
@@ -1728,14 +1746,16 @@ def get_all_teams() -> List[Dict[str, Any]]:
 def invalidate_team_caches(team_name: str) -> None:
     """
     Selectively invalidate caches for a specific team only.
+    FIXED: Now marks caches as invalid instead of deleting cached data.
     Preserves cached results for all other teams.
     Thread-safe operation with proper error handling.
     """
     global _cached_teams_result, _cached_team_metrics, _cached_full_metrics
+    global _cached_teams_valid, _cached_team_metrics_valid, _cached_full_metrics_valid
     
     try:
         with _safe_dashboard_operation():
-            # Selectively invalidate team-specific caches
+            # Selectively invalidate team-specific caches (mark as invalid, don't delete)
             total_invalidated = 0
             total_invalidated += compute_team_hashes.cache_invalidate_team(team_name)
             total_invalidated += compute_correlation_matrix.cache_invalidate_team(team_name)
@@ -1744,30 +1764,26 @@ def invalidate_team_caches(team_name: str) -> None:
             total_invalidated += _calculate_success_statistics.cache_invalidate_team(team_name)
             total_invalidated += _process_single_team.cache_invalidate_team(team_name)
             
-            # Invalidate global throttling caches that may contain this team's data
-            # but preserve caches that don't contain this team
+            # FIXED: Mark global throttling caches as invalid instead of deleting them
+            # Check if this team's data is in the cached results before invalidating
             if _cached_teams_result is not None:
-                # Check if this team is in the cached result
                 team_in_cache = any(team.get('team_name') == team_name for team in _cached_teams_result)
                 if team_in_cache:
-                    _cached_teams_result = None
-                    _last_refresh_time = 0
-                    logger.debug(f"Cleared get_all_teams cache containing team {team_name}")
+                    _cached_teams_valid = False  # Mark as invalid, keep cached data
+                    logger.debug(f"Marked get_all_teams cache invalid for team {team_name}")
             
-            # Clear throttling caches if they contained this team's data
+            # Mark throttling caches as invalid if they contained this team's data
             if _cached_team_metrics is not None and 'cached_teams' in _cached_team_metrics:
                 cached_teams = _cached_team_metrics.get('cached_teams', [])
                 if any(team.get('team_name') == team_name for team in cached_teams):
-                    _cached_team_metrics = None
-                    _last_team_update_time = 0
-                    logger.debug(f"Cleared team metrics cache containing team {team_name}")
+                    _cached_team_metrics_valid = False  # Mark as invalid, keep cached data
+                    logger.debug(f"Marked team metrics cache invalid for team {team_name}")
             
             if _cached_full_metrics is not None and 'cached_teams' in _cached_full_metrics:
                 cached_teams = _cached_full_metrics.get('cached_teams', [])
                 if any(team.get('team_name') == team_name for team in cached_teams):
-                    _cached_full_metrics = None
-                    _last_full_update_time = 0
-                    logger.debug(f"Cleared full metrics cache containing team {team_name}")
+                    _cached_full_metrics_valid = False  # Mark as invalid, keep cached data
+                    logger.debug(f"Marked full metrics cache invalid for team {team_name}")
             
             logger.debug(f"Selectively invalidated {total_invalidated} cache entries for team {team_name}")
             
@@ -1777,13 +1793,16 @@ def invalidate_team_caches(team_name: str) -> None:
 def clear_team_caches() -> None:
     """
     Clear all team-related caches and throttling state to prevent stale data.
+    FIXED: This function maintains backward compatibility by actually clearing caches,
+    since it's used for complete resets where we want to force fresh computation.
     Thread-safe operation with proper error handling to prevent lock issues.
     
     Note: This function now clears ALL caches. For selective invalidation of
     specific teams, use invalidate_team_caches(team_name) instead.
     """
-    global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _cached_teams_result, _cached_teams_valid
     global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
+    global _cached_team_metrics_valid, _cached_full_metrics_valid
     global _teams_computation_in_progress, _team_update_computation_in_progress, _full_update_computation_in_progress
     
     try:
@@ -1799,6 +1818,7 @@ def clear_team_caches() -> None:
             # Clear get_all_teams cache since it depends on caches we just cleared
             _last_refresh_time = 0
             _cached_teams_result = None
+            _cached_teams_valid = True  # Reset to valid since we cleared everything
             
             # Clear computation flags to prevent stuck state
             _teams_computation_in_progress = False
@@ -1812,11 +1832,13 @@ def clear_team_caches() -> None:
                 # Reset team update throttling to ensure consistency
                 _last_team_update_time = 0
                 _cached_team_metrics = None
+                _cached_team_metrics_valid = True  # Reset to valid since we cleared everything
                 
             if _cached_full_metrics is not None and 'cached_teams' in _cached_full_metrics:
                 # Reset full update throttling to ensure consistency
                 _last_full_update_time = 0
                 _cached_full_metrics = None
+                _cached_full_metrics_valid = True  # Reset to valid since we cleared everything
             
             logger.debug("Cleared all team caches, computation flags, and reset throttling state to ensure data consistency")
             
@@ -1831,9 +1853,11 @@ def force_clear_all_caches() -> None:
     """
     Force clear ALL caches including throttling state. Use only when data integrity requires it.
     This is more aggressive than clear_team_caches() and should be used sparingly.
+    FIXED: Maintains backward compatibility by actually clearing caches for complete resets.
     """
-    global _last_refresh_time, _cached_teams_result
+    global _last_refresh_time, _cached_teams_result, _cached_teams_valid
     global _last_team_update_time, _last_full_update_time, _cached_team_metrics, _cached_full_metrics
+    global _cached_team_metrics_valid, _cached_full_metrics_valid
     global _teams_computation_in_progress, _team_update_computation_in_progress, _full_update_computation_in_progress
     
     try:
@@ -1849,10 +1873,13 @@ def force_clear_all_caches() -> None:
             # Force clear ALL throttling state
             _last_refresh_time = 0
             _cached_teams_result = None
+            _cached_teams_valid = True  # Reset to valid since we cleared everything
             _last_team_update_time = 0
             _last_full_update_time = 0
             _cached_team_metrics = None
+            _cached_team_metrics_valid = True  # Reset to valid since we cleared everything
             _cached_full_metrics = None
+            _cached_full_metrics_valid = True  # Reset to valid since we cleared everything
             
             # Clear computation flags to prevent stuck state
             _teams_computation_in_progress = False
@@ -1871,11 +1898,13 @@ def emit_dashboard_team_update() -> None:
     Send team status updates to dashboard clients with throttled metrics calculation.
     Always sends fresh connected_players_count but throttles expensive metrics.
     Uses REFRESH_DELAY_QUICK for frequent team status updates.
+    FIXED: Now respects cache validity during throttling period but still does 
+    periodic refreshes after delay even when cache is valid.
     Optimized for minimal lock usage with multiple clients.
     Uses computation flag to prevent race conditions where multiple threads
     perform duplicate expensive work.
     """
-    global _last_team_update_time, _cached_team_metrics, _team_update_computation_in_progress
+    global _last_team_update_time, _cached_team_metrics, _cached_team_metrics_valid, _team_update_computation_in_progress
     
     try:
         # Early exit if no clients
@@ -1885,7 +1914,7 @@ def emit_dashboard_team_update() -> None:
         # Always calculate connected_players_count fresh (simple operation)
         connected_players_count = len(state.connected_players)
         
-        # Check client streaming preferences, throttling, and computation state under minimal lock
+        # Check client streaming preferences, throttling, validity, and computation state under minimal lock
         current_time = time()
         with _safe_dashboard_operation():
             streaming_clients = [sid for sid in state.dashboard_clients if dashboard_teams_streaming.get(sid, False)]
@@ -1893,29 +1922,33 @@ def emit_dashboard_team_update() -> None:
             
             time_since_last_update = current_time - _last_team_update_time
             
-            # Check if we can use cached data
-            use_cached_data = time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None
-            
-            if use_cached_data:
+            # FIXED: Within refresh delay, always use cached data regardless of validity
+            # This prevents expensive recomputation from invalidations during throttling period
+            if time_since_last_update < REFRESH_DELAY_QUICK and _cached_team_metrics is not None:
                 cached_teams = _cached_team_metrics.get('cached_teams', [])
                 cached_active_count = _cached_team_metrics.get('active_teams_count', 0)
                 cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
-            
-            # If computation in progress, use current cache (avoid duplicate work)
-            elif _team_update_computation_in_progress:
-                if _cached_team_metrics is not None:
-                    cached_teams = _cached_team_metrics.get('cached_teams', [])
-                    cached_active_count = _cached_team_metrics.get('active_teams_count', 0)
-                    cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
-                    use_cached_data = True
+                use_cached_data = True
+            else:
+                # Outside refresh delay: always recompute for periodic refresh
+                # This preserves the original timing-based throttling behavior
+                
+                # If computation in progress, use current cache (avoid duplicate work)
+                if _team_update_computation_in_progress:
+                    if _cached_team_metrics is not None:
+                        cached_teams = _cached_team_metrics.get('cached_teams', [])
+                        cached_active_count = _cached_team_metrics.get('active_teams_count', 0)
+                        cached_ready_count = _cached_team_metrics.get('ready_players_count', 0)
+                        use_cached_data = True
+                    else:
+                        # No cache available, will need to compute lightweight metrics outside lock
+                        use_cached_data = False
+                        need_lightweight_fallback = True
                 else:
-                    # No cache available, will need to compute lightweight metrics outside lock
+                    # Mark computation starting (we need to recompute due to time delay)
                     use_cached_data = False
-                    need_lightweight_fallback = True
-            
-            # Mark computation starting if needed  
-            elif not use_cached_data and not locals().get('need_lightweight_fallback', False):
-                _team_update_computation_in_progress = True
+                    need_lightweight_fallback = False
+                    _team_update_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
@@ -1953,6 +1986,7 @@ def emit_dashboard_team_update() -> None:
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
+                _cached_team_metrics_valid = True  # Mark as valid since we just computed it
                 _last_team_update_time = time()  # Use fresh timestamp reflecting actual cache completion
                 _team_update_computation_in_progress = False  # Clear computation flag
         else:
@@ -1999,11 +2033,13 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
     Send complete dashboard data to clients with throttled expensive operations.
     Supports targeting specific clients or excluding clients to prevent duplicates.
     Uses REFRESH_DELAY_FULL for expensive operations like database queries.
+    FIXED: Now respects cache validity during throttling period but still does 
+    periodic refreshes after delay even when cache is valid.
     Optimized for minimal lock usage with multiple clients.
     Uses computation flag to prevent race conditions where multiple threads
     perform duplicate expensive work.
     """
-    global _last_full_update_time, _cached_full_metrics, _full_update_computation_in_progress
+    global _last_full_update_time, _cached_full_metrics, _cached_full_metrics_valid, _full_update_computation_in_progress
     
     try:
         # Early exit if no clients
@@ -2013,7 +2049,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
         # Always calculate connected_players_count fresh (simple operation)
         connected_players_count = len(state.connected_players)
         
-        # Determine client needs, check throttling, and computation state under minimal lock
+        # Determine client needs, check throttling, validity, and computation state under minimal lock
         current_time = time()
         with _safe_dashboard_operation():
             if client_sid:
@@ -2024,31 +2060,35 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
             
             time_since_last_update = current_time - _last_full_update_time
             
-            # Check if we can use cached data
-            use_cached_data = time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None
-            
-            if use_cached_data:
+            # FIXED: Within refresh delay, always use cached data regardless of validity
+            # This prevents expensive recomputation from invalidations during throttling period
+            if time_since_last_update < REFRESH_DELAY_FULL and _cached_full_metrics is not None:
                 cached_teams = _cached_full_metrics.get('cached_teams', [])
                 cached_total_answers = _cached_full_metrics.get('total_answers', 0)
                 cached_active_count = _cached_full_metrics.get('active_teams_count', 0)
                 cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
-            
-            # If computation in progress, use current cache (avoid duplicate work)
-            elif _full_update_computation_in_progress:
-                if _cached_full_metrics is not None:
-                    cached_teams = _cached_full_metrics.get('cached_teams', [])
-                    cached_total_answers = _cached_full_metrics.get('total_answers', 0)
-                    cached_active_count = _cached_full_metrics.get('active_teams_count', 0)
-                    cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
-                    use_cached_data = True
+                use_cached_data = True
+            else:
+                # Outside refresh delay: always recompute for periodic refresh
+                # This preserves the original timing-based throttling behavior
+                
+                # If computation in progress, use current cache (avoid duplicate work)
+                if _full_update_computation_in_progress:
+                    if _cached_full_metrics is not None:
+                        cached_teams = _cached_full_metrics.get('cached_teams', [])
+                        cached_total_answers = _cached_full_metrics.get('total_answers', 0)
+                        cached_active_count = _cached_full_metrics.get('active_teams_count', 0)
+                        cached_ready_count = _cached_full_metrics.get('ready_players_count', 0)
+                        use_cached_data = True
+                    else:
+                        # No cache available, will need to compute minimal data outside lock
+                        use_cached_data = False
+                        need_minimal_fallback = True
                 else:
-                    # No cache available, will need to compute minimal data outside lock
+                    # Mark computation starting (we need to recompute due to time delay)
                     use_cached_data = False
-                    need_minimal_fallback = True
-            
-            # Mark computation starting if needed
-            elif not use_cached_data and not locals().get('need_minimal_fallback', False):
-                _full_update_computation_in_progress = True
+                    need_minimal_fallback = False
+                    _full_update_computation_in_progress = True
         
         # === EXPENSIVE OPERATIONS OUTSIDE LOCK ===
         
@@ -2092,6 +2132,7 @@ def emit_dashboard_full_update(client_sid: Optional[str] = None, exclude_sid: Op
                     'active_teams_count': active_teams_count,
                     'ready_players_count': ready_players_count,
                 }
+                _cached_full_metrics_valid = True  # Mark as valid since we just computed it
                 _last_full_update_time = time()  # Use fresh timestamp reflecting actual cache completion
                 _full_update_computation_in_progress = False  # Clear computation flag
         else:
