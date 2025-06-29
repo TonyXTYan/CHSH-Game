@@ -72,6 +72,17 @@ function updatePlayerPosition(position) {
     updatePlayerResponsibilityMessage();
 }
 
+// Update button text based on current theme
+function updateButtonText() {
+    if (currentGameTheme === 'food') {
+        trueBtn.textContent = 'Choose';
+        falseBtn.textContent = 'Skip';
+    } else {
+        trueBtn.textContent = 'True';
+        falseBtn.textContent = 'False';
+    }
+}
+
 // Update game mode (only log to console, don't show in UI)
 function updateGameMode(mode) {
     currentGameMode = mode;
@@ -96,6 +107,7 @@ function updateGameTheme(theme) {
     }
     
     updatePlayerResponsibilityMessage();
+    updateButtonText();
 }
 
 // Update the game header to show team name and player number
@@ -756,6 +768,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // Initialize UI
 updateGameState();
+updateButtonText();
 
 // Log initial mode on page load
 console.log('Page loaded - current mode:', currentGameMode);

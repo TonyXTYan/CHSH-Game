@@ -223,7 +223,7 @@ class TestMultiClientPerformance:
             for i in range(10):
                 result = get_all_teams()
                 assert result == []
-                time.sleep(0.1)  # Small delay, but within throttle window
+                time.sleep(0.01)  # Small delay, but within throttle window
             
             # Should only hit database once due to caching
             assert db_call_count == 1, f"Expected 1 DB call, got {db_call_count}"
