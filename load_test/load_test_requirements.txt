@@ -2,7 +2,7 @@
 # Core Socket.io and async dependencies (matching server versions)
 python-socketio[client]==5.11.2
 python-engineio[client]==4.12.1
-aiohttp==3.10.11
+aiohttp==3.12.14
 asyncio-throttle==1.0.2
 
 # CLI and UI
