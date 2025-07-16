@@ -3,10 +3,12 @@ name: Automated Release
 on:
   push:
     tags:
-      - 'v*.*.*'  # Trigger on version tags like v1.2.3
+      - 'v*.*.*'    # Trigger on version tags like v1.2.3
+      - 'v*.*.*.*'  # Trigger on version tags like v2.0.0.1
 
 permissions:
   contents: write  # Required for creating releases
+  models: read    # Required for using GitHub AI models
 
 jobs:
   release:
@@ -27,21 +29,97 @@ jobs:
       - name: Get previous tag
         id: prev_tag
         run: |
-          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | grep -v "${GITHUB_REF#refs/tags/}" | head -n 1)
+          PREV_TAG=$(git tag --sort=-creatordate | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+(\.[0-9]+)?$' | grep -v -E '-(alpha|beta|rc|pre|dev|test|hotfix)' | grep -v "${GITHUB_REF#refs/tags/}" | head -n 1)
           echo "Previous tag: $PREV_TAG"
           echo "prev_tag=$PREV_TAG" >> $GITHUB_OUTPUT
 
-      - name: Gather commit messages since previous tag
-        id: commit_messages
+      - name: Generate release summary
+        id: release_summary
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           if [ -z "${{ steps.prev_tag.outputs.prev_tag }}" ]; then
-            # No previous tag, get all history
-            COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ github.event.repository.default_branch }}..${GITHUB_SHA})
+            # No previous tag, get commits from default branch to this tag
+            DEFAULT_BRANCH=$(git remote show origin | grep 'HEAD branch' | cut -d' ' -f5)
+            COMMITS=$(git log --pretty=format:'- %s (%h)' ${DEFAULT_BRANCH}..${GITHUB_SHA})
+            RANGE_DESC="commits since ${DEFAULT_BRANCH}"
           else
             COMMITS=$(git log --pretty=format:'- %s (%h)' ${{ steps.prev_tag.outputs.prev_tag }}..${GITHUB_SHA})
+            RANGE_DESC="commits since ${{ steps.prev_tag.outputs.prev_tag }}"
           fi
-          echo "commit_messages<<EOF" >> $GITHUB_ENV
-          echo "$COMMITS" >> $GITHUB_ENV
+          
+          # Check if we have any commits
+          if [ -z "$COMMITS" ]; then
+            SUMMARY="## Release Summary
+            
+            No new commits found in this release."
+          else
+            # Count commits
+            COMMIT_COUNT=$(echo "$COMMITS" | wc -l)
+            
+            # Try to get AI summary
+            AI_SUMMARY=""
+            COMMIT_LIST=$(echo "$COMMITS" | sed 's/^- //' | head -20)  # Remove bullets and limit for AI
+            
+            # Create JSON payload for AI
+            JSON_PAYLOAD=$(cat <<EOF
+{
+  "messages": [
+    {
+      "role": "user",
+      "content": "Analyze these git commit messages and create a concise release summary in 2-3 sentences. Focus on the main features, fixes, and improvements. Be professional and clear:\n\n$COMMIT_LIST"
+    }
+  ],
+  "model": "openai/gpt-4o",
+  "max_tokens": 200,
+  "temperature": 0.3
+}
+EOF
+            )
+            
+            # Call AI with error handling
+            RESPONSE=$(timeout 30 curl -s -w "%{http_code}" "https://models.github.ai/inference/chat/completions" \
+              -H "Content-Type: application/json" \
+              -H "Authorization: Bearer $GITHUB_TOKEN" \
+              -d "$JSON_PAYLOAD" 2>/dev/null)
+            
+            if [ $? -eq 0 ]; then
+              HTTP_CODE="${RESPONSE: -3}"
+              RESPONSE_BODY="${RESPONSE%???}"
+              
+              if [ "$HTTP_CODE" = "200" ]; then
+                AI_SUMMARY=$(echo "$RESPONSE_BODY" | jq -r '.choices[0].message.content // empty' 2>/dev/null)
+              fi
+            fi
+            
+            # Create summary with AI or fallback
+            if [ -n "$AI_SUMMARY" ] && [ "$AI_SUMMARY" != "null" ] && [ "$AI_SUMMARY" != "empty" ]; then
+              SUMMARY="## Release Summary
+
+$AI_SUMMARY
+
+<details>
+<summary>📝 View all $COMMIT_COUNT commits</summary>
+
+$COMMITS
+
+</details>"
+            else
+              SUMMARY="## Release Summary
+              
+              This release includes **$COMMIT_COUNT** $RANGE_DESC.
+
+<details>
+<summary>📝 View all commits</summary>
+
+$COMMITS
+
+</details>"
+            fi
+          fi
+          
+          echo "release_summary<<EOF" >> $GITHUB_ENV
+          echo "$SUMMARY" >> $GITHUB_ENV
           echo "EOF" >> $GITHUB_ENV
 
       - name: Create GitHub Pre-release
@@ -52,9 +130,8 @@ jobs:
           draft: false
           prerelease: true
           body: |
-            Automated pre-release for version ${{ steps.get_version.outputs.version }}
+            # Release ${{ steps.get_version.outputs.version }}
             
-            Commits in this release:
-            ${{ env.commit_messages }}
+            ${{ env.release_summary }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }} 
