@@ -390,7 +390,7 @@ def on_change_game_theme(data: Dict[str, Any]) -> None:
             return
 
         # Validate theme against supported themes
-        supported_themes = ['classic', 'food']
+        supported_themes = ['classic', 'food', 'aqmjoe']
         if new_theme not in supported_themes:
             emit('error', {'message': f'Unsupported theme "{new_theme}". Supported themes: {", ".join(supported_themes)}'})  # type: ignore
             return
@@ -447,6 +447,49 @@ def compute_team_hashes(team_name: str) -> Tuple[str, str]:
     except Exception as e:
         logger.error(f"Error computing team hashes: {str(e)}")
         return "ERROR", "ERROR"
+
+def _aqmjoe_label(item: str, ans: bool) -> str:
+    """Convert item and boolean answer to AQM Joe labels."""
+    if item in ('A', 'B'):
+        return 'Green' if ans else 'Red'
+    else:  # 'X', 'Y'
+        return 'Peas' if ans else 'Carrots'
+
+def _is_aqmjoe_success(p1_item: str, p2_item: str, p1_bool: bool, p2_bool: bool) -> bool:
+    """
+    Evaluate success for AQM Joe theme based on the specified constraints.
+    
+    Constraints:
+    1. If one answers "Green" then the other always answers "Peas", if the food question is asked
+    2. When both are asked the colour question, sometimes both answer "Green"
+    3. If both are asked the food question they never both answer "Peas"
+    """
+    l1 = _aqmjoe_label(p1_item, p1_bool)
+    l2 = _aqmjoe_label(p2_item, p2_bool)
+
+    p1_is_color = p1_item in ('A', 'B')
+    p2_is_color = p2_item in ('A', 'B')
+    p1_is_food = not p1_is_color
+    p2_is_food = not p2_is_color
+
+    # Rule 3: never both Peas when both food
+    if p1_is_food and p2_is_food:
+        return not (l1 == 'Peas' and l2 == 'Peas')
+
+    # Rule 1: Green → Peas on mixed pairs
+    if p1_is_color and p2_is_food:
+        if l1 == 'Green':
+            return l2 == 'Peas'
+        # Optional symmetry: Red → Carrots
+        return l2 == 'Carrots'
+    if p2_is_color and p1_is_food:
+        if l2 == 'Green':
+            return l1 == 'Peas'
+        # Optional symmetry: Red → Carrots
+        return l1 == 'Carrots'
+
+    # Both color: no hard constraint for success metric (Rule 2)
+    return True
 
 @selective_cache(_success_cache)
 def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
@@ -530,16 +573,20 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
             # Apply success rules for new mode
-            # Success Rule: {B,Y} combinations require different answers; all others require same answers
-            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-            players_answered_differently = p1_answer != p2_answer
-            
-            if is_by_combination:
-                # B,Y combination: players should answer differently
-                is_successful = players_answered_differently
+            if state.game_theme == 'aqmjoe':
+                # Use AQM Joe success policy
+                is_successful = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
             else:
-                # All other combinations: players should answer the same
-                is_successful = not players_answered_differently
+                # Default success rules: {B,Y} combinations require different answers; all others require same answers
+                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+                players_answered_differently = p1_answer != p2_answer
+                
+                if is_by_combination:
+                    # B,Y combination: players should answer differently
+                    is_successful = players_answered_differently
+                else:
+                    # All other combinations: players should answer the same
+                    is_successful = not players_answered_differently
             
             # Update counts
             total_rounds += 1
@@ -1195,16 +1242,20 @@ def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], tea
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
             # Apply success rules for new mode
-            # Success Rule: {B,Y} combinations require different answers; all others require same answers
-            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-            players_answered_differently = p1_answer != p2_answer
-            
-            if is_by_combination:
-                # B,Y combination: players should answer differently
-                is_successful = players_answered_differently
+            if state.game_theme == 'aqmjoe':
+                # Use AQM Joe success policy
+                is_successful = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
             else:
-                # All other combinations: players should answer the same
-                is_successful = not players_answered_differently
+                # Default success rules: {B,Y} combinations require different answers; all others require same answers
+                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+                players_answered_differently = p1_answer != p2_answer
+                
+                if is_by_combination:
+                    # B,Y combination: players should answer differently
+                    is_successful = players_answered_differently
+                else:
+                    # All other combinations: players should answer the same
+                    is_successful = not players_answered_differently
             
             # Update counts
             total_rounds += 1

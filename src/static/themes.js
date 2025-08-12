@@ -186,6 +186,92 @@ const THEMES = {
                 `
             }
         }
+    },
+    
+    aqmjoe: {
+        name: 'AQM Joe',
+        description: 'Color and food preferences',
+        items: {
+            A: 'Favourite Color?',
+            B: 'Favourite Color?', 
+            X: 'Favourite Food?',
+            Y: 'Favourite Food?'
+        },
+        playerHints: {
+            1: 'Your questions: Favourite Color?',
+            2: 'Your questions: Favourite Food?'
+        },
+        questionBoxColors: {
+            1: '#e8f5e8', // Light green for player 1 (color questions)
+            2: '#fff5e6', // Light orange for player 2 (food questions)
+            default: '#f5f5f5' // Gray when not in team
+        },
+        questionTextColor: '#2e7d32', // Dark green text
+        gameRules: {
+            classic: {
+                title: 'AQM Joe Rules (Classic Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Plan your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game.</li>
+                        <li>Watch the dashboard to see your team's progress.</li>
+                        <li>You may receive either color or food questions randomly.</li>
+                        <li>Focus on <strong>consistent responses</strong> based on your strategy.</li>
+                        <li>This app is fragile, please keep browser page open to stay connected.</li>
+                    </ul>
+                `
+            },
+            new: {
+                title: 'AQM Joe Rules (New Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Plan your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game.</li>
+                        <li>Watch the dashboard to see your team's progress.</li>
+                        <li>Player 1 specializes in: <strong>Favourite Color?</strong> questions</li>
+                        <li>Player 2 specializes in: <strong>Favourite Food?</strong> questions</li>
+                        <li>Follow the AQM Joe constraints for optimal success!</li>
+                        <li>This app is fragile, please keep browser page open to stay connected.</li>
+                    </ul>
+                `
+            }
+        },
+        winningConditions: {
+            classic: {
+                title: 'AQM Joe Strategy (Classic Mode)',
+                content: `
+                    <div style="margin-bottom: 15px;">
+                        <strong>🎯 Best Balanced Strategy (Consistency):</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When both players get the <strong>same question type</strong>, try to coordinate your answers.</li>
+                            <li>For balance, your answers should be evenly distributed between choices.</li>
+                            <li>Standard correlation metrics apply in classic mode.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>🏆 Best Correlation (Coordination):</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Apply traditional CHSH game correlation strategies.</li>
+                            <li>Focus on coordinated responses for optimal correlation values.</li>
+                        </ul>
+                    </div>
+                `
+            },
+            new: {
+                title: 'AQM Joe Constraints (New Mode)',
+                content: `
+                    <div>
+                        <strong>🏆 Follow the AQM Joe Constraints:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li><strong>Constraint 1:</strong> If one player answers "Green" (color), the other must answer "Peas" (food) when both questions are asked.</li>
+                            <li><strong>Constraint 2:</strong> When both players get color questions, sometimes both can answer "Green".</li>
+                            <li><strong>Constraint 3:</strong> When both players get food questions, never both answer "Peas".</li>
+                            <li>Success rate measures how well you follow these constraints!</li>
+                        </ul>
+                    </div>
+                `
+            }
+        }
     }
 };
 
@@ -244,6 +330,28 @@ class ThemeManager {
     getQuestionTextColor() {
         const theme = this.getTheme();
         return theme.questionTextColor || '#1565c0';
+    }
+    
+    getAnswerLabels(item) {
+        const theme = this.getTheme();
+        
+        if (this.currentTheme === 'aqmjoe') {
+            // AQM Joe theme specific labels
+            if (item === 'A' || item === 'B') {
+                // Color questions
+                return { true: 'Green', false: 'Red' };
+            } else if (item === 'X' || item === 'Y') {
+                // Food questions
+                return { true: 'Peas', false: 'Carrots' };
+            }
+        }
+        
+        // Default labels for other themes
+        if (this.currentTheme === 'food') {
+            return { true: 'Choose', false: 'Skip' };
+        } else {
+            return { true: 'True', false: 'False' };
+        }
     }
     
     applyTheme() {

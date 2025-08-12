@@ -72,9 +72,14 @@ function updatePlayerPosition(position) {
     updatePlayerResponsibilityMessage();
 }
 
-// Update button text based on current theme
-function updateButtonText() {
-    if (currentGameTheme === 'food') {
+// Update button text based on current theme and item
+function updateButtonText(item = null) {
+    // Use per-item labels if theme manager is available and we have an item
+    if (window.themeManager && item && currentGameTheme === 'aqmjoe') {
+        const labels = window.themeManager.getAnswerLabels(item);
+        trueBtn.textContent = labels.true;
+        falseBtn.textContent = labels.false;
+    } else if (currentGameTheme === 'food') {
         trueBtn.textContent = 'Choose';
         falseBtn.textContent = 'Skip';
     } else {
