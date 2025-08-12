@@ -186,6 +186,94 @@ const THEMES = {
                 `
             }
         }
+    },
+    
+    aqmjoe: {
+        name: 'AQM Joe',
+        description: 'Color and food preference questions',
+        items: {
+            A: 'Favourite Color?',
+            B: 'Favourite Color?',
+            X: 'Favourite Food?',
+            Y: 'Favourite Food?'
+        },
+        playerHints: {
+            1: 'Your questions: Color preferences',
+            2: 'Your questions: Food preferences'
+        },
+        questionBoxColors: {
+            1: '#fff3e0', // Light orange for player 1 (color questions)
+            2: '#e8f5e8', // Light green for player 2 (food questions)
+            default: '#f5f5f5' // Gray when not in team
+        },
+        questionTextColor: '#d84315', // Deep orange text
+        gameRules: {
+            classic: {
+                title: 'AQM Joe Rules (Classic Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Coordinate your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game rounds.</li>
+                        <li>Watch the dashboard to see your team's performance.</li>
+                        <li>You may receive any type of question (color or food preferences).</li>
+                        <li>Follow the AQM Joe constraints for optimal results.</li>
+                        <li>Keep your browser open to stay connected!</li>
+                    </ul>
+                `
+            },
+            new: {
+                title: 'AQM Joe Rules (New Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Coordinate your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game rounds.</li>
+                        <li>Watch the dashboard to see your team's performance.</li>
+                        <li>Player 1 specializes in: Color preference questions</li>
+                        <li>Player 2 specializes in: Food preference questions</li>
+                        <li>Follow the AQM Joe constraints for optimal coordination.</li>
+                        <li>Keep your browser open to stay connected!</li>
+                    </ul>
+                `
+            }
+        },
+        winningConditions: {
+            classic: {
+                title: 'AQM Joe Success (Classic Mode)',
+                content: `
+                    <div style="margin-bottom: 15px;">
+                        <strong>🎯 Coordination Rules:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When partner answers <strong>"Green"</strong> for color, always answer <strong>"Peas"</strong> if asked about food.</li>
+                            <li>When both asked about color, sometimes both can answer <strong>"Green"</strong>.</li>
+                            <li>When both asked about food, <strong>never both answer "Peas"</strong>.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>🏆 Strategy Tips:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Establish clear coordination rules during strategy discussion.</li>
+                            <li>Consider the constraints when planning your responses.</li>
+                            <li>Balance consistency with the required constraints.</li>
+                        </ul>
+                    </div>
+                `
+            },
+            new: {
+                title: 'AQM Joe Success (New Mode)',
+                content: `
+                    <div>
+                        <strong>🏆 AQM Joe Success Rules:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li><strong>Food-Food pairs:</strong> Success if NOT both answer "Peas"</li>
+                            <li><strong>Color-Food pairs:</strong> If Color player answers "Green", Food player must answer "Peas" for success</li>
+                            <li><strong>Color-Food pairs:</strong> If Color player answers "Red", Food player should answer "Carrots" for success</li>
+                            <li><strong>Color-Color pairs:</strong> Always contribute to success (no constraint)</li>
+                            <li>Success rate shows how well you follow these coordination rules!</li>
+                        </ul>
+                    </div>
+                `
+            }
+        }
     }
 };
 
@@ -217,6 +305,27 @@ class ThemeManager {
         return theme.items[item] || item;
     }
     
+    getAnswerLabels(item) {
+        const theme = this.getTheme();
+        
+        // Return answer labels based on theme
+        if (theme.name === 'AQM Joe') {
+            if (item === 'A' || item === 'B') {
+                // Color questions
+                return { true: 'Green', false: 'Red' };
+            } else if (item === 'X' || item === 'Y') {
+                // Food questions
+                return { true: 'Peas', false: 'Carrots' };
+            }
+        } else if (theme.name === 'Food Ingredients') {
+            // Food theme uses Choose/Skip
+            return { true: 'Choose', false: 'Skip' };
+        }
+        
+        // Default for classic theme or fallback
+        return { true: 'True', false: 'False' };
+    }
+    
     getPlayerHint(playerNumber) {
         const theme = this.getTheme();
         
@@ -224,6 +333,8 @@ class ThemeManager {
         if (this.currentMode === 'classic') {
             if (theme.name === 'Food Ingredients') {
                 return 'You will need to answer questions from all ingredients (🍞, 🥟, 🥬, 🍫)';
+            } else if (theme.name === 'AQM Joe') {
+                return 'You will need to answer questions from all categories (Color and Food preferences)';
             } else {
                 return 'You will need to answer questions from all categories (A, B, X, Y)';
             }

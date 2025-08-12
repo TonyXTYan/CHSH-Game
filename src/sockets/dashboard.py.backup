@@ -596,22 +596,18 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
             player_responses[p1_item]['true' if p1_answer else 'false'] += 1
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
-            # Apply success rules based on game theme and mode (compute_success_metrics)
-            if state.game_mode == 'new' and state.game_theme == 'aqmjoe':
-                # Use AQM Joe theme-specific success rules
-                is_successful = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
+            # Apply success rules for new mode
+            # Success Rule: {B,Y} combinations require different answers; all others require same answers
+            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+            players_answered_differently = p1_answer != p2_answer
+            
+            if is_by_combination:
+                # B,Y combination: players should answer differently
+                is_successful = players_answered_differently
             else:
-                # Default success rules for new mode (existing logic)
-                # Success Rule: {B,Y} combinations require different answers; all others require same answers
-                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-                players_answered_differently = p1_answer != p2_answer
-                
-                if is_by_combination:
-                    # B,Y combination: players should answer differently
-                    is_successful = players_answered_differently
-                else:
-                    # All other combinations: players should answer the same
-                    is_successful = not players_answered_differently
+                # All other combinations: players should answer the same
+                is_successful = not players_answered_differently
+            
             # Update counts
             total_rounds += 1
             if is_successful:
@@ -1265,22 +1261,18 @@ def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], tea
             player_responses[p1_item]['true' if p1_answer else 'false'] += 1
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
-            # Apply success rules based on game theme and mode (optimized)
-            if state.game_mode == 'new' and state.game_theme == 'aqmjoe':
-                # Use AQM Joe theme-specific success rules
-                is_successful = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
+            # Apply success rules for new mode
+            # Success Rule: {B,Y} combinations require different answers; all others require same answers
+            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+            players_answered_differently = p1_answer != p2_answer
+            
+            if is_by_combination:
+                # B,Y combination: players should answer differently
+                is_successful = players_answered_differently
             else:
-                # Default success rules for new mode (existing logic)
-                # Success Rule: {B,Y} combinations require different answers; all others require same answers
-                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-                players_answered_differently = p1_answer != p2_answer
-                
-                if is_by_combination:
-                    # B,Y combination: players should answer differently
-                    is_successful = players_answered_differently
-                else:
-                    # All other combinations: players should answer the same
-                    is_successful = not players_answered_differently
+                # All other combinations: players should answer the same
+                is_successful = not players_answered_differently
+            
             # Update counts
             total_rounds += 1
             if is_successful:
