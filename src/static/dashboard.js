@@ -148,6 +148,11 @@ function updateGameThemeDisplay(theme) {
                 <strong>Food Ingredients Theme:</strong> Questions use cooking ingredients (🍞 Bread, 🥟 Dumplings, 🥬 Lettuce, 🍫 Chocolate). 
                 Game rules are themed around cooking and recipe coordination.
             `;
+        } else if (theme === 'aqmjoe') {
+            themeDescription.innerHTML = `
+                <strong>AQM Joe Theme:</strong> Questions about favorite colors and foods with specific constraints. 
+                Follow the AQM Joe rules for optimal success rates.
+            `;
         } else {
             themeDescription.innerHTML = `
                 <strong>Classic Theme:</strong> Traditional ABXY notation for questions and game rules.
