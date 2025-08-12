@@ -683,6 +683,9 @@ const callbacks = {
             questionItem.textContent = data.item;
         }
         
+        // Update button text with per-item labels
+        updateButtonText(data.item);
+        
         showStatus(`Round ${data.round_number}`, 'info');
         updateGameState();
     },
@@ -807,6 +810,65 @@ function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
     }
 }
 
+// Function to evaluate if an AQM Joe combination follows the constraints
+function evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer) {
+    // Convert boolean answers to AQM Joe labels
+    const getAqmJoeLabel = (item, answer) => {
+        if (item === 'A' || item === 'B') {
+            return answer ? 'Green' : 'Red';
+        } else { // X or Y
+            return answer ? 'Peas' : 'Carrots';
+        }
+    };
+    
+    const l1 = getAqmJoeLabel(p1Item, p1Answer);
+    const l2 = getAqmJoeLabel(p2Item, p2Answer);
+    
+    const p1IsColor = p1Item === 'A' || p1Item === 'B';
+    const p2IsColor = p2Item === 'A' || p2Item === 'B';
+    const p1IsFood = !p1IsColor;
+    const p2IsFood = !p2IsColor;
+    
+    let isValid = false;
+    let description = '';
+    
+    // Rule 3: never both Peas when both food
+    if (p1IsFood && p2IsFood) {
+        isValid = !(l1 === 'Peas' && l2 === 'Peas');
+        description = isValid ? 'good constraint ✅' : 'broke rule: both Peas ❌';
+    }
+    // Rule 1: Green → Peas on mixed pairs
+    else if (p1IsColor && p2IsFood) {
+        if (l1 === 'Green') {
+            isValid = l2 === 'Peas';
+            description = isValid ? 'good constraint ✅' : 'broke rule: Green should → Peas ❌';
+        } else { // Red
+            isValid = l2 === 'Carrots';
+            description = isValid ? 'good constraint ✅' : 'expected Red → Carrots ❌';
+        }
+    }
+    else if (p2IsColor && p1IsFood) {
+        if (l2 === 'Green') {
+            isValid = l1 === 'Peas';
+            description = isValid ? 'good constraint ✅' : 'broke rule: Green should → Peas ❌';
+        } else { // Red
+            isValid = l1 === 'Carrots';
+            description = isValid ? 'good constraint ✅' : 'expected Red → Carrots ❌';
+        }
+    }
+    // Both color: no hard constraint (Rule 2)
+    else {
+        isValid = true; // Both color questions allow flexibility
+        if (l1 === 'Green' && l2 === 'Green') {
+            description = 'both Green allowed ✅';
+        } else {
+            description = 'color choices ok ✅';
+        }
+    }
+    
+    return description;
+}
+
 // Function to generate last round result message
 // Safely handles None/null values from backend when answer data is incomplete
 function generateLastRoundMessage(lastRound, theme, playerPos) {
@@ -833,6 +895,27 @@ function generateLastRoundMessage(lastRound, theme, playerPos) {
         const result = evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer);
         
         return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and decisions was <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
+    } else if (theme === 'aqmjoe') {
+        // Use theme manager to get AQM Joe labels
+        const p1Label = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
+        const p2Label = window.themeManager ? window.themeManager.getItemDisplay(p2Item) : p2Item;
+
+        // Convert boolean answers to AQM Joe labels based on item type
+        const getAqmJoeLabel = (item, answer) => {
+            if (item === 'A' || item === 'B') {
+                return answer ? 'Green' : 'Red';
+            } else { // X or Y
+                return answer ? 'Peas' : 'Carrots';
+            }
+        };
+        
+        const p1Decision = getAqmJoeLabel(p1Item, p1Answer);
+        const p2Decision = getAqmJoeLabel(p2Item, p2Answer);
+
+        // Evaluate the result
+        const result = evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer);
+
+        return `Last round, your team (P1/P2) were asked <b>${p1Label}/${p2Label}</b> and decisions was <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
     } else {
         // Classic theme
         const p1AnswerText = p1Answer ? 'True' : 'False';
