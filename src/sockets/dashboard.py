@@ -2243,7 +2243,8 @@ def on_dashboard_join(data: Optional[Dict[str, Any]] = None, callback: Optional[
             'game_state': {
                 'started': state.game_started,
                 'streaming_enabled': state.answer_stream_enabled,
-                'mode': state.game_mode  # Include current game mode
+                'mode': state.game_mode,  # Include current game mode
+                'theme': state.game_theme  # Include current game theme
             }
         }
         
