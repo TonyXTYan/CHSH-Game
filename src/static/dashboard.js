@@ -5,6 +5,13 @@ const socket = io(window.location.origin, {
 });
 const connectionStatusDiv = document.getElementById("connection-status-dash");
 
+// Event delegation for theme dropdown (since it's in hidden advanced controls)
+document.addEventListener('change', (event) => {
+    if (event.target.id === 'theme-dropdown') {
+        onThemeChange();
+    }
+});
+
 // Game mode state
 let currentGameMode = 'new';
 
@@ -128,7 +135,7 @@ function updateSortDropdownText(mode) {
 }
 
 // Theme Management Functions
-function updateGameThemeDisplay(theme) {
+function updateGameThemeDisplay(theme, skipDropdownUpdate = false) {
     currentGameTheme = theme;
     const themeIndicator = document.getElementById('current-game-theme');
     const themeDropdown = document.getElementById('theme-dropdown');
@@ -138,7 +145,7 @@ function updateGameThemeDisplay(theme) {
         themeIndicator.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
     }
     
-    if (themeDropdown) {
+    if (themeDropdown && !skipDropdownUpdate) {
         themeDropdown.value = theme;
     }
     
@@ -165,6 +172,7 @@ function onThemeChange() {
     const themeDropdown = document.getElementById('theme-dropdown');
     if (themeDropdown && themeDropdown.value !== currentGameTheme) {
         const newTheme = themeDropdown.value;
+        currentGameTheme = newTheme; // Update local state immediately
         socket.emit('change_game_theme', { theme: newTheme });
         
         // Show changing status
@@ -244,7 +252,7 @@ socket.on('game_mode_changed', (data) => {
 // Handle theme changes from server
 socket.on('game_theme_changed', (data) => {
     console.log('Game theme changed:', data);
-    updateGameThemeDisplay(data.theme);
+    updateGameThemeDisplay(data.theme, true); // Skip dropdown update since user just changed it
     
     // Show a brief notification
     connectionStatusDiv.textContent = `Game theme changed to: ${data.theme.charAt(0).toUpperCase() + data.theme.slice(1)}`;
@@ -264,7 +272,7 @@ socket.on('game_state_sync', (data) => {
         updateGameModeDisplay(data.mode);
     }
     if (data.theme && data.theme !== currentGameTheme) {
-        updateGameThemeDisplay(data.theme);
+        updateGameThemeDisplay(data.theme, true); // Skip dropdown update for sync events
     }
 });
 
@@ -467,11 +475,7 @@ window.addEventListener('load', () => {
     // Initialize theme display (will be updated when dashboard connects)
     updateGameThemeDisplay(currentGameTheme);
     
-    // Add theme dropdown change listener
-    const themeDropdown = document.getElementById('theme-dropdown');
-    if (themeDropdown) {
-        themeDropdown.addEventListener('change', onThemeChange);
-    }
+    // Theme dropdown change listener will be added via event delegation when advanced controls are shown
 });
 
 let confirmingStop = false;
@@ -711,7 +715,7 @@ socket.on("dashboard_update", (data) => {
         
         // Update theme if provided
         if (data.game_state.theme && data.game_state.theme !== currentGameTheme) {
-            updateGameThemeDisplay(data.game_state.theme);
+            updateGameThemeDisplay(data.game_state.theme, true); // Skip dropdown update for dashboard updates
         }
         
         // Persist full game state from server
