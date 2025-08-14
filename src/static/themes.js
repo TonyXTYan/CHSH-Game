@@ -186,6 +186,85 @@ const THEMES = {
                 `
             }
         }
+    },
+    aqmjoe: {
+        name: 'AQM Joe',
+        description: 'Color and Food semantics with AQM Joe policy',
+        items: {
+            A: 'Favourite Color?',
+            B: 'Favourite Color?',
+            X: 'Favourite Food?',
+            Y: 'Favourite Food?'
+        },
+        playerHints: {
+            1: 'Color or Food: you may be asked A/B/X/Y',
+            2: 'Color or Food: you may be asked A/B/X/Y'
+        },
+        questionBoxColors: {
+            1: '#e8f5e9', // Light green
+            2: '#fffde7', // Light yellow
+            default: '#f5f5f5'
+        },
+        questionTextColor: '#1b5e20',
+        gameRules: {
+            classic: {
+                title: 'Game Rules (Classic Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Both players may be asked about Color (A/B) or Food (X/Y).</li>
+                        <li>Follow classic correlation rules; AQM Joe changes labels only.</li>
+                    </ul>
+                `
+            },
+            new: {
+                title: 'Game Rules (Simplified Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Player 1 receives Color (A/B); Player 2 receives Food (X/Y).</li>
+                        <li>Success-rate scoring with existing simplified rules.</li>
+                    </ul>
+                `
+            },
+            aqmjoe: {
+                title: 'Game Rules (AQM Joe Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Both players may be asked any of A/B/X/Y.</li>
+                        <li>Policy: If Color is Green, Food should be Peas; never both Peas on Food–Food; Color–Color is neutral.</li>
+                    </ul>
+                `
+            }
+        },
+        winningConditions: {
+            classic: {
+                title: 'Winning Conditions (Classic Mode)',
+                content: `
+                    <div>
+                        Use classic correlation metrics; labels reflect Color/Food semantics.
+                    </div>
+                `
+            },
+            new: {
+                title: 'Winning Conditions (Simplified Mode)',
+                content: `
+                    <div>
+                        Use success rate: B+Y should differ; others match.
+                    </div>
+                `
+            },
+            aqmjoe: {
+                title: 'Winning Conditions (AQM Joe Mode)',
+                content: `
+                    <div>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Food–Food: success if NOT both Peas.</li>
+                            <li>Mixed Color–Food: if Color is Green, Food must be Peas (Red ↔ Carrots succeeds).</li>
+                            <li>Color–Color: neutral for success metric.</li>
+                        </ul>
+                    </div>
+                `
+            }
+        }
     }
 };
 
@@ -244,6 +323,21 @@ class ThemeManager {
     getQuestionTextColor() {
         const theme = this.getTheme();
         return theme.questionTextColor || '#1565c0';
+    }
+    
+    getAnswerLabels(item) {
+        // Returns { trueLabel, falseLabel } according to current theme and item
+        if (this.currentTheme === 'aqmjoe') {
+            if (item === 'A' || item === 'B') {
+                return { trueLabel: 'Green', falseLabel: 'Red' };
+            } else if (item === 'X' || item === 'Y') {
+                return { trueLabel: 'Peas', falseLabel: 'Carrots' };
+            }
+        }
+        if (this.currentTheme === 'food') {
+            return { trueLabel: 'Choose', falseLabel: 'Skip' };
+        }
+        return { trueLabel: 'True', falseLabel: 'False' };
     }
     
     applyTheme() {
