@@ -42,5 +42,9 @@ class AppState:
                 team_info['player_slots'] = {}
             team_info['player_slots'][sid] = slot
 
+# Backwards‑compatibility alias for tests
+class GameState(AppState):
+    pass
+
 # Create singleton instance for state
 state = AppState()
