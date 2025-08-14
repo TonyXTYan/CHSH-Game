@@ -350,41 +350,52 @@ def on_request_teams_update() -> None:
 
 @socketio.on('toggle_game_mode')
 def on_toggle_game_mode() -> None:
-    """Toggle between game modes: classic -> simplified -> aqmjoe -> classic."""
+    """Toggle between 'classic' and 'new' game modes with cache invalidation."""
     try:
         sid = request.sid  # type: ignore
         if sid not in state.dashboard_clients:
             emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
             return
 
-        # Toggle through the three modes
+        previous_mode = state.game_mode
+        previous_theme = state.game_theme
+
+        # Toggle the mode between classic and new/simplified  
         if state.game_mode == 'classic':
-            new_mode = 'simplified'
+            new_mode = 'new'  # Use 'new' for backward compatibility with tests
         elif state.game_mode in ('new', 'simplified'):  # Accept both for backward compatibility
-            new_mode = 'aqmjoe'
+            new_mode = 'classic'
         elif state.game_mode == 'aqmjoe':
+            # If in aqmjoe mode, toggle away to classic
             new_mode = 'classic'
         else:
             new_mode = 'classic'  # Default fallback
             
-        # Apply theme-mode linking when switching to/from aqmjoe
+        # Apply theme-mode linking when switching away from AQM Joe
         new_theme = state.game_theme
-        if new_mode == 'aqmjoe':
-            new_theme = 'aqmjoe'  # Force aqmjoe theme when mode is aqmjoe
-        elif state.game_mode == 'aqmjoe' and new_mode != 'aqmjoe':
-            new_theme = 'food'  # Default to food theme when leaving aqmjoe mode
-            
+        if previous_mode == 'aqmjoe' and new_mode != 'aqmjoe':
+            if state.game_theme == 'aqmjoe':
+                new_theme = 'food'
+                logger.info("Theme auto-switched to 'food' when leaving AQM Joe mode")
+        
         # Update state atomically
         state.game_mode = new_mode
-        state.game_theme = new_theme
-        logger.info(f"Game mode toggled to: {new_mode}, theme: {new_theme}")
+        logger.info(f"Game mode toggled to: {new_mode}")
+        
+        # Only update theme if it actually changed
+        theme_changed = new_theme != previous_theme
+        if theme_changed:
+            state.game_theme = new_theme
         
         # Clear caches to recalculate with new mode - use force clear since mode affects all calculations
         force_clear_all_caches()
         
-        # Notify all clients (players and dashboards) about the mode and theme change
+        # Notify all clients (players and dashboards) about the mode change
         socketio.emit('game_mode_changed', {'mode': new_mode})
-        socketio.emit('game_theme_changed', {'theme': new_theme})
+        
+        # Only emit theme change if theme actually changed
+        if theme_changed:
+            socketio.emit('game_theme_changed', {'theme': new_theme})
         
         # Trigger dashboard update to recalculate metrics immediately
         emit_dashboard_full_update()
