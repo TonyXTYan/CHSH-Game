@@ -8,7 +8,7 @@ let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
-let currentGameMode = 'new'; // Track current game mode
+let currentGameMode = 'simplified'; // Track current game mode
 let currentGameTheme = 'food'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 let lastRoundResults = null; // Track last round results for display
@@ -72,9 +72,14 @@ function updatePlayerPosition(position) {
     updatePlayerResponsibilityMessage();
 }
 
-// Update button text based on current theme
-function updateButtonText() {
-    if (currentGameTheme === 'food') {
+// Update button text based on current theme and current question item
+function updateButtonText(currentItem = null) {
+    if (currentGameTheme === 'aqmjoe' && currentItem && window.themeManager) {
+        // Use AQM Joe theme-specific labels
+        const labels = window.themeManager.getAnswerLabels(currentItem);
+        trueBtn.textContent = labels.true;
+        falseBtn.textContent = labels.false;
+    } else if (currentGameTheme === 'food') {
         trueBtn.textContent = 'Choose';
         falseBtn.textContent = 'Skip';
     } else {
@@ -85,6 +90,11 @@ function updateButtonText() {
 
 // Update game mode (only log to console, don't show in UI)
 function updateGameMode(mode) {
+    // Handle backward compatibility: map 'new' to 'simplified'
+    if (mode === 'new') {
+        mode = 'simplified';
+    }
+    
     currentGameMode = mode;
     console.log('Game mode:', mode);
     
@@ -134,13 +144,13 @@ function updatePlayerResponsibilityMessage() {
         message = window.themeManager.getPlayerHint(playerPosition);
     } else {
         // Fallback for when theme manager is not available
-        if (currentGameMode === 'new') {
+        if (currentGameMode === 'simplified' || currentGameMode === 'new') {
             if (playerPosition === 1) {
                 message = 'You are responsible for answering A and B questions';
             } else if (playerPosition === 2) {
                 message = 'You are responsible for answering X and Y questions';
             }
-        } else if (currentGameMode === 'classic') {
+        } else if (currentGameMode === 'classic' || currentGameMode === 'aqmjoe') {
             message = 'You will need to answer questions from all categories (A, B, X, Y)';
         }
     }
@@ -170,7 +180,7 @@ function resetToInitialView() {
     teamId = null;
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
-    currentGameMode = 'new'; // Reset to new mode
+    currentGameMode = 'simplified'; // Reset to simplified mode
     currentGameTheme = 'food'; // Reset to food theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
@@ -219,6 +229,9 @@ function updateGameState(newGameStarted = null, isReset = false) {
             const themedItem = window.themeManager.getItemDisplay(currentRound.item);
             questionItem.textContent = themedItem;
             
+            // Update button text for current item
+            updateButtonText(currentRound.item);
+            
             // Apply theme colors
             const questionDiv = questionItem.closest('.question');
             if (questionDiv) {
@@ -229,6 +242,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
             }
         } else {
             questionItem.textContent = currentRound.item;
+            updateButtonText(currentRound.item);
         }
         
         // If already answered this round
@@ -665,6 +679,9 @@ const callbacks = {
             const themedItem = window.themeManager.getItemDisplay(data.item);
             questionItem.textContent = themedItem;
             
+            // Update button text for current item
+            updateButtonText(data.item);
+            
             // Apply theme colors
             const questionDiv = questionItem.closest('.question');
             if (questionDiv) {
@@ -676,6 +693,7 @@ const callbacks = {
         } else {
             // Fallback to raw item
             questionItem.textContent = data.item;
+            updateButtonText(data.item);
         }
         
         showStatus(`Round ${data.round_number}`, 'info');
@@ -802,6 +820,61 @@ function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
     }
 }
 
+function evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer) {
+    // AQM Joe theme evaluation using the success policy
+    // Convert answers to labels
+    const aqmjoeLabel = (item, ans) => {
+        if (item === 'A' || item === 'B') {
+            return ans ? 'Green' : 'Red';
+        } else {
+            return ans ? 'Peas' : 'Carrots';
+        }
+    };
+    
+    const l1 = aqmjoeLabel(p1Item, p1Answer);
+    const l2 = aqmjoeLabel(p2Item, p2Answer);
+    
+    const p1IsColor = p1Item === 'A' || p1Item === 'B';
+    const p2IsColor = p2Item === 'A' || p2Item === 'B';
+    const p1IsFood = !p1IsColor;
+    const p2IsFood = !p2IsColor;
+    
+    let isSuccess = false;
+    let explanation = '';
+    
+    // Rule 3: Food-Food never both Peas
+    if (p1IsFood && p2IsFood) {
+        isSuccess = !(l1 === 'Peas' && l2 === 'Peas');
+        explanation = isSuccess ? 'great 👍' : 'oops (both chose Peas) 😬';
+    }
+    // Rule 1: Mixed Color-Food
+    else if (p1IsColor && p2IsFood) {
+        if (l1 === 'Green') {
+            isSuccess = l2 === 'Peas';
+            explanation = isSuccess ? 'perfect match! 🎯' : 'mismatch (Green needs Peas) 😕';
+        } else {
+            isSuccess = l2 === 'Carrots';
+            explanation = isSuccess ? 'great harmony! 👍' : 'mismatch (Red needs Carrots) 😕';
+        }
+    }
+    else if (p2IsColor && p1IsFood) {
+        if (l2 === 'Green') {
+            isSuccess = l1 === 'Peas';
+            explanation = isSuccess ? 'perfect match! 🎯' : 'mismatch (Green needs Peas) 😕';
+        } else {
+            isSuccess = l1 === 'Carrots';
+            explanation = isSuccess ? 'great harmony! 👍' : 'mismatch (Red needs Carrots) 😕';
+        }
+    }
+    // Rule 2: Color-Color (no constraint)
+    else {
+        isSuccess = true;
+        explanation = 'all good! 😊';
+    }
+    
+    return explanation;
+}
+
 // Function to generate last round result message
 // Safely handles None/null values from backend when answer data is incomplete
 function generateLastRoundMessage(lastRound, theme, playerPos) {
@@ -815,7 +888,23 @@ function generateLastRoundMessage(lastRound, theme, playerPos) {
     const p1Answer = lastRound.p1_answer;
     const p2Answer = lastRound.p2_answer;
     
-    if (theme === 'food') {
+    if (theme === 'aqmjoe') {
+        // Use theme manager to get question display text
+        const p1Display = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
+        const p2Display = window.themeManager ? window.themeManager.getItemDisplay(p2Item) : p2Item;
+        
+        // Get AQM Joe answer labels
+        const p1Labels = window.themeManager ? window.themeManager.getAnswerLabels(p1Item) : { true: 'True', false: 'False' };
+        const p2Labels = window.themeManager ? window.themeManager.getAnswerLabels(p2Item) : { true: 'True', false: 'False' };
+        
+        const p1AnswerText = p1Answer ? p1Labels.true : p1Labels.false;
+        const p2AnswerText = p2Answer ? p2Labels.true : p2Labels.false;
+        
+        // Evaluate the result using AQM Joe rules
+        const result = evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer);
+        
+        return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and answered <b>${p1AnswerText}/${p2AnswerText}</b>, that was <b>${result}</b>`;
+    } else if (theme === 'food') {
         // Use theme manager to get food emojis
         const p1Display = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
         const p2Display = window.themeManager ? window.themeManager.getItemDisplay(p2Item) : p2Item;

@@ -35,7 +35,21 @@ const THEMES = {
                 `
             },
             new: {
-                title: 'Game Rules (New Mode)', 
+                title: 'Game Rules (Simplified Mode)', 
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Discuss and agree on a shared strategy before the game starts.</li>
+                        <li><strong>No</strong> communicate during the game.</li>
+                        <li>Watch the dashboard to see your teams' progress.</li>
+                        <li>Player 1 will only receive A or B questions.</li>
+                        <li>Player 2 will only receive X or Y questions.</li>
+                        <li>Focus on <strong>consistency</strong> and <strong>coordination</strong>.</li>
+                        <li>This app is fragile, please keep browser page open to stay connected.</li>
+                    </ul>
+                `
+            },
+            simplified: {
+                title: 'Game Rules (Simplified Mode)', 
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Discuss and agree on a shared strategy before the game starts.</li>
@@ -80,7 +94,21 @@ const THEMES = {
                 `
             },
             new: {
-                title: 'Winning Conditions (New Mode)',
+                title: 'Winning Conditions (Simplified Mode)',
+                content: `
+                    <div>
+                        <strong>🏆 Best Success Rate:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When Player 1 gets <strong>B</strong> and Player 2 gets <strong>Y</strong>, you should give <strong>different answers</strong> (one True, one False).</li>
+                            <li>For all other combinations (A-X, A-Y, B-X), you should give the <strong>same answer</strong> as much as possible.</li>
+                            <li>Success rate is calculated as the percentage of rounds where you follow the optimal strategy.</li>
+                            <li>Aim for the highest success rate possible!</li>
+                        </ul>
+                    </div>
+                `
+            },
+            simplified: {
+                title: 'Winning Conditions (Simplified Mode)',
                 content: `
                     <div>
                         <strong>🏆 Best Success Rate:</strong>
@@ -129,7 +157,21 @@ const THEMES = {
                 `
             },
             new: {
-                title: 'Cooking Rules (New Mode)',
+                title: 'Cooking Rules (Simplified Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Plan your cooking strategy with your partner before starting!</li>
+                        <li><strong>No</strong> talking during cooking time.</li>
+                        <li>Watch the dashboard to see how all chefs are doing.</li>
+                        <li>Chef 1 specializes in: 🍞 Bread and 🥟 Dumplings</li>
+                        <li>Chef 2 specializes in: 🥬 Lettuce and 🍫 Chocolate</li>
+                        <li>Focus on <strong>consistent recipes</strong> and <strong>teamwork</strong>.</li>
+                        <li>Keep your kitchen (browser) open to stay connected!</li>
+                    </ul>
+                `
+            },
+            simplified: {
+                title: 'Cooking Rules (Simplified Mode)',
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Plan your cooking strategy with your partner before starting!</li>
@@ -172,7 +214,21 @@ const THEMES = {
                 `
             },
             new: {
-                title: 'Recipe Success (New Mode)',
+                title: 'Recipe Success (Simplified Mode)',
+                content: `
+                    <div>
+                        <strong>🏆 Best Recipe Success Rate:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When Chef 1 gets <strong>🥟 Dumplings</strong> and Chef 2 gets <strong>🍫 Chocolate</strong>, give <strong>different opinions</strong> (one Like, one Dislike).</li>
+                            <li>For other combinations (🍞-🥬, 🍞-🍫, 🥟-🥬), give the <strong>same opinion</strong>.</li>
+                            <li>Success rate shows how often you follow the perfect recipe!</li>
+                            <li>Aim to be the top chef team!</li>
+                        </ul>
+                    </div>
+                `
+            },
+            simplified: {
+                title: 'Recipe Success (Simplified Mode)',
                 content: `
                     <div>
                         <strong>🏆 Best Recipe Success Rate:</strong>
@@ -186,6 +242,113 @@ const THEMES = {
                 `
             }
         }
+    },
+    
+    aqmjoe: {
+        name: 'AQM Joe',
+        description: 'Color and food themed questions',
+        items: {
+            A: 'Favourite Color?',
+            B: 'Favourite Color?',
+            X: 'Favourite Food?',
+            Y: 'Favourite Food?'
+        },
+        playerHints: {
+            1: 'You will answer questions about colors and food',
+            2: 'You will answer questions about colors and food'
+        },
+        questionBoxColors: {
+            1: '#e8f5e8', // Light green for AQM Joe theme
+            2: '#e8f5e8', // Light green for AQM Joe theme
+            default: '#f5f5f5' // Gray when not in team
+        },
+        questionTextColor: '#2e7d32', // Dark green text
+        gameRules: {
+            classic: {
+                title: 'AQM Joe Rules (Classic Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Plan your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game.</li>
+                        <li>Both players can receive color or food questions.</li>
+                        <li>Focus on <strong>consistency</strong> rather than <strong>randomness</strong>.</li>
+                        <li>Keep your browser open to stay connected!</li>
+                    </ul>
+                `
+            },
+            simplified: {
+                title: 'AQM Joe Rules (Simplified Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Plan your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game.</li>
+                        <li>Player 1 gets color questions, Player 2 gets food questions.</li>
+                        <li>Focus on <strong>consistency</strong> and <strong>coordination</strong>.</li>
+                        <li>Keep your browser open to stay connected!</li>
+                    </ul>
+                `
+            },
+            aqmjoe: {
+                title: 'AQM Joe Rules (AQM Joe Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Plan your strategy with your partner before starting!</li>
+                        <li><strong>No</strong> communication during the game.</li>
+                        <li>Both players can receive color or food questions.</li>
+                        <li>Follow the AQM Joe success rules for best results.</li>
+                        <li>Keep your browser open to stay connected!</li>
+                    </ul>
+                `
+            }
+        },
+        winningConditions: {
+            classic: {
+                title: 'AQM Joe Conditions (Classic Mode)',
+                content: `
+                    <div style="margin-bottom: 15px;">
+                        <strong>🎯 Best Balanced ⏐⟨Tr⟩⏐ (Consistency):</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>When both get the <strong>same question type</strong>, try to give the <strong>same answer</strong>.</li>
+                            <li>Balance your answers: <strong>50% Green/Peas</strong> and <strong>50% Red/Carrots</strong>.</li>
+                            <li>The AQM Joe theme only changes labels in classic mode.</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <strong>🏆 Best CHSH (Correlation):</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Standard CHSH rules apply with AQM Joe labels.</li>
+                            <li>Focus on correlation patterns for optimal CHSH score.</li>
+                        </ul>
+                    </div>
+                `
+            },
+            simplified: {
+                title: 'AQM Joe Conditions (Simplified Mode)',
+                content: `
+                    <div>
+                        <strong>🏆 Best Success Rate:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Standard simplified mode rules apply.</li>
+                            <li>Follow optimal strategy for highest success rate.</li>
+                        </ul>
+                    </div>
+                `
+            },
+            aqmjoe: {
+                title: 'AQM Joe Success Rules (AQM Joe Mode)',
+                content: `
+                    <div>
+                        <strong>🏆 AQM Joe Success Policy:</strong>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li><strong>Mixed Color-Food:</strong> If one partner answers "Green", the other must answer "Peas" to succeed.</li>
+                            <li><strong>Both Color:</strong> Both partners can answer "Green" sometimes (no constraint).</li>
+                            <li><strong>Both Food:</strong> Never both answer "Peas" (at least one must choose "Carrots").</li>
+                            <li>Optimize your strategy to maximize success rate!</li>
+                        </ul>
+                    </div>
+                `
+            }
+        }
     }
 };
 
@@ -193,7 +356,7 @@ const THEMES = {
 class ThemeManager {
     constructor() {
         this.currentTheme = 'food';
-        this.currentMode = 'new';
+        this.currentMode = 'simplified';
     }
     
     setTheme(themeName) {
@@ -217,19 +380,40 @@ class ThemeManager {
         return theme.items[item] || item;
     }
     
+    getAnswerLabels(item) {
+        /**
+         * Get answer labels for a specific item based on current theme.
+         * For AQM Joe theme: A/B (color) -> True="Green"/False="Red", X/Y (food) -> True="Peas"/False="Carrots"
+         * For other themes: use standard True/False
+         */
+        if (this.currentTheme === 'aqmjoe') {
+            if (item === 'A' || item === 'B') {
+                // Color questions
+                return { true: 'Green', false: 'Red' };
+            } else if (item === 'X' || item === 'Y') {
+                // Food questions  
+                return { true: 'Peas', false: 'Carrots' };
+            }
+        }
+        // Default for all other themes
+        return { true: 'True', false: 'False' };
+    }
+    
     getPlayerHint(playerNumber) {
         const theme = this.getTheme();
         
-        // In classic mode, both players receive a general message about answering all categories
-        if (this.currentMode === 'classic') {
+        // In classic and aqmjoe modes, both players can receive all question types
+        if (this.currentMode === 'classic' || this.currentMode === 'aqmjoe') {
             if (theme.name === 'Food Ingredients') {
                 return 'You will need to answer questions from all ingredients (🍞, 🥟, 🥬, 🍫)';
+            } else if (theme.name === 'AQM Joe') {
+                return 'You will answer questions about colors and food';
             } else {
                 return 'You will need to answer questions from all categories (A, B, X, Y)';
             }
         }
         
-        // In new mode, return player-specific hints
+        // In simplified mode, return player-specific hints
         return theme.playerHints[playerNumber] || '';
     }
     

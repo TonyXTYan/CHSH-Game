@@ -7,7 +7,7 @@ class AppState:
         self.game_started = False # Track if game has started
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
-        self.game_mode = 'new'  # Track current game mode: 'classic' or 'new'
+        self.game_mode = 'new'  # Track current game mode: 'classic', 'simplified', or 'aqmjoe'
         self.game_theme = 'food'  # Track current game theme: 'classic', 'food', etc.
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
@@ -41,6 +41,10 @@ class AppState:
             if 'player_slots' not in team_info:
                 team_info['player_slots'] = {}
             team_info['player_slots'][sid] = slot
+
+# Backwards‑compatibility alias for tests
+class GameState(AppState):
+    pass
 
 # Create singleton instance for state
 state = AppState()

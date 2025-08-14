@@ -13,7 +13,7 @@ document.addEventListener('change', (event) => {
 });
 
 // Game mode state
-let currentGameMode = 'new';
+let currentGameMode = 'simplified';
 
 // Theme state  
 let currentGameTheme = 'food';
@@ -69,7 +69,7 @@ function updateTableHeaders(mode) {
         header3.textContent = 'Balanced Success 🎯';
         header4.textContent = 'Norm. Score 🏆';
         
-        // In NEW mode, only show success rate column
+        // In Simplified and AQM Joe modes, only show success rate column
         header1.style.display = '';
         header2.style.display = 'none';
         header3.style.display = 'none';
@@ -78,24 +78,35 @@ function updateTableHeaders(mode) {
 }
 
 function updateGameModeDisplay(mode) {
+    // Handle backward compatibility
+    if (mode === 'new') {
+        mode = 'simplified';
+    }
+    
     currentGameMode = mode;
     const modeIndicator = document.getElementById('current-game-mode');
     const toggleBtn = document.getElementById('toggle-mode-btn');
     const modeDescription = document.getElementById('mode-description-text');
     
     // Add CSS class to body to control column visibility
-    document.body.className = document.body.className.replace(/\b(classic|new)-mode\b/g, '');
+    document.body.className = document.body.className.replace(/\b(classic|new|simplified|aqmjoe)-mode\b/g, '');
     document.body.classList.add(`${mode}-mode`);
     
     if (modeIndicator) {
-        modeIndicator.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        let displayName = mode.charAt(0).toUpperCase() + mode.slice(1);
+        if (mode === 'aqmjoe') {
+            displayName = 'AQM Joe';
+        }
+        modeIndicator.textContent = displayName;
         modeIndicator.className = `mode-indicator ${mode}`;
     }
     
     if (toggleBtn) {
         if (mode === 'classic') {
-            toggleBtn.textContent = 'Switch to New Mode';
-        } else {
+            toggleBtn.textContent = 'Switch to Simplified Mode';
+        } else if (mode === 'simplified') {
+            toggleBtn.textContent = 'Switch to AQM Joe Mode';
+        } else if (mode === 'aqmjoe') {
             toggleBtn.textContent = 'Switch to Classic Mode';
         }
     }
@@ -106,10 +117,15 @@ function updateGameModeDisplay(mode) {
                 <strong>Classic Mode:</strong> Random question assignment to both players from all items (A, B, X, Y). 
                 Metrics focus on quantum correlation measurements.
             `;
-        } else {
+        } else if (mode === 'simplified') {
             modeDescription.innerHTML = `
-                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                <strong>Simplified Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
                 Metrics focus on success rates and optimal strategy adherence.
+            `;
+        } else if (mode === 'aqmjoe') {
+            modeDescription.innerHTML = `
+                <strong>AQM Joe Mode:</strong> Both players receive Color and Food questions from all items (A, B, X, Y). 
+                Success rate uses AQM Joe policy: Green→Peas, never both Peas on food, both colors OK.
             `;
         }
     }
@@ -142,7 +158,11 @@ function updateGameThemeDisplay(theme, skipDropdownUpdate = false) {
     const themeDescription = document.getElementById('theme-description-text');
     
     if (themeIndicator) {
-        themeIndicator.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+        if (theme === 'aqmjoe') {
+            themeIndicator.textContent = 'AQM Joe';
+        } else {
+            themeIndicator.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+        }
     }
     
     if (themeDropdown && !skipDropdownUpdate) {
@@ -154,6 +174,11 @@ function updateGameThemeDisplay(theme, skipDropdownUpdate = false) {
             themeDescription.innerHTML = `
                 <strong>Food Ingredients Theme:</strong> Questions use cooking ingredients (🍞 Bread, 🥟 Dumplings, 🥬 Lettuce, 🍫 Chocolate). 
                 Game rules are themed around cooking and recipe coordination.
+            `;
+        } else if (theme === 'aqmjoe') {
+            themeDescription.innerHTML = `
+                <strong>AQM Joe Theme:</strong> Color questions (Favourite Color?) and Food questions (Favourite Food?). 
+                Answers are Green/Red for colors and Peas/Carrots for food. Special success policy applies.
             `;
         } else {
             themeDescription.innerHTML = `
