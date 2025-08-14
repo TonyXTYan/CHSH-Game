@@ -549,8 +549,13 @@ def test_handle_disconnect_dashboard_client(mock_request_context):
     """Test disconnect logic for dashboard clients"""
     from src.sockets.team_management import handle_disconnect
     state.dashboard_clients.add('test_sid')
-    handle_disconnect()
-    assert 'test_sid' not in state.dashboard_clients
+    
+    # Patch state for client_management module since it imports from src.state directly
+    with patch('src.sockets.dashboard.client_management.state') as client_state:
+        client_state.dashboard_clients = state.dashboard_clients
+        
+        handle_disconnect()
+        assert 'test_sid' not in state.dashboard_clients
 
 def test_handle_disconnect_team_no_players_left(mock_request_context, active_team):
     """Test disconnect logic for teams with no players left"""

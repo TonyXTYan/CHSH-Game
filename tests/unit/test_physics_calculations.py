@@ -50,6 +50,13 @@ class TestPhysicsCalculations:
     """Test suite for quantum physics calculations and Bell inequality validation"""
 
     @pytest.fixture(autouse=True)
+    def setup_flask_context(self):
+        """Setup Flask application context for tests"""
+        from src.config import app
+        with app.test_request_context('/'):
+            yield
+
+    @pytest.fixture(autouse=True)
     def clear_caches_before_test(self):
         """Clear all caches before each test to ensure isolation"""
         clear_team_caches()
@@ -58,7 +65,7 @@ class TestPhysicsCalculations:
 
     def _compute_correlation_matrix_by_id(self, team_id):
         """Helper method to call compute_correlation_matrix with team_id for backward compatibility"""
-        with patch('src.sockets.dashboard._get_team_id_from_name') as mock_get_id:
+        with patch('src.sockets.dashboard.computations._get_team_id_from_name') as mock_get_id:
             mock_get_id.return_value = team_id
             return compute_correlation_matrix(f"test_team_{team_id}")
 
@@ -114,10 +121,10 @@ class TestPhysicsCalculations:
                     create_mock_answer(round_id, 'Y', False)  # Anti-correlated
                 ])
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -182,10 +189,10 @@ class TestPhysicsCalculations:
                     create_mock_answer(round_id, 'Y', not response)  # Opposite
                 ])
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -227,10 +234,10 @@ class TestPhysicsCalculations:
             create_mock_answer(4, 'Y', True), create_mock_answer(4, 'X', False)
         ]
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 corr_matrix, item_values, _, _, _, _, _ = self._compute_correlation_matrix_by_id(1)
@@ -263,10 +270,10 @@ class TestPhysicsCalculations:
         rounds = [create_mock_round(1, 'A', 'X')]
         answers = [create_mock_answer(1, 'A', True), create_mock_answer(1, 'X', True)]
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -302,10 +309,10 @@ class TestPhysicsCalculations:
             create_mock_answer(4, 'A', False), create_mock_answer(4, 'A', True)
         ]
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 _, _, avg_balance, balance_dict, same_item_responses, _, _ = self._compute_correlation_matrix_by_id(1)
@@ -326,10 +333,10 @@ class TestPhysicsCalculations:
             create_mock_answer(2, 'A', True), create_mock_answer(2, 'A', True)
         ]
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 _, _, avg_balance, balance_dict, same_item_responses, _, _ = self._compute_correlation_matrix_by_id(1)
@@ -364,10 +371,10 @@ class TestPhysicsCalculations:
                     create_mock_answer(round_id, 'X', resp2)
                 ])
 
-            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
                 mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
                 
-                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                     mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                     
                     corr_matrix, item_values, _, _, _, _, _ = self._compute_correlation_matrix_by_id(1)
@@ -388,10 +395,10 @@ class TestPhysicsCalculations:
 
     def test_empty_data_handling(self):
         """Test handling of teams with no measurement data"""
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = []
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = []
                 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -443,10 +450,10 @@ class TestPhysicsCalculations:
                 }
             }
             
-            with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+            with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
                 mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
                 
-                with patch('src.sockets.dashboard.Answers') as mock_answers:
+                with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                     mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                     
                     from src.sockets.dashboard import _process_single_team
@@ -493,10 +500,10 @@ class TestPhysicsCalculations:
             create_mock_answer(4, 'B', False), create_mock_answer(4, 'Y', True)
         ]
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 _, _, _, _, _, correlation_sums, pair_counts = self._compute_correlation_matrix_by_id(1)
@@ -534,10 +541,10 @@ class TestPhysicsCalculations:
                 create_mock_answer(i, 'X', response)
             ])
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
             
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
                 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -610,10 +617,10 @@ class TestPhysicsCalculations:
             rounds.extend(r2)
             answers.extend(a2)
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
 
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -656,10 +663,10 @@ class TestPhysicsCalculations:
             rounds.extend(r2)
             answers.extend(a2)
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
 
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -713,10 +720,10 @@ class TestPhysicsCalculations:
                 ])
                 round_id += 1
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
 
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -754,10 +761,10 @@ class TestPhysicsCalculations:
             rounds.extend(r2)
             answers.extend(a2)
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
 
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
                 result = self._compute_correlation_matrix_by_id(1)
@@ -795,10 +802,10 @@ class TestPhysicsCalculations:
             rounds.extend(r2)
             answers.extend(a2)
 
-        with patch('src.sockets.dashboard.PairQuestionRounds') as mock_rounds:
+        with patch('src.sockets.dashboard.computations.PairQuestionRounds') as mock_rounds:
             mock_rounds.query.filter_by.return_value.order_by.return_value.all.return_value = rounds
 
-            with patch('src.sockets.dashboard.Answers') as mock_answers:
+            with patch('src.sockets.dashboard.computations.Answers') as mock_answers:
                 mock_answers.query.filter_by.return_value.order_by.return_value.all.return_value = answers
 
                 result = self._compute_correlation_matrix_by_id(1)

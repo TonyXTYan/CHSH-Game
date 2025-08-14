@@ -32,17 +32,19 @@ class MockSet:
 
 @pytest.fixture
 def mock_request():
-    """Mock Flask request object"""
-    mock_req = MagicMock()
-    mock_req.sid = 'test_dashboard_sid'
+    """Mock Flask request object with proper Flask context"""
+    from src.config import app
     
-    with patch('src.sockets.dashboard.request', mock_req):
-        yield mock_req
+    with app.test_request_context('/') as ctx:
+        # Add SocketIO-specific attributes to the request context
+        ctx.request.sid = 'test_dashboard_sid'
+        ctx.request.namespace = '/'
+        yield ctx.request
 
 @pytest.fixture
 def mock_state():
     """Mock application state"""
-    with patch('src.sockets.dashboard.state') as mock_state:
+    with patch('src.sockets.dashboard.events.state') as mock_state:
         mock_state.dashboard_clients = MockSet(['test_dashboard_sid'])
         mock_state.active_teams = {'team1': {'players': ['p1', 'p2']}, 'team2': {'players': ['p3', 'p4']}}
         mock_state.game_mode = 'new'  # Start with new mode as default
@@ -51,19 +53,19 @@ def mock_state():
 @pytest.fixture
 def mock_socketio():
     """Mock socket.io instance"""
-    with patch('src.sockets.dashboard.socketio') as mock_io:
+    with patch('src.sockets.dashboard.events.socketio') as mock_io:
         yield mock_io
 
 @pytest.fixture
 def mock_emit():
     """Mock emit function"""
-    with patch('src.sockets.dashboard.emit') as mock_emit:
+    with patch('src.sockets.dashboard.events.emit') as mock_emit:
         yield mock_emit
 
 @pytest.fixture
 def mock_logger():
     """Mock logger"""
-    with patch('src.sockets.dashboard.logger') as mock_logger:
+    with patch('src.sockets.dashboard.events.logger') as mock_logger:
         yield mock_logger
 
 @pytest.fixture(autouse=True)
@@ -78,7 +80,7 @@ def test_mode_toggle_server_response_timeout_handling(mock_request, mock_state, 
     mock_state.game_mode = 'new'
     
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         
         # Mock the full update to fail/delay
         mock_full_update.side_effect = Exception("Server timeout")
@@ -100,8 +102,8 @@ def test_multi_dashboard_mode_sync_immediate_response(mock_request, mock_state, 
     mock_state.dashboard_clients = MockSet(['test_dashboard_sid', 'client2', 'client3'])
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.sockets.dashboard.events.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         
         # Call the function
         on_toggle_game_mode()
@@ -120,8 +122,8 @@ def test_mode_toggle_race_condition_prevention(mock_request, mock_state, mock_so
     """Test that race conditions are prevented in mode toggle"""
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.sockets.dashboard.events.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         
         # Simulate rapid successive calls
         on_toggle_game_mode()  # new -> classic
@@ -140,8 +142,8 @@ def test_mode_toggle_error_recovery(mock_request, mock_state, mock_socketio, moc
     """Test error recovery in mode toggle"""
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.sockets.dashboard.events.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         
         # First call fails
         mock_clear_cache.side_effect = Exception("Cache error")
@@ -171,7 +173,7 @@ def test_mode_toggle_with_disconnected_clients_cleanup(mock_request, mock_state,
     # Mock socket emit to do nothing (simulate disconnected client)
     mock_socketio.emit.side_effect = lambda *args, **kwargs: None
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         on_toggle_game_mode()
         assert mock_state.game_mode == 'classic'
         # No error should be logged or emitted for broadcast
@@ -189,7 +191,7 @@ def test_mode_toggle_maintains_other_state_integrity(mock_request, mock_state, m
     original_teams = mock_state.active_teams.copy()
     
     with patch('src.sockets.dashboard.clear_team_caches'), \
-         patch('src.sockets.dashboard.emit_dashboard_full_update'):
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update'):
         
         on_toggle_game_mode()
         
@@ -208,7 +210,7 @@ def test_mode_toggle_performance_under_load(mock_request, mock_state, mock_socke
     mock_state.dashboard_clients = MockSet(many_clients)
     mock_state.game_mode = 'new'
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         start_time = time.time()
         on_toggle_game_mode()
         end_time = time.time()
@@ -221,8 +223,8 @@ def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_e
     """Test that mode toggle operations are idempotent"""
     mock_state.game_mode = 'new'
     
-    with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
-         patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
+    with patch('src.sockets.dashboard.events.force_clear_all_caches') as mock_clear_cache, \
+         patch('src.sockets.dashboard.events.emit_dashboard_full_update') as mock_full_update:
         
         # First toggle: new -> classic
         on_toggle_game_mode()
