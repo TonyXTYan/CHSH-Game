@@ -7,7 +7,7 @@ class AppState:
         self.game_started = False # Track if game has started
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
-        self.game_mode = 'new'  # Track current game mode: 'classic' or 'new'
+        self.game_mode = 'simplified'  # Track current game mode: 'classic', 'simplified', or 'aqmjoe'
         self.game_theme = 'food'  # Track current game theme: 'classic', 'food', etc.
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
@@ -24,7 +24,7 @@ class AppState:
         self.game_started = False
         self.game_paused = False
         self.answer_stream_enabled = False
-        self.game_mode = 'new'  # Reset game mode to new
+        self.game_mode = 'simplified'  # Reset game mode to simplified
         self.game_theme = 'food'  # Reset game theme to food
 
     def get_player_slot(self, team_name, sid):

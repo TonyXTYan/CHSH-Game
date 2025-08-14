@@ -16,13 +16,13 @@ def get_effective_combo_repeats(game_mode=None):
         game_mode: The game mode. If None, will get from state.
         
     Returns:
-        int: TARGET_COMBO_REPEATS*2 for 'new' mode, TARGET_COMBO_REPEATS for others
+        int: TARGET_COMBO_REPEATS*2 for 'new'/'simplified' mode, TARGET_COMBO_REPEATS for others
     """
     if game_mode is None:
         from src.state import state
         game_mode = state.game_mode
     
-    if game_mode == 'new':
+    if game_mode in ('new', 'simplified'):
         return TARGET_COMBO_REPEATS * 2
     else:
         return TARGET_COMBO_REPEATS
@@ -62,13 +62,13 @@ def start_new_round_for_pair(team_name):
         effective_combo_repeats = get_effective_combo_repeats(state.game_mode)
         
         # Mode-specific question assignment logic
-        if state.game_mode == 'new':
-            # New mode: Player 1 gets A,B only; Player 2 gets X,Y only
+        if state.game_mode in ('new', 'simplified'):
+            # Simplified mode: Player 1 gets A,B only; Player 2 gets X,Y only
             player1_items = [ItemEnum.A, ItemEnum.B]
             player2_items = [ItemEnum.X, ItemEnum.Y]
             all_possible_combos = [(i1, i2) for i1 in player1_items for i2 in player2_items]
         else:
-            # Classic mode: Original logic with all combinations
+            # Classic and AQM Joe modes: All players can get any question type
             all_possible_combos = [(i1, i2) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
         
         round_limit = (effective_combo_repeats + 1) * len(all_possible_combos)

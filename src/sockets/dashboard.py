@@ -350,23 +350,41 @@ def on_request_teams_update() -> None:
 
 @socketio.on('toggle_game_mode')
 def on_toggle_game_mode() -> None:
-    """Toggle between 'classic' and 'new' game modes with cache invalidation."""
+    """Toggle between game modes: classic -> simplified -> aqmjoe -> classic."""
     try:
         sid = request.sid  # type: ignore
         if sid not in state.dashboard_clients:
             emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
             return
 
-        # Toggle the mode
-        new_mode = 'new' if state.game_mode == 'classic' else 'classic'
+        # Toggle through the three modes
+        if state.game_mode == 'classic':
+            new_mode = 'simplified'
+        elif state.game_mode in ('new', 'simplified'):  # Accept both for backward compatibility
+            new_mode = 'aqmjoe'
+        elif state.game_mode == 'aqmjoe':
+            new_mode = 'classic'
+        else:
+            new_mode = 'classic'  # Default fallback
+            
+        # Apply theme-mode linking when switching to/from aqmjoe
+        new_theme = state.game_theme
+        if new_mode == 'aqmjoe':
+            new_theme = 'aqmjoe'  # Force aqmjoe theme when mode is aqmjoe
+        elif state.game_mode == 'aqmjoe' and new_mode != 'aqmjoe':
+            new_theme = 'food'  # Default to food theme when leaving aqmjoe mode
+            
+        # Update state atomically
         state.game_mode = new_mode
-        logger.info(f"Game mode toggled to: {new_mode}")
+        state.game_theme = new_theme
+        logger.info(f"Game mode toggled to: {new_mode}, theme: {new_theme}")
         
         # Clear caches to recalculate with new mode - use force clear since mode affects all calculations
         force_clear_all_caches()
         
-        # Notify all clients (players and dashboards) about the mode change
+        # Notify all clients (players and dashboards) about the mode and theme change
         socketio.emit('game_mode_changed', {'mode': new_mode})
+        socketio.emit('game_theme_changed', {'theme': new_theme})
         
         # Trigger dashboard update to recalculate metrics immediately
         emit_dashboard_full_update()
@@ -390,22 +408,36 @@ def on_change_game_theme(data: Dict[str, Any]) -> None:
             return
 
         # Validate theme against supported themes
-        supported_themes = ['classic', 'food']
+        supported_themes = ['classic', 'food', 'aqmjoe']
         if new_theme not in supported_themes:
             emit('error', {'message': f'Unsupported theme "{new_theme}". Supported themes: {", ".join(supported_themes)}'})  # type: ignore
             return
 
-        # Update theme state
+        # Apply theme-mode linking
+        new_mode = state.game_mode
+        if new_theme == 'aqmjoe':
+            new_mode = 'aqmjoe'  # Force aqmjoe mode when theme is aqmjoe
+        elif state.game_theme == 'aqmjoe' and new_theme != 'aqmjoe':
+            new_mode = 'simplified'  # Default to simplified mode when leaving aqmjoe theme
+
+        # Update state atomically
         state.game_theme = new_theme
-        logger.info(f"Game theme changed to: {new_theme}")
+        if new_mode != state.game_mode:
+            state.game_mode = new_mode
+            # Clear caches if mode changed
+            force_clear_all_caches()
+            
+        logger.info(f"Game theme changed to: {new_theme}, mode: {new_mode}")
         
         # Notify all clients (players and dashboards) about the theme change
         socketio.emit('game_theme_changed', {'theme': new_theme})
+        if new_mode != state.game_mode:
+            socketio.emit('game_mode_changed', {'mode': new_mode})
         
         # Also send mode with theme for complete synchronization
         socketio.emit('game_state_sync', {
-            'mode': state.game_mode,
-            'theme': state.game_theme
+            'mode': new_mode,
+            'theme': new_theme
         })
         
     except Exception as e:
@@ -448,10 +480,53 @@ def compute_team_hashes(team_name: str) -> Tuple[str, str]:
         logger.error(f"Error computing team hashes: {str(e)}")
         return "ERROR", "ERROR"
 
+def _aqmjoe_label(item: str, ans: bool) -> str:
+    """Convert item and boolean answer to AQM Joe theme label."""
+    if item in ('A', 'B'):
+        return 'Green' if ans else 'Red'
+    else:  # 'X', 'Y'
+        return 'Peas' if ans else 'Carrots'
+
+def _is_aqmjoe_success(p1_item: str, p2_item: str, p1_bool: bool, p2_bool: bool) -> bool:
+    """
+    Determine if a round is successful according to AQM Joe policy.
+    
+    Rules:
+    - Food-Food: success if NOT (both "Peas")
+    - Mixed Color-Food: if Color is "Green", Food must be "Peas" to succeed
+    - Color-Color: neutral for success rate (no extra constraint)
+    """
+    l1 = _aqmjoe_label(p1_item, p1_bool)
+    l2 = _aqmjoe_label(p2_item, p2_bool)
+
+    p1_is_color = p1_item in ('A', 'B')
+    p2_is_color = p2_item in ('A', 'B')
+    p1_is_food = not p1_is_color
+    p2_is_food = not p2_is_color
+
+    # Rule 3: never both Peas when both food
+    if p1_is_food and p2_is_food:
+        return not (l1 == 'Peas' and l2 == 'Peas')
+
+    # Rule 1: Green → Peas on mixed pairs
+    if p1_is_color and p2_is_food:
+        if l1 == 'Green':
+            return l2 == 'Peas'
+        # Optional symmetry for Red → Carrots
+        return l1 == 'Red' and l2 == 'Carrots'
+    if p2_is_color and p1_is_food:
+        if l2 == 'Green':
+            return l1 == 'Peas'
+        # Optional symmetry for Red → Carrots
+        return l2 == 'Red' and l1 == 'Carrots'
+
+    # Both color: no hard constraint for success metric
+    return True
+
 @selective_cache(_success_cache)
 def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """
-    Compute success metrics for new mode instead of correlation matrix.
+    Compute success metrics for new/simplified mode or aqmjoe mode instead of correlation matrix.
     Returns success rate matrix, overall success metrics, and individual player balance data.
     """
     try:
@@ -529,17 +604,22 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
             player_responses[p1_item]['true' if p1_answer else 'false'] += 1
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
-            # Apply success rules for new mode
-            # Success Rule: {B,Y} combinations require different answers; all others require same answers
-            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-            players_answered_differently = p1_answer != p2_answer
-            
-            if is_by_combination:
-                # B,Y combination: players should answer differently
-                is_successful = players_answered_differently
+            # Apply success rules based on current game mode
+            from src.state import state
+            if state.game_mode == 'aqmjoe':
+                # AQM Joe mode: use AQM Joe success policy
+                is_successful = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
             else:
-                # All other combinations: players should answer the same
-                is_successful = not players_answered_differently
+                # Simplified/new mode: {B,Y} combinations require different answers; all others require same answers
+                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+                players_answered_differently = p1_answer != p2_answer
+                
+                if is_by_combination:
+                    # B,Y combination: players should answer differently
+                    is_successful = players_answered_differently
+                else:
+                    # All other combinations: players should answer the same
+                    is_successful = not players_answered_differently
             
             # Update counts
             total_rounds += 1
@@ -1194,17 +1274,22 @@ def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], tea
             player_responses[p1_item]['true' if p1_answer else 'false'] += 1
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
-            # Apply success rules for new mode
-            # Success Rule: {B,Y} combinations require different answers; all others require same answers
-            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-            players_answered_differently = p1_answer != p2_answer
-            
-            if is_by_combination:
-                # B,Y combination: players should answer differently
-                is_successful = players_answered_differently
+            # Apply success rules based on current game mode
+            from src.state import state
+            if state.game_mode == 'aqmjoe':
+                # AQM Joe mode: use AQM Joe success policy
+                is_successful = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
             else:
-                # All other combinations: players should answer the same
-                is_successful = not players_answered_differently
+                # Simplified/new mode: {B,Y} combinations require different answers; all others require same answers
+                is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+                players_answered_differently = p1_answer != p2_answer
+                
+                if is_by_combination:
+                    # B,Y combination: players should answer differently
+                    is_successful = players_answered_differently
+                else:
+                    # All other combinations: players should answer the same
+                    is_successful = not players_answered_differently
             
             # Update counts
             total_rounds += 1
