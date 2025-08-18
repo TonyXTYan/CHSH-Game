@@ -102,3 +102,15 @@ def test_app_state_team_tracking():
     assert team_name not in state.active_teams
     assert player1 not in state.player_to_team
     assert team_id not in state.team_id_to_name
+
+def test_game_mode_normalization_and_validation(caplog):
+    state = AppState()
+    # Deprecated alias 'new' maps to 'simplified'
+    with caplog.at_level('WARNING'):
+        state.game_mode = 'new'
+    assert state.game_mode == 'simplified'
+    # Unsupported mode keeps previous value and logs error
+    previous = state.game_mode
+    with caplog.at_level('ERROR'):
+        state.game_mode = 'unsupported_mode_xyz'
+    assert state.game_mode == previous

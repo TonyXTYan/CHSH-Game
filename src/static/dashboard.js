@@ -13,7 +13,7 @@ document.addEventListener('change', (event) => {
 });
 
 // Game mode state
-let currentGameMode = 'new';
+let currentGameMode = 'simplified';
 
 // Theme state  
 let currentGameTheme = 'food';
@@ -174,8 +174,8 @@ function onThemeChange() {
     if (themeDropdown && themeDropdown.value !== currentGameTheme) {
         const newTheme = themeDropdown.value;
         currentGameTheme = newTheme; // Update local state immediately
-        // Always emit legacy theme change for compatibility
-        socket.emit('change_game_theme', { theme: newTheme });
+        // Emit only atomic theme and mode change event
+        // socket.emit('change_game_theme', { theme: newTheme }); // Removed for redundancy
         // If selecting aqmjoe, request atomic link with mode
         if (newTheme === 'aqmjoe') {
             socket.emit('set_theme_and_mode', { theme: 'aqmjoe', mode: 'aqmjoe' });
@@ -195,6 +195,23 @@ function onThemeChange() {
 // Track game mode toggle timeouts for cleanup
 let gameModeToggleTimeout = null;
 
+// Compute next mode/theme transition for toggleGameMode
+function getNextModeThemeTransition(mode, theme) {
+    // If currently in AQM Joe, switch to Simplified and Classic theme together
+    if (mode === 'aqmjoe') {
+        return { theme: 'classic', mode: 'simplified', updateThemeDisplay: true };
+    }
+    // If in Classic, go to Simplified without changing non-aqm themes
+    if (mode === 'classic') {
+        const nextTheme = (theme === 'aqmjoe') ? 'aqmjoe' : theme;
+        return { theme: nextTheme, mode: 'simplified', updateThemeDisplay: false };
+    }
+    // Otherwise from Simplified -> Classic; if theme is aqmjoe, coerce to classic theme for display
+    const nextTheme = (theme === 'aqmjoe') ? 'classic' : theme;
+    const shouldUpdateThemeDisplay = (theme === 'aqmjoe');
+    return { theme: nextTheme, mode: 'classic', updateThemeDisplay: shouldUpdateThemeDisplay };
+}
+
 function toggleGameMode() {
     const toggleBtn = document.getElementById('toggle-mode-btn');
     if (toggleBtn && !toggleBtn.disabled) {
@@ -206,17 +223,12 @@ function toggleGameMode() {
             clearTimeout(gameModeToggleTimeout);
             gameModeToggleTimeout = null;
         }
-        
-        // If currently in AQM Joe, switch to Simplified and Classic theme together; otherwise cycle classic <-> simplified
-        if (currentGameMode === 'aqmjoe') {
-            // Use updateGameThemeDisplay to sync dropdown and UI to classic when leaving AQM Joe theme
-            updateGameThemeDisplay('classic');
-            socket.emit('set_theme_and_mode', { theme: 'classic', mode: 'simplified' });
-        } else if (currentGameMode === 'classic') {
-            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'simplified' });
-        } else {
-            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'classic' : currentGameTheme, mode: 'classic' });
+        // Determine next transition for mode/theme
+        const transition = getNextModeThemeTransition(currentGameMode, currentGameTheme);
+        if (transition.updateThemeDisplay) {
+            updateGameThemeDisplay(transition.theme);
         }
+        socket.emit('set_theme_and_mode', { theme: transition.theme, mode: transition.mode });
         
         // Set fallback timeout in case server doesn't respond
         gameModeToggleTimeout = setTimeout(() => {
@@ -1653,7 +1665,7 @@ function updateModalContent(team) {
 
     // Determine which matrix to show based on current mode and update title
     let matrixToShow, labelsToShow;
-    if (currentGameMode === 'new') {
+    if (currentGameMode === 'simplified') {
         matrixToShow = team.new_matrix || team.correlation_matrix;
         labelsToShow = team.correlation_labels;
         matrixTitle.textContent = 'Success Matrix (Successful/Total)';

@@ -2324,7 +2324,7 @@ def on_dashboard_join(*args, **kwargs) -> None:
                 'game_state': {
                     'started': getattr(injected_state, 'game_started', False),
                     'streaming_enabled': getattr(injected_state, 'answer_stream_enabled', False),
-                    'mode': getattr(injected_state, 'game_mode', 'new'),
+                    'mode': getattr(injected_state, 'game_mode', 'simplified'),
                     'theme': getattr(injected_state, 'game_theme', 'food')
                 }
             }
