@@ -7,15 +7,15 @@ class TestThemeControlFixes:
     """Test suite to verify that theme control fixes are properly implemented"""
     
     @pytest.fixture
-    def dashboard_js_content(self):
+    def dashboard_js_content(self, request):
         """Load the dashboard JavaScript content"""
-        dashboard_js_path = (Path(__file__).parent / "../../src/static/dashboard.js").resolve()
+        dashboard_js_path = Path(request.config.rootdir) / "src" / "static" / "dashboard.js"
         return dashboard_js_path.read_text(encoding='utf-8')
     
     @pytest.fixture
-    def dashboard_py_content(self):
+    def dashboard_py_content(self, request):
         """Load the dashboard Python socket handler content"""
-        dashboard_py_path = (Path(__file__).parent / "../../src/sockets/dashboard.py").resolve()
+        dashboard_py_path = Path(request.config.rootdir) / "src" / "sockets" / "dashboard.py"
         return dashboard_py_path.read_text(encoding='utf-8')
     
     def test_event_delegation_implemented(self, dashboard_js_content):

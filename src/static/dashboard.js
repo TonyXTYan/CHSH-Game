@@ -195,6 +195,23 @@ function onThemeChange() {
 // Track game mode toggle timeouts for cleanup
 let gameModeToggleTimeout = null;
 
+// Compute next mode/theme transition for toggleGameMode
+function getNextModeThemeTransition(mode, theme) {
+    // If currently in AQM Joe, switch to Simplified and Classic theme together
+    if (mode === 'aqmjoe') {
+        return { theme: 'classic', mode: 'simplified', updateThemeDisplay: true };
+    }
+    // If in Classic, go to Simplified without changing non-aqm themes
+    if (mode === 'classic') {
+        const nextTheme = (theme === 'aqmjoe') ? 'aqmjoe' : theme;
+        return { theme: nextTheme, mode: 'simplified', updateThemeDisplay: false };
+    }
+    // Otherwise from Simplified -> Classic; if theme is aqmjoe, coerce to classic theme for display
+    const nextTheme = (theme === 'aqmjoe') ? 'classic' : theme;
+    const shouldUpdateThemeDisplay = (theme === 'aqmjoe');
+    return { theme: nextTheme, mode: 'classic', updateThemeDisplay: shouldUpdateThemeDisplay };
+}
+
 function toggleGameMode() {
     const toggleBtn = document.getElementById('toggle-mode-btn');
     if (toggleBtn && !toggleBtn.disabled) {
@@ -233,23 +250,6 @@ function toggleGameMode() {
             gameModeToggleTimeout = null;
         }, 10000);
     }
-}
-
-// Compute next mode/theme transition for toggleGameMode
-function getNextModeThemeTransition(mode, theme) {
-    // If currently in AQM Joe, switch to Simplified and Classic theme together
-    if (mode === 'aqmjoe') {
-        return { theme: 'classic', mode: 'simplified', updateThemeDisplay: true };
-    }
-    // If in Classic, go to Simplified without changing non-aqm themes
-    if (mode === 'classic') {
-        const nextTheme = (theme === 'aqmjoe') ? 'aqmjoe' : theme;
-        return { theme: nextTheme, mode: 'simplified', updateThemeDisplay: false };
-    }
-    // Otherwise from Simplified -> Classic; if theme is aqmjoe, coerce to classic theme for display
-    const nextTheme = (theme === 'aqmjoe') ? 'classic' : theme;
-    const shouldUpdateThemeDisplay = (theme === 'aqmjoe');
-    return { theme: nextTheme, mode: 'classic', updateThemeDisplay: shouldUpdateThemeDisplay };
 }
 
 // Handle game mode changes from server

@@ -7,9 +7,9 @@ class TestDashboardHTMLStructure:
     """Test suite for dashboard HTML structure and theme control setup"""
     
     @pytest.fixture
-    def dashboard_html_content(self):
+    def dashboard_html_content(self, request):
         """Load the dashboard HTML content"""
-        dashboard_path = Path("src/static/dashboard.html")
+        dashboard_path = Path(request.config.rootdir) / "src" / "static" / "dashboard.html"
         return dashboard_path.read_text(encoding='utf-8')
     
     def test_theme_dropdown_exists(self, dashboard_html_content):
@@ -79,9 +79,9 @@ class TestDashboardJavaScriptIntegration:
     """Test suite for JavaScript integration with HTML structure"""
     
     @pytest.fixture
-    def dashboard_js_content(self):
+    def dashboard_js_content(self, request):
         """Load the dashboard JavaScript content"""
-        dashboard_js_path = Path("src/static/dashboard.js")
+        dashboard_js_path = Path(request.config.rootdir) / "src" / "static" / "dashboard.js"
         return dashboard_js_path.read_text(encoding='utf-8')
     
     def test_event_delegation_setup(self, dashboard_js_content):

@@ -46,21 +46,15 @@ class TestAQMJoeIntegration:
     def teardown_method(self):
         state.reset()
         with app.app_context():
-            try:
-                db.session.close()
-                db.session.remove()
-            except:
-                pass
-        try:
-            # Close the file descriptor first
-            try:
-                os.close(self.temp_db_fd)
-            except Exception:
-                pass
+            db.session.close()
+            db.session.remove()
+        import contextlib
+        # Close the file descriptor and remove the file, suppressing OSError
+        with contextlib.suppress(OSError):
+            os.close(self.temp_db_fd)
+        with contextlib.suppress(OSError):
             if os.path.exists(self.temp_db_path):
                 os.unlink(self.temp_db_path)
-        except:
-            pass
 
     @patch('random.shuffle', side_effect=lambda x: x)
     @patch('src.game_logic.socketio')
