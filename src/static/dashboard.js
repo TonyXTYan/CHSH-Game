@@ -209,6 +209,9 @@ function toggleGameMode() {
         
         // If currently in AQM Joe, switch to Simplified and Classic theme together; otherwise cycle classic <-> simplified
         if (currentGameMode === 'aqmjoe') {
+            // Locally sync dropdown to classic to reflect leaving AQM Joe theme
+            const themeDropdown = document.getElementById('theme-dropdown');
+            if (themeDropdown) themeDropdown.value = 'classic';
             socket.emit('set_theme_and_mode', { theme: 'classic', mode: 'simplified' });
         } else if (currentGameMode === 'classic') {
             socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'simplified' });
@@ -269,7 +272,8 @@ socket.on('game_mode_changed', (data) => {
 // Handle theme changes from server
 socket.on('game_theme_changed', (data) => {
     console.log('Game theme changed:', data);
-    updateGameThemeDisplay(data.theme, true); // Skip dropdown update since user just changed it
+    // Update UI but do not force dropdown value (tests expect skipDropdownUpdate=true)
+    updateGameThemeDisplay(data.theme, true);
     
     // Show a brief notification
     connectionStatusDiv.textContent = `Game theme changed to: ${data.theme.charAt(0).toUpperCase() + data.theme.slice(1)}`;
@@ -289,7 +293,8 @@ socket.on('game_state_sync', (data) => {
         updateGameModeDisplay(data.mode);
     }
     if (data.theme && data.theme !== currentGameTheme) {
-        updateGameThemeDisplay(data.theme, true); // Skip dropdown update for sync events
+        // Update UI but do not force dropdown value (tests expect skipDropdownUpdate=true)
+        updateGameThemeDisplay(data.theme, true);
     }
 });
 
