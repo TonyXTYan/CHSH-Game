@@ -20,7 +20,7 @@ class TestDashboardThemeControl:
         """Mock game state"""
         state = Mock(spec=GameState)
         state.game_theme = 'food'
-        state.game_mode = 'new'
+        state.game_mode = 'simplified'
         state.game_started = False
         state.answer_stream_enabled = False
         state.connected_players = []
@@ -77,7 +77,7 @@ class TestDashboardThemeControl:
         """Test that dashboard join includes current theme in game state"""
         # Arrange
         mock_state.game_theme = 'classic'
-        mock_state.game_mode = 'new'
+        mock_state.game_mode = 'simplified'
         mock_state.game_started = False
         mock_state.answer_stream_enabled = False
         mock_state.connected_players = []
@@ -202,7 +202,7 @@ class TestDashboardThemeIntegration:
         """Mock game state"""
         state = Mock(spec=GameState)
         state.game_theme = 'food'
-        state.game_mode = 'new'
+        state.game_mode = 'simplified'
         state.game_started = False
         state.answer_stream_enabled = False
         state.connected_players = []

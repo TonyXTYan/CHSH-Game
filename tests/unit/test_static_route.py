@@ -50,7 +50,7 @@ def test_serve_missing_index_returns_404(tmp_path, monkeypatch):
     # Temporarily point static folder to empty temp dir without index.html
     original = app.static_folder
     try:
-        os.makedirs(tmp_path, exist_ok=True)
+        tmp_path.mkdir(exist_ok=True)
         monkeypatch.setattr(app, 'static_folder', str(tmp_path))
         resp = client.get('/nonexistent')
         assert resp.status_code == 404
