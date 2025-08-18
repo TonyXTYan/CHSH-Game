@@ -26,21 +26,23 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 - Live demo: 
     - ⚠️ As of May 2025, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire internet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
     - ⚠️ If you spot a live game is going on, please don't interrupt it! You can fork this repo and deployed within minutes for free on e.g. [render.com](https://render.com) or [fly.io](https://fly.io), which I have an instance hosted there too that you can freely play with.
-    - Host: [chsh-game.***fly.dev***/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.on***render.com***/dashboard](https://chsh-game.onrender.com/dashboard))
-    - Player: [chsh-game.***fly.dev***](https://chsh-game.fly.dev) ([chsh-game.on***render.com***](https://chsh-game.onrender.com))
+    - Host: [chsh-game.***fly.dev***/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.***onrender.com***/dashboard](https://chsh-game.onrender.com/dashboard))
+    - Player: [chsh-game.***fly.dev***](https://chsh-game.fly.dev) ([chsh-game.***fly.dev***](https://chsh-game.fly.dev))
 
 ![Player QR Code](https://genqrcode.com/embedded?style=0&inner_eye_style=0&outer_eye_style=0&logo=null&color=%23000000FF&background_color=%23FFFFFF&inner_eye_color=%23000000&outer_eye_color=%23000000&imageformat=svg&language=en&frame_style=0&frame_text=SCAN%20ME&frame_color=%23000000&invert_colors=false&gradient_style=0&gradient_color_start=%23FF0000&gradient_color_end=%237F007F&gradient_start_offset=5&gradient_end_offset=95&stl_type=1&logo_remove_background=null&stl_size=100&stl_qr_height=1.5&stl_base_height=2&stl_include_stands=false&stl_qr_magnet_type=3&stl_qr_magnet_count=0&type=0&text=https%3A%2F%2Fchsh-game.fly.dev&width=300&height=300&bordersize=2)
 
 
 
-### New! v2.0.0
-The game now supports two modes:
+### New! v2
+The game now supports three modes:
 - **Classic Mode** Standard CHSH Bell Test game in the style of how physics experiments are done.
-- **New Mode** Implementation of the CHSH game where player 1 only need to answer A/B questions, and player 2 only need to answer X/Y questions. 
+- **Simplified Mode** Implementation of the CHSH game where player 1 only need to answer A/B questions, and player 2 only need to answer X/Y questions. 
+- **AQM Joe Mode** Each player is asked about their favourite color or food.
 
-Two themes:
-- **Classic** A/B question for player 1, X/Y question for player 2.
-- **Food Ingredients Theme**: 🍞 Bread or 🥟 Dumplings for player 1, 🥬 Lettuce or 🍫 Chocolate for player 2.
+Three themes:
+- **Classic** A/B/X/Y question for both players.
+- **Food Ingredients Theme**: 🍞(A) Bread or 🥟(B) Dumplings for player 1, 🥬(X) Lettuce or 🍫(Y) Chocolate for player 2.
+- **AQM Joe Theme**: For food questions (A/B), both players answer either 🫛 Peas or 🥕 Carrot; for color questions (X/Y), both players answer either 🟢 Green or 🟥 Red. 
 
 ## How to play
 TODO
@@ -88,6 +90,7 @@ See below
 ## The Physics
 TODO 
 
+### Simplified and Classic Mode
 This game ask players to respond to questions, {A, B} and {X, Y},  
 these correspond a measurement of the Bell state 
 
@@ -152,6 +155,20 @@ $$
 [2022 Nobel Prize in Physics](https://www.nobelprize.org/prizes/physics/2022/summary/)
 
 
+### AQM Joe Mode
+
+$$
+\frac{1}{\sqrt{3}} \big( \vert c, p \rangle + \vert p, c\rangle - \vert c, c\rangle big)
+$$
+with
+$$
+\vert p \rangle = \frac{1}{\sqrt{2}} \big( \vert g \rangle + \vert r \rangle \big) 
+\text{ and }
+\vert c \rangle = \frac{1}{\sqrt{2}} \big( \vert g \rangle - \vert r \rangle \big)
+$$ 
+
+
+
 ## Quick Start / Local Deployment
 
 **Clone and set up:**
@@ -176,7 +193,7 @@ Start command:
 gunicorn wsgi:app --worker-class eventlet
 ```
 
-Untested
+Won't work, but at some point I'd like this game to run asynchronously across multiple cpu and/or servers.
 ```bash
 gunicorn wsgi:app --worker-class eventlet --workers 4
 gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
