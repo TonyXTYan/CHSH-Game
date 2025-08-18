@@ -197,8 +197,8 @@ const THEMES = {
             Y: 'Favourite Food?'
         },
         playerHints: {
-            1: 'Color or Food: you may be asked A/B/X/Y',
-            2: 'Color or Food: you may be asked A/B/X/Y'
+            1: 'You may be asked: Favourite Color or Favourite Food',
+            2: 'You may be asked: Favourite Color or Favourite Food'
         },
         questionBoxColors: {
             1: '#e8f5e9', // Light green
@@ -229,7 +229,7 @@ const THEMES = {
                 title: 'Game Rules (AQM Joe Mode)',
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
-                        <li>Both players may be asked any of A/B/X/Y.</li>
+                        <li>Both players may be asked about Favourite Color (A/B) or Favourite Food (X/Y).</li>
                         <li>Policy: If Color is Green, Food should be Peas; never both Peas on Food–Food; Color–Color is neutral.</li>
                     </ul>
                 `
@@ -301,8 +301,10 @@ class ThemeManager {
         
         // In classic mode, both players receive a general message about answering all categories
         if (this.currentMode === 'classic') {
-            if (theme.name === 'Food Ingredients') {
+            if (this.currentTheme === 'food') {
                 return 'You will need to answer questions from all ingredients (🍞, 🥟, 🥬, 🍫)';
+            } else if (this.currentTheme === 'aqmjoe') {
+                return 'You may be asked about Favourite Color or Favourite Food';
             } else {
                 return 'You will need to answer questions from all categories (A, B, X, Y)';
             }
