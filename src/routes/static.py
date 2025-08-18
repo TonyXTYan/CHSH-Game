@@ -41,7 +41,7 @@ def serve(path):
     # Resolve the full requested path
     requested_path = os.path.realpath(os.path.join(static_folder_path, safe_path))
     static_folder_realpath = os.path.realpath(static_folder_path)
-    if not requested_path.startswith(static_folder_realpath + os.sep) and path != "":
+    if not requested_path.startswith(static_folder_realpath + os.sep) and path != "":  # pragma: no cover (defense-in-depth)
         abort(403)  # Forbidden - attempt to access outside of static folder
     
     # Check if the file exists

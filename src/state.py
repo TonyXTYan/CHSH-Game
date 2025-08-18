@@ -1,3 +1,8 @@
+import logging
+
+logger = logging.getLogger(__name__)
+
+
 class AppState:
     def __init__(self):
         self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}}}
@@ -7,12 +12,29 @@ class AppState:
         self.game_started = False # Track if game has started
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
-        self.game_mode = 'new'  # Track current game mode: 'classic' or 'new'
+        # Internal storage for game mode with normalization
+        self._game_mode = 'simplified'  # Track current game mode: 'classic', 'simplified', or 'aqmjoe'
         self.game_theme = 'food'  # Track current game theme: 'classic', 'food', etc.
         # Store team ID to team name mapping for faster lookups
         self.team_id_to_name = {} # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
         self.disconnected_players = {}  # {team_name: {'player_session_id': old_sid, 'player_slot': 1|2, 'disconnect_time': timestamp}}
+
+    @property
+    def game_mode(self):
+        return self._game_mode
+
+    @game_mode.setter
+    def game_mode(self, value):
+        if value == 'new':
+            # Deprecated alias handling
+            logger.warning('Deprecated mode "new" encountered; falling back to "simplified"')
+            self._game_mode = 'simplified'
+            return
+        if value in ('classic', 'simplified', 'aqmjoe'):
+            self._game_mode = value
+        else:
+            logger.error(f"Unsupported game mode '{value}' provided; keeping previous mode '{self._game_mode}'")
 
     def reset(self):
         self.active_teams.clear()
@@ -24,7 +46,7 @@ class AppState:
         self.game_started = False
         self.game_paused = False
         self.answer_stream_enabled = False
-        self.game_mode = 'new'  # Reset game mode to new
+        self.game_mode = 'simplified'  # Reset game mode to simplified
         self.game_theme = 'food'  # Reset game theme to food
 
     def get_player_slot(self, team_name, sid):
@@ -41,6 +63,10 @@ class AppState:
             if 'player_slots' not in team_info:
                 team_info['player_slots'] = {}
             team_info['player_slots'][sid] = slot
+
+# Backwards‑compatibility alias for tests
+class GameState(AppState):
+    pass
 
 # Create singleton instance for state
 state = AppState()

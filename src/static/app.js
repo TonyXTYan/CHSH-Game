@@ -8,7 +8,7 @@ let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
-let currentGameMode = 'new'; // Track current game mode
+let currentGameMode = 'simplified'; // Track current game mode
 let currentGameTheme = 'food'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 let lastRoundResults = null; // Track last round results for display
@@ -74,6 +74,12 @@ function updatePlayerPosition(position) {
 
 // Update button text based on current theme
 function updateButtonText() {
+    if (window.themeManager && currentRound?.item) {
+        const { trueLabel, falseLabel } = window.themeManager.getAnswerLabels(currentRound.item);
+        trueBtn.textContent = trueLabel;
+        falseBtn.textContent = falseLabel;
+        return;
+    }
     if (currentGameTheme === 'food') {
         trueBtn.textContent = 'Choose';
         falseBtn.textContent = 'Skip';
@@ -134,7 +140,8 @@ function updatePlayerResponsibilityMessage() {
         message = window.themeManager.getPlayerHint(playerPosition);
     } else {
         // Fallback for when theme manager is not available
-        if (currentGameMode === 'new') {
+        const effectiveMode = currentGameMode === 'new' ? 'simplified' : currentGameMode;
+        if (effectiveMode === 'simplified') {
             if (playerPosition === 1) {
                 message = 'You are responsible for answering A and B questions';
             } else if (playerPosition === 2) {
@@ -170,11 +177,11 @@ function resetToInitialView() {
     teamId = null;
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
-    currentGameMode = 'new'; // Reset to new mode
+    currentGameMode = 'simplified'; // Reset to simplified mode
     currentGameTheme = 'food'; // Reset to food theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
-    updateGameMode('new');
+    updateGameMode('simplified');
     updateGameTheme('food');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
@@ -227,8 +234,12 @@ function updateGameState(newGameStarted = null, isReset = false) {
                 questionDiv.style.backgroundColor = bgColor;
                 questionDiv.style.color = textColor;
             }
+            // Apply per-item answer labels
+            updateButtonText();
         } else {
+            // Fallback to raw item
             questionItem.textContent = currentRound.item;
+            updateButtonText();
         }
         
         // If already answered this round
@@ -673,9 +684,12 @@ const callbacks = {
                 questionDiv.style.backgroundColor = bgColor;
                 questionDiv.style.color = textColor;
             }
+            // Apply per-item answer labels
+            updateButtonText();
         } else {
             // Fallback to raw item
             questionItem.textContent = data.item;
+            updateButtonText();
         }
         
         showStatus(`Round ${data.round_number}`, 'info');
@@ -802,6 +816,34 @@ function evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer) {
     }
 }
 
+function evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer) {
+    // Map to labels per AQM Joe
+    const label = (item, ans) => {
+        if (item === 'A' || item === 'B') return ans ? 'Green' : 'Red';
+        return ans ? 'Peas' : 'Carrots';
+    };
+    const l1 = label(p1Item, p1Answer);
+    const l2 = label(p2Item, p2Answer);
+    const p1IsColor = (p1Item === 'A' || p1Item === 'B');
+    const p2IsColor = (p2Item === 'A' || p2Item === 'B');
+    const p1IsFood = !p1IsColor;
+    const p2IsFood = !p2IsColor;
+
+    if (p1IsFood && p2IsFood) {
+        return !(l1 === 'Peas' && l2 === 'Peas');
+    }
+    if (p1IsColor && p2IsFood) {
+        if (l1 === 'Green') return l2 === 'Peas';
+        return l2 === 'Carrots';
+    }
+    if (p2IsColor && p1IsFood) {
+        if (l2 === 'Green') return l1 === 'Peas';
+        return l1 === 'Carrots';
+    }
+    // Color–Color is neutral/success for display purposes
+    return true;
+}
+
 // Function to generate last round result message
 // Safely handles None/null values from backend when answer data is incomplete
 function generateLastRoundMessage(lastRound, theme, playerPos) {
@@ -828,6 +870,19 @@ function generateLastRoundMessage(lastRound, theme, playerPos) {
         const result = evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer);
         
         return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and decisions was <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
+    } else if (theme === 'aqmjoe') {
+        // Use AQM Joe mapping
+        const p1Display = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
+        const p2Display = window.themeManager ? window.themeManager.getItemDisplay(p2Item) : p2Item;
+        const label = (item, ans) => {
+            if (item === 'A' || item === 'B') return ans ? 'Green' : 'Red';
+            return ans ? 'Peas' : 'Carrots';
+        };
+        const p1Decision = label(p1Item, p1Answer);
+        const p2Decision = label(p2Item, p2Answer);
+        const ok = evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer);
+        const result = ok ? 'good ✅' : 'bad ❌';
+        return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and answered <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
     } else {
         // Classic theme
         const p1AnswerText = p1Answer ? 'True' : 'False';

@@ -45,6 +45,19 @@ def test_serve_forbidden_traversal():
     resp = client.get('/../secret.txt')
     assert resp.status_code == 403
 
+def test_serve_missing_index_returns_404(tmp_path, monkeypatch):
+    client = app.test_client()
+    # Temporarily point static folder to empty temp dir without index.html
+    original = app.static_folder
+    try:
+        tmp_path.mkdir(exist_ok=True)
+        monkeypatch.setattr(app, 'static_folder', str(tmp_path))
+        resp = client.get('/nonexistent')
+        assert resp.status_code == 404
+        assert b'index.html not found' in resp.data
+    finally:
+        monkeypatch.setattr(app, 'static_folder', original)
+
 def test_get_server_id():
     client = app.test_client()
     resp = client.get('/api/server/id')

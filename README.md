@@ -1,4 +1,9 @@
 # $\mathbb{CHSH}\text{-}\mathbb{GAME}$
+
+**CHSH Game** is a real-time multiplayer web app of the CHSH (Clauser-Horne-Shimony-Holt) Bell's inequality. 
+Teams of two players answer random A/B/X/Y questions while a host dashboard tracks scores and CHSH statistics.
+
+
 [![GitHub Release](https://img.shields.io/github/v/release/TonyXTYan/CHSH-Game?label=latest%20release)](https://github.com/TonyXTYan/CHSH-Game/releases/latest)
 ![GitHub last commit](https://img.shields.io/github/last-commit/TonyXTYan/CHSH-Game)
 [![License](https://img.shields.io/github/license/TonyXTYan/CHSH-Game?color=blue)](https://github.com/TonyXTYan/CHSH-Game/blob/main/LICENSE)
@@ -14,15 +19,13 @@
 [![Eventlet](https://img.shields.io/badge/eventlet-black?logo=eventlet&logoColor=white)](https://eventlet.net/)
 
 
-
 ## Overview
 
-**CHSH Game** is an real-time multiplayer web app of the CHSH (Clauser-Horne-Shimony-Holt) Bell's inequality. 
-Teams of two players answer random A/B/X/Y questions while a host dashboard tracks scores and CHSH statistics.
+
 
 - Live demo: 
-    - ⚠️ As of May 2025, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire interenet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
-    - ⚠️ If you splot a live game is going on, please don't interrupt it, this repo can be easily deployed with [Flask](https://flask.palletsprojects.com/) and [Gunicorn](https://gunicorn.org/) for free on e.g. [render.com](https://render.com), which I have an instance hosted there too that you can freely play with.
+    - ⚠️ As of May 2025, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire internet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
+    - ⚠️ If you spot a live game is going on, please don't interrupt it! You can fork this repo and deployed within minutes for free on e.g. [render.com](https://render.com) or [fly.io](https://fly.io), which I have an instance hosted there too that you can freely play with.
     - Host: [chsh-game.***fly.dev***/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.on***render.com***/dashboard](https://chsh-game.onrender.com/dashboard))
     - Player: [chsh-game.***fly.dev***](https://chsh-game.fly.dev) ([chsh-game.on***render.com***](https://chsh-game.onrender.com))
 
@@ -35,6 +38,9 @@ The game now supports two modes:
 - **Classic Mode** Standard CHSH Bell Test game in the style of how physics experiments are done.
 - **New Mode** Implementation of the CHSH game where player 1 only need to answer A/B questions, and player 2 only need to answer X/Y questions. 
 
+Two themes:
+- **Classic** A/B question for player 1, X/Y question for player 2.
+- **Food Ingredients Theme**: 🍞 Bread or 🥟 Dumplings for player 1, 🥬 Lettuce or 🍫 Chocolate for player 2.
 
 ## How to play
 TODO
@@ -46,9 +52,9 @@ TODO
 
 - This game requires **at least two players** (one team of two), though it's more fun with more teams. 
 - In each round: 
-    - Each player is idependently assigned a random questions: **A**,**B**,**X** or **Y**.  
+    - Each player is independently assigned a random questions: **A**,**B**,**X** or **Y**.  
     - Players respond with either **True** or **False**, base on a shared strategy agreed upon before the game starts.
-    - ***No communicate*** is allowed during the game! 
+    - ***No communication*** is allowed during the game! 
 
 **Winning condition:**
 - Highest **balanced ⏐⟨Tr⟩⏐ 🎯** (consistency):
@@ -72,7 +78,7 @@ Note the following response table
 | Response | T | T | T | F |
 
 This strategy wins ⏐⟨Tr⟩⏐ = 1 and CHSH = 2.
-To have balance = 1, two players need to share a sequence bit bits $\{b_i\}$ where $b_i = 0$ means using the table and $b_i = 1$ means using the negation of the table, i.e. (F,F,F,T), this sequence could simply be even/odd bits of the current round number.
+To have balance = 1, two players need to share a sequence of bits $\{b_i\}$ where $b_i = 0$ means using the table and $b_i = 1$ means using the negation of the table, i.e. (F,F,F,T), this sequence could simply be even/odd bits of the current round number.
 
 ### Quantum strategy
 See below
@@ -84,10 +90,13 @@ TODO
 
 This game ask players to respond to questions, {A, B} and {X, Y},  
 these correspond a measurement of the Bell state 
+
 $$
 \left| \psi \right\rangle = \frac{1}{\sqrt{2}} \left( \left| \uparrow_z \uparrow_z \right\rangle + \left| \downarrow_z \downarrow_z \right\rangle \right)
 $$
+
 in the basis of 
+
 $$
 \hat \sigma_\theta = \cos(\theta) \hat \sigma_z + \sin(\theta) \hat \sigma_x 
 = \begin{pmatrix}
@@ -95,8 +104,10 @@ $$
 \sin(\theta) & -\cos(\theta)  
 \end{pmatrix}
 $$
+
 where $\hat \sigma_z$ and $\hat \sigma_x$ are the Pauli matrices,
 and
+
 $$
 \begin{align}
 \begin{cases}
@@ -110,22 +121,23 @@ Y: & \theta = \frac{-\pi}{4}
 \end{cases}
 \end{align}
 $$
-are the relavent angles of the measurement.
 
-Some algebra excercises can show the expectation value of 
+are the relevant angles of the measurement.
+
+Some algebra exercises can show the expectation value of 
+
 $$
 E(\theta_A, \theta_B) = 
 \mathcal P(\uparrow_{\theta_A} \uparrow_{\theta_B}) + 
 \mathcal P(\downarrow_{\theta_A} \downarrow_{\theta_B}) -
 \mathcal P(\uparrow_{\theta_A} \downarrow_{\theta_B}) -
-\mathcal P(\downarrow_{\theta_A} \uparrow_{\theta_B}) 
-= 
-\left\langle \hat \sigma_{\theta_A} \hat \sigma_{\theta_B} \right\rangle
-= 
+\mathcal P(\downarrow_{\theta_A} \uparrow_{\theta_B}) = 
+\left\langle \hat \sigma_{\theta_A} \hat \sigma_{\theta_B} \right\rangle = 
 \cos(\theta_A - \theta_B). 
 $$
 
 Hence getting the CHSH 
+
 $$
 \mathcal S = E(A, X) + E(A, Y) + E(B, X) - E(B, Y) = 2\sqrt 2.
 $$

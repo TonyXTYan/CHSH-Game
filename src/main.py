@@ -110,8 +110,8 @@ with app.app_context():
         logger.critical("Database initialization failed - application will start with limited functionality")
         
         # Optionally, you could exit here if database is critical:
-        # logger.critical("Database is critical for this application - exiting")
-        # sys.exit(1)
+        # logger.critical("Database is critical for this application - exiting")  # pragma: no cover
+        # sys.exit(1)  # pragma: no cover
         
     finally:
         # Always clear memory state
@@ -132,7 +132,7 @@ from src.sockets.game import (
     on_submit_answer
 )
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover (runtime entrypoint)
     # Register signal handlers
     signal.signal(signal.SIGINT, handle_shutdown)
     signal.signal(signal.SIGTERM, handle_shutdown)

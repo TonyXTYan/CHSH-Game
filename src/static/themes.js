@@ -34,8 +34,8 @@ const THEMES = {
                     </ul>
                 `
             },
-            new: {
-                title: 'Game Rules (New Mode)', 
+            simplified: {
+                title: 'Game Rules (Simplified Mode)', 
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Discuss and agree on a shared strategy before the game starts.</li>
@@ -79,8 +79,8 @@ const THEMES = {
                     </div>
                 `
             },
-            new: {
-                title: 'Winning Conditions (New Mode)',
+            simplified: {
+                title: 'Winning Conditions (Simplified Mode)',
                 content: `
                     <div>
                         <strong>🏆 Best Success Rate:</strong>
@@ -128,8 +128,8 @@ const THEMES = {
                     </ul>
                 `
             },
-            new: {
-                title: 'Cooking Rules (New Mode)',
+            simplified: {
+                title: 'Cooking Rules (Simplified Mode)',
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Plan your cooking strategy with your partner before starting!</li>
@@ -171,8 +171,8 @@ const THEMES = {
                     </div>
                 `
             },
-            new: {
-                title: 'Recipe Success (New Mode)',
+            simplified: {
+                title: 'Recipe Success (Simplified Mode)',
                 content: `
                     <div>
                         <strong>🏆 Best Recipe Success Rate:</strong>
@@ -186,6 +186,85 @@ const THEMES = {
                 `
             }
         }
+    },
+    aqmjoe: {
+        name: 'AQM Joe',
+        description: 'Color and Food semantics with AQM Joe policy',
+        items: {
+            A: 'Favourite Color?',
+            B: 'Favourite Color?',
+            X: 'Favourite Food?',
+            Y: 'Favourite Food?'
+        },
+        playerHints: {
+            1: 'You may be asked: Favourite Color or Favourite Food',
+            2: 'You may be asked: Favourite Color or Favourite Food'
+        },
+        questionBoxColors: {
+            1: '#e8f5e9', // Light green
+            2: '#fffde7', // Light yellow
+            default: '#f5f5f5'
+        },
+        questionTextColor: '#1b5e20',
+        gameRules: {
+            classic: {
+                title: 'Game Rules (Classic Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Both players may be asked about Color (A/B) or Food (X/Y).</li>
+                        <li>Follow classic correlation rules; AQM Joe changes labels only.</li>
+                    </ul>
+                `
+            },
+            simplified: {
+                title: 'Game Rules (Simplified Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Player 1 receives Color (A/B); Player 2 receives Food (X/Y).</li>
+                        <li>Success-rate scoring with existing simplified rules.</li>
+                    </ul>
+                `
+            },
+            aqmjoe: {
+                title: 'Game Rules (AQM Joe Mode)',
+                content: `
+                    <ul style="margin: 0; padding-left: 20px;">
+                        <li>Both players may be asked about Favourite Color (A/B) or Favourite Food (X/Y).</li>
+                        <li>Policy: If Color is Green, Food should be Peas; never both Peas on Food–Food; Color–Color is neutral.</li>
+                    </ul>
+                `
+            }
+        },
+        winningConditions: {
+            classic: {
+                title: 'Winning Conditions (Classic Mode)',
+                content: `
+                    <div>
+                        Use classic correlation metrics; labels reflect Color/Food semantics.
+                    </div>
+                `
+            },
+            simplified: {
+                title: 'Winning Conditions (Simplified Mode)',
+                content: `
+                    <div>
+                        Use success rate: B+Y should differ; others match.
+                    </div>
+                `
+            },
+            aqmjoe: {
+                title: 'Winning Conditions (AQM Joe Mode)',
+                content: `
+                    <div>
+                        <ul style="margin: 5px 0; padding-left: 20px;">
+                            <li>Food–Food: success if NOT both Peas.</li>
+                            <li>Mixed Color–Food: if Color is Green, Food must be Peas (Red ↔ Carrots succeeds).</li>
+                            <li>Color–Color: neutral for success metric.</li>
+                        </ul>
+                    </div>
+                `
+            }
+        }
     }
 };
 
@@ -193,7 +272,7 @@ const THEMES = {
 class ThemeManager {
     constructor() {
         this.currentTheme = 'food';
-        this.currentMode = 'new';
+        this.currentMode = 'simplified';
     }
     
     setTheme(themeName) {
@@ -222,14 +301,16 @@ class ThemeManager {
         
         // In classic mode, both players receive a general message about answering all categories
         if (this.currentMode === 'classic') {
-            if (theme.name === 'Food Ingredients') {
+            if (this.currentTheme === 'food') {
                 return 'You will need to answer questions from all ingredients (🍞, 🥟, 🥬, 🍫)';
+            } else if (this.currentTheme === 'aqmjoe') {
+                return 'You may be asked about Favourite Color or Favourite Food';
             } else {
                 return 'You will need to answer questions from all categories (A, B, X, Y)';
             }
         }
         
-        // In new mode, return player-specific hints
+        // In simplified mode, return player-specific hints
         return theme.playerHints[playerNumber] || '';
     }
     
@@ -244,6 +325,21 @@ class ThemeManager {
     getQuestionTextColor() {
         const theme = this.getTheme();
         return theme.questionTextColor || '#1565c0';
+    }
+    
+    getAnswerLabels(item) {
+        // Returns { trueLabel, falseLabel } according to current theme and item
+        if (this.currentTheme === 'aqmjoe') {
+            if (item === 'A' || item === 'B') {
+                return { trueLabel: 'Green', falseLabel: 'Red' };
+            } else if (item === 'X' || item === 'Y') {
+                return { trueLabel: 'Peas', falseLabel: 'Carrots' };
+            }
+        }
+        if (this.currentTheme === 'food') {
+            return { trueLabel: 'Choose', falseLabel: 'Skip' };
+        }
+        return { trueLabel: 'True', falseLabel: 'False' };
     }
     
     applyTheme() {
