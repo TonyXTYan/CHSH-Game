@@ -95,6 +95,8 @@ function updateGameModeDisplay(mode) {
     if (toggleBtn) {
         if (mode === 'classic') {
             toggleBtn.textContent = 'Switch to Simplified Mode';
+        } else if (mode === 'aqmjoe') {
+            toggleBtn.textContent = 'Switch to Simplified Mode';
         } else {
             toggleBtn.textContent = 'Switch to Classic Mode';
         }
@@ -179,7 +181,7 @@ function onThemeChange() {
             socket.emit('set_theme_and_mode', { theme: 'aqmjoe', mode: 'aqmjoe' });
         } else {
             // If switching away from aqmjoe theme, set default linked mode
-            const linkedMode = (currentGameMode === 'aqmjoe') ? 'new' : currentGameMode;
+            const linkedMode = (currentGameMode === 'aqmjoe') ? 'simplified' : currentGameMode;
             socket.emit('set_theme_and_mode', { theme: newTheme, mode: linkedMode });
         }
         
@@ -205,9 +207,11 @@ function toggleGameMode() {
             gameModeToggleTimeout = null;
         }
         
-        // Cycle classic <-> simplified unless theme is aqmjoe; if switching to aqmjoe, link theme too
-        if (currentGameMode === 'classic') {
-            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'new' });
+        // If currently in AQM Joe, switch to Simplified and Food together; otherwise cycle classic <-> simplified
+        if (currentGameMode === 'aqmjoe') {
+            socket.emit('set_theme_and_mode', { theme: 'food', mode: 'simplified' });
+        } else if (currentGameMode === 'classic') {
+            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'simplified' });
         } else {
             socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'food' : currentGameTheme, mode: 'classic' });
         }
