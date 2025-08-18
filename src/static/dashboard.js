@@ -174,8 +174,8 @@ function onThemeChange() {
     if (themeDropdown && themeDropdown.value !== currentGameTheme) {
         const newTheme = themeDropdown.value;
         currentGameTheme = newTheme; // Update local state immediately
-        // Always emit legacy theme change for compatibility
-        socket.emit('change_game_theme', { theme: newTheme });
+        // Emit only atomic theme and mode change event
+        // socket.emit('change_game_theme', { theme: newTheme }); // Removed for redundancy
         // If selecting aqmjoe, request atomic link with mode
         if (newTheme === 'aqmjoe') {
             socket.emit('set_theme_and_mode', { theme: 'aqmjoe', mode: 'aqmjoe' });
