@@ -75,7 +75,7 @@ def clear_caches():
 
 def test_mode_toggle_server_response_timeout_handling(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test timeout handling when server doesn't respond to mode toggle"""
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
@@ -98,7 +98,7 @@ def test_multi_dashboard_mode_sync_immediate_response(mock_request, mock_state, 
     """Test that multiple dashboard clients receive immediate mode change notifications"""
     # Setup 3 dashboard clients - include request SID for authorization
     mock_state.dashboard_clients = MockSet(['test_dashboard_sid', 'client2', 'client3'])
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     
     with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
@@ -118,15 +118,15 @@ def test_multi_dashboard_mode_sync_immediate_response(mock_request, mock_state, 
 
 def test_mode_toggle_race_condition_prevention(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that race conditions are prevented in mode toggle"""
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     
     with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Simulate rapid successive calls
-        on_toggle_game_mode()  # new -> classic
-        on_toggle_game_mode()  # classic -> new
-        on_toggle_game_mode()  # new -> classic
+        on_toggle_game_mode()  # simplified -> classic
+        on_toggle_game_mode()  # classic -> simplified
+        on_toggle_game_mode()  # simplified -> classic
         
         # Each call should process independently without timeout interference
         assert mock_state.game_mode == 'classic'
@@ -138,7 +138,7 @@ def test_mode_toggle_race_condition_prevention(mock_request, mock_state, mock_so
 
 def test_mode_toggle_error_recovery(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test error recovery in mode toggle"""
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     
     with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
@@ -167,7 +167,7 @@ def test_mode_toggle_with_disconnected_clients_cleanup(mock_request, mock_state,
     """Test mode toggle handles disconnected clients gracefully"""
     # Setup clients where some might be disconnected - include request SID for authorization
     mock_state.dashboard_clients = MockSet(['test_dashboard_sid', 'disconnected_client'])
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     # Mock socket emit to do nothing (simulate disconnected client)
     mock_socketio.emit.side_effect = lambda *args, **kwargs: None
     with patch('src.sockets.dashboard.clear_team_caches') as mock_clear_cache, \
@@ -181,7 +181,7 @@ def test_mode_toggle_with_disconnected_clients_cleanup(mock_request, mock_state,
 def test_mode_toggle_maintains_other_state_integrity(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that mode toggle doesn't interfere with other game state"""
     # Setup comprehensive state
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     mock_state.game_started = True
     mock_state.game_paused = False
     mock_state.answer_stream_enabled = True
@@ -219,28 +219,28 @@ def test_mode_toggle_performance_under_load(mock_request, mock_state, mock_socke
 
 def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that mode toggle operations are idempotent"""
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     
     with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
         
-        # First toggle: new -> classic
+        # First toggle: simplified -> classic
         on_toggle_game_mode()
         first_mode = mock_state.game_mode
         first_call_count = mock_clear_cache.call_count
         
-        # Second toggle: classic -> new
+        # Second toggle: classic -> simplified
         on_toggle_game_mode()
         second_mode = mock_state.game_mode
         second_call_count = mock_clear_cache.call_count
         
-        # Third toggle: new -> classic (back to first state)
+        # Third toggle: simplified -> classic (back to first state)
         on_toggle_game_mode()
         third_mode = mock_state.game_mode
         
         # Verify state changes are consistent and reversible
         assert first_mode == 'classic'
-        assert second_mode == 'new'
+        assert second_mode == 'simplified'
         assert third_mode == 'classic'
         assert first_mode == third_mode  # Idempotent
         
@@ -251,5 +251,5 @@ def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_e
         # Updated: expect three broadcast emits
         assert mock_socketio.emit.call_count == 3
         mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'classic'})
-        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'new'})
+        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'simplified'})
 

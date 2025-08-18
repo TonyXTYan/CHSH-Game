@@ -100,7 +100,7 @@ def test_toggle_game_mode_new_to_classic(mock_request, mock_state, mock_socketio
         mock_full_update.assert_called_once()
 
 def test_toggle_game_mode_classic_to_new(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
-    """Test toggling from classic mode to new mode"""
+    """Test toggling from classic mode to simplified mode"""
     # Setup: Start with classic mode
     mock_state.game_mode = 'classic'
     
@@ -110,17 +110,17 @@ def test_toggle_game_mode_classic_to_new(mock_request, mock_state, mock_socketio
         # Call the function
         on_toggle_game_mode()
         
-        # Verify mode was changed to new
-        assert mock_state.game_mode == 'new'
+        # Verify mode was changed to simplified
+        assert mock_state.game_mode == 'simplified'
         
         # FIXED: Verify logger was called with expected message (may have additional calls from force_clear_all_caches)
-        assert any("Game mode toggled to: new" in str(call) for call in mock_logger.info.call_args_list)
+        assert any("Game mode toggled to: simplified" in str(call) for call in mock_logger.info.call_args_list)
         
         # FIXED: Verify force_clear_all_caches was called instead of clear_team_caches
         mock_clear_cache.assert_called_once()
         
         # Verify all dashboard clients were notified
-        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'new'})
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'simplified'})
         
         # Verify full dashboard update was triggered
         mock_full_update.assert_called_once()
@@ -178,10 +178,10 @@ def test_toggle_game_mode_no_dashboard_clients(mock_request, mock_state, mock_so
         on_toggle_game_mode()
         
         # Verify mode was changed
-        assert mock_state.game_mode == 'new'
+        assert mock_state.game_mode == 'simplified'
         
         # Verify only the current client was notified
-        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'new'})
+        mock_socketio.emit.assert_called_with('game_mode_changed', {'mode': 'simplified'})
 
 def test_toggle_game_mode_error_handling(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test error handling during mode toggle"""
@@ -240,7 +240,7 @@ def test_toggle_game_mode_socket_emission_error(mock_request, mock_state, mock_s
 
 def test_game_mode_state_persistence(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that game mode state persists correctly across multiple toggles"""
-    initial_mode = 'new'
+    initial_mode = 'simplified'
     mock_state.game_mode = initial_mode
     
     with patch('src.sockets.dashboard.force_clear_all_caches'), \
@@ -250,9 +250,9 @@ def test_game_mode_state_persistence(mock_request, mock_state, mock_socketio, mo
         on_toggle_game_mode()
         assert mock_state.game_mode == 'classic'
         
-        # Second toggle: classic -> new
+        # Second toggle: classic -> simplified
         on_toggle_game_mode()
-        assert mock_state.game_mode == 'new'
+        assert mock_state.game_mode == 'simplified'
         
         # Third toggle: new -> classic
         on_toggle_game_mode()
@@ -264,7 +264,7 @@ def test_game_mode_state_persistence(mock_request, mock_state, mock_socketio, mo
         # Verify the correct modes were logged
         logged_calls = [str(call) for call in mock_logger.info.call_args_list]
         assert any("Game mode toggled to: classic" in call for call in logged_calls)
-        assert any("Game mode toggled to: new" in call for call in logged_calls)
+        assert any("Game mode toggled to: simplified" in call for call in logged_calls)
 
 def test_toggle_game_mode_with_active_teams(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test mode toggle when there are active teams"""
@@ -344,9 +344,9 @@ def test_toggle_game_mode_concurrent_requests(mock_request, mock_state, mock_soc
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Call multiple times rapidly
-        on_toggle_game_mode()  # new -> classic
-        on_toggle_game_mode()  # classic -> new
-        on_toggle_game_mode()  # new -> classic
+        on_toggle_game_mode()  # simplified -> classic
+        on_toggle_game_mode()  # classic -> simplified
+        on_toggle_game_mode()  # simplified -> classic
         
         # Final state should be classic
         assert mock_state.game_mode == 'classic'
@@ -359,7 +359,7 @@ def test_toggle_game_mode_concurrent_requests(mock_request, mock_state, mock_soc
         # Updated: expect three broadcast emits
         assert mock_socketio.emit.call_count == 3
         mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'classic'})
-        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'new'})
+        mock_socketio.emit.assert_any_call('game_mode_changed', {'mode': 'simplified'})
 
 def test_toggle_game_mode_with_empty_dashboard_clients(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test mode toggle when dashboard_clients set is empty"""

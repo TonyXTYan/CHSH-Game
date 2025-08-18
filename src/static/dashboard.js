@@ -69,7 +69,7 @@ function updateTableHeaders(mode) {
         header3.textContent = 'Balanced Success 🎯';
         header4.textContent = 'Norm. Score 🏆';
         
-        // In NEW mode, only show success rate column
+        // In non-classic modes, only show success rate column
         header1.style.display = '';
         header2.style.display = 'none';
         header3.style.display = 'none';
@@ -94,7 +94,9 @@ function updateGameModeDisplay(mode) {
     
     if (toggleBtn) {
         if (mode === 'classic') {
-            toggleBtn.textContent = 'Switch to New Mode';
+            toggleBtn.textContent = 'Switch to Simplified Mode';
+        } else if (mode === 'aqmjoe') {
+            toggleBtn.textContent = 'Switch to Simplified Mode';
         } else {
             toggleBtn.textContent = 'Switch to Classic Mode';
         }
@@ -106,9 +108,13 @@ function updateGameModeDisplay(mode) {
                 <strong>Classic Mode:</strong> Random question assignment to both players from all items (A, B, X, Y). 
                 Metrics focus on quantum correlation measurements.
             `;
+        } else if (mode === 'aqmjoe') {
+            modeDescription.innerHTML = `
+                <strong>AQM Joe Mode:</strong> Both players may get any of A/B/X/Y. Success-rate scoreboard uses the AQM Joe policy, including Color–Color and Food–Food pairs.
+            `;
         } else {
             modeDescription.innerHTML = `
-                <strong>New Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
+                <strong>Simplified Mode:</strong> Player 1 receives only A/B questions, Player 2 receives only X/Y questions. 
                 Metrics focus on success rates and optimal strategy adherence.
             `;
         }
@@ -168,7 +174,16 @@ function onThemeChange() {
     if (themeDropdown && themeDropdown.value !== currentGameTheme) {
         const newTheme = themeDropdown.value;
         currentGameTheme = newTheme; // Update local state immediately
+        // Always emit legacy theme change for compatibility
         socket.emit('change_game_theme', { theme: newTheme });
+        // If selecting aqmjoe, request atomic link with mode
+        if (newTheme === 'aqmjoe') {
+            socket.emit('set_theme_and_mode', { theme: 'aqmjoe', mode: 'aqmjoe' });
+        } else {
+            // If switching away from aqmjoe theme, set default linked mode
+            const linkedMode = (currentGameMode === 'aqmjoe') ? 'simplified' : currentGameMode;
+            socket.emit('set_theme_and_mode', { theme: newTheme, mode: linkedMode });
+        }
         
         // Show changing status
         const statusDiv = document.getElementById('connection-status-dash');
@@ -192,7 +207,17 @@ function toggleGameMode() {
             gameModeToggleTimeout = null;
         }
         
-        socket.emit('toggle_game_mode');
+        // If currently in AQM Joe, switch to Simplified and Classic theme together; otherwise cycle classic <-> simplified
+        if (currentGameMode === 'aqmjoe') {
+            // Locally sync dropdown to classic to reflect leaving AQM Joe theme
+            const themeDropdown = document.getElementById('theme-dropdown');
+            if (themeDropdown) themeDropdown.value = 'classic';
+            socket.emit('set_theme_and_mode', { theme: 'classic', mode: 'simplified' });
+        } else if (currentGameMode === 'classic') {
+            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'simplified' });
+        } else {
+            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'classic' : currentGameTheme, mode: 'classic' });
+        }
         
         // Set fallback timeout in case server doesn't respond
         gameModeToggleTimeout = setTimeout(() => {
@@ -212,7 +237,7 @@ function toggleGameMode() {
                 }, 3000);
             }
             gameModeToggleTimeout = null;
-        }, 10000); // 10 second timeout
+        }, 10000);
     }
 }
 
@@ -247,7 +272,8 @@ socket.on('game_mode_changed', (data) => {
 // Handle theme changes from server
 socket.on('game_theme_changed', (data) => {
     console.log('Game theme changed:', data);
-    updateGameThemeDisplay(data.theme, true); // Skip dropdown update since user just changed it
+    // Update UI but do not force dropdown value (tests expect skipDropdownUpdate=true)
+    updateGameThemeDisplay(data.theme, true);
     
     // Show a brief notification
     connectionStatusDiv.textContent = `Game theme changed to: ${data.theme.charAt(0).toUpperCase() + data.theme.slice(1)}`;
@@ -267,7 +293,8 @@ socket.on('game_state_sync', (data) => {
         updateGameModeDisplay(data.mode);
     }
     if (data.theme && data.theme !== currentGameTheme) {
-        updateGameThemeDisplay(data.theme, true); // Skip dropdown update for sync events
+        // Update UI but do not force dropdown value (tests expect skipDropdownUpdate=true)
+        updateGameThemeDisplay(data.theme, true);
     }
 });
 
@@ -1036,12 +1063,12 @@ function updateTeamsImmediate(teams) {
         } else if (sortBy === 'date') {
             return new Date(b.created_at || 0) - new Date(a.created_at || 0);
         } else if (sortBy === 'success-rate') {
-            // Sort by success rate in NEW mode, CHSH value in CLASSIC mode
+            // Sort by success rate in NON-classic modes, CHSH value in CLASSIC mode
             const getSortValue = (team) => {
-                if (currentGameMode === 'new') {
-                    return team.new_stats?.trace_average_statistic ?? -1;
-                } else {
+                if (currentGameMode === 'classic') {
                     return team.classic_stats?.cross_term_combination_statistic ?? -1;
+                } else {
+                    return team.new_stats?.trace_average_statistic ?? -1;
                 }
             };
             const aValue = getSortValue(a);
@@ -1070,22 +1097,7 @@ function updateTeamsImmediate(teams) {
     const eligibleTeams = teams.filter(team => team.min_stats_sig === true);
 
     eligibleTeams.forEach(team => {
-        if (currentGameMode === 'new') {
-            // New mode: Only award 🏆 based on success rate (no 🎯 award)
-            const stats = team.new_stats;
-            
-            // Use Success Rate for 🏆 award in NEW mode
-            if (stats && typeof stats.trace_average_statistic === 'number') {
-                const successRate = stats.trace_average_statistic;
-                if (successRate > maxChshValue) {
-                    maxChshValue = successRate;
-                    highestChshTeamId = team.team_id;
-                }
-            }
-            
-            // No 🎯 award in NEW mode - set to null
-            highestBalancedTrTeamId = null;
-        } else {
+        if (currentGameMode === 'classic') {
             // Classic mode: Use classic_stats
             const stats = team.classic_stats;
 
@@ -1108,6 +1120,18 @@ function updateTeamsImmediate(teams) {
                     highestChshTeamId = team.team_id;
                 }
             }
+        } else {
+            // Non-classic modes: Only award 🏆 based on success rate (no 🎯 award)
+            const stats = team.new_stats;
+            if (stats && typeof stats.trace_average_statistic === 'number') {
+                const successRate = stats.trace_average_statistic;
+                if (successRate > maxChshValue) {
+                    maxChshValue = successRate;
+                    highestChshTeamId = team.team_id;
+                }
+            }
+            // No 🎯 award in non-classic modes
+            highestBalancedTrTeamId = null;
         }
     });
     // --- END MODIFICATION ---
@@ -1151,21 +1175,7 @@ function updateTeamsImmediate(teams) {
         
         // Add trace_avg column (now Trace Average Statistic)
         const traceAvgCell = row.insertCell();
-        if (currentGameMode === 'new') {
-            // New mode: Show Success Rate as percentage
-            if (team.new_stats && team.new_stats.trace_average_statistic !== undefined) {
-                const successRate = team.new_stats.trace_average_statistic * 100; // Convert to percentage
-                const uncertainty = team.new_stats.trace_average_statistic_uncertainty;
-                const uncertaintyPercent = uncertainty ? uncertainty * 100 : null;
-                traceAvgCell.innerHTML = `${successRate.toFixed(1)}%${uncertaintyPercent ? ` ± ${uncertaintyPercent.toFixed(1)}%` : ''}`;
-                if (successRate >= 50) {
-                    traceAvgCell.style.fontWeight = "bold";
-                    traceAvgCell.style.color = "#0022aa";
-                }
-            } else {
-                traceAvgCell.innerHTML = "—";
-            }
-        } else {
+        if (currentGameMode === 'classic') {
             // Classic mode: Show Trace Average Statistic
             if (team.classic_stats) {
                 traceAvgCell.innerHTML = formatStatWithUncertainty(
@@ -1180,14 +1190,25 @@ function updateTeamsImmediate(teams) {
             } else {
                 traceAvgCell.innerHTML = "—";
             }
+        } else {
+            // Non-classic: Show Success Rate as percentage
+            if (team.new_stats && team.new_stats.trace_average_statistic !== undefined) {
+                const successRate = team.new_stats.trace_average_statistic * 100; // Convert to percentage
+                const uncertainty = team.new_stats.trace_average_statistic_uncertainty;
+                const uncertaintyPercent = uncertainty ? uncertainty * 100 : null;
+                traceAvgCell.innerHTML = `${successRate.toFixed(1)}%${uncertaintyPercent ? ` ± ${uncertaintyPercent.toFixed(1)}%` : ''}`;
+                if (successRate >= 50) {
+                    traceAvgCell.style.fontWeight = "bold";
+                    traceAvgCell.style.color = "#0022aa";
+                }
+            } else {
+                traceAvgCell.innerHTML = "—";
+            }
         }
         
         // Add Same Item Balance column
         const balanceCell = row.insertCell();
-        if (currentGameMode === 'new') {
-            // New mode: Hide Response Balance column
-            balanceCell.style.display = 'none';
-        } else {
+        if (currentGameMode === 'classic') {
             // Classic mode: Show Same Item Balance
             if (team.classic_stats && 
                 team.classic_stats.same_item_balance !== undefined && 
@@ -1210,14 +1231,14 @@ function updateTeamsImmediate(teams) {
             } else {
                 balanceCell.innerHTML = "—";
             }
-        }
-
-        // Add Balanced Random column with robust error handling
-        const balancedRandomCell = row.insertCell();
-        if (currentGameMode === 'new') {
-            // New mode: Hide Balanced Success column
-            balancedRandomCell.style.display = 'none';
         } else {
+            // Non-classic modes: Hide Response Balance column
+            balanceCell.style.display = 'none';
+        }
+        
+        // Add Balanced Random/Success column
+        const balancedRandomCell = row.insertCell();
+        if (currentGameMode === 'classic') {
             // Classic mode: Calculate balanced random from trace avg and balance
             if (team.classic_stats && 
                 team.classic_stats.trace_average_statistic !== undefined && 
@@ -1252,14 +1273,14 @@ function updateTeamsImmediate(teams) {
             } else {
                 balancedRandomCell.innerHTML = "—";
             }
+        } else {
+            // Non-classic modes: Hide Balanced Success column (single metric displayed already)
+            balancedRandomCell.style.display = 'none';
         }
         
-        // Add CHSH Value column (which is now the Cross-Term Combination Statistic)
-        const crossTermChshCell = row.insertCell(); // This cell now represents the single "CHSH Value"
-        if (currentGameMode === 'new') {
-            // New mode: Hide Normalized Score column
-            crossTermChshCell.style.display = 'none';
-        } else {
+        // Add CHSH/Score column
+        const crossTermChshCell = row.insertCell();
+        if (currentGameMode === 'classic') {
             // Classic mode: Show Cross-Term Combination Statistic
             if (team.classic_stats) {
                 crossTermChshCell.innerHTML = formatStatWithUncertainty(
@@ -1276,6 +1297,9 @@ function updateTeamsImmediate(teams) {
             } else {
                 crossTermChshCell.innerHTML = "—";
             }
+        } else {
+            // Non-classic modes: Hide Normalized Score column
+            crossTermChshCell.style.display = 'none';
         }
         
         // Details button cell
