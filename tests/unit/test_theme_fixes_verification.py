@@ -9,13 +9,13 @@ class TestThemeControlFixes:
     @pytest.fixture
     def dashboard_js_content(self):
         """Load the dashboard JavaScript content"""
-        dashboard_js_path = Path("src/static/dashboard.js")
+        dashboard_js_path = (Path(__file__).parent / "../../src/static/dashboard.js").resolve()
         return dashboard_js_path.read_text(encoding='utf-8')
     
     @pytest.fixture
     def dashboard_py_content(self):
         """Load the dashboard Python socket handler content"""
-        dashboard_py_path = Path("src/sockets/dashboard.py")
+        dashboard_py_path = (Path(__file__).parent / "../../src/sockets/dashboard.py").resolve()
         return dashboard_py_path.read_text(encoding='utf-8')
     
     def test_event_delegation_implemented(self, dashboard_js_content):

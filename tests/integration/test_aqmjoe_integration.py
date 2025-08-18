@@ -14,7 +14,7 @@ class TestAQMJoeIntegration:
     def setup_method(self):
         # Temp DB per test
         self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix='.db')
-        os.close(self.temp_db_fd)
+        # Keep FD open until teardown to avoid race on some platforms
         app.config['SQLALCHEMY_DATABASE_URI'] = f'sqlite:///{self.temp_db_path}'
 
         state.reset()
@@ -52,6 +52,11 @@ class TestAQMJoeIntegration:
             except:
                 pass
         try:
+            # Close the file descriptor first
+            try:
+                os.close(self.temp_db_fd)
+            except Exception:
+                pass
             if os.path.exists(self.temp_db_path):
                 os.unlink(self.temp_db_path)
         except:
