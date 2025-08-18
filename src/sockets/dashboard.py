@@ -350,7 +350,7 @@ def on_request_teams_update() -> None:
 
 @socketio.on('toggle_game_mode')
 def on_toggle_game_mode() -> None:
-    """Toggle between 'classic' and 'new' game modes with cache invalidation."""
+    """Toggle between 'classic' and 'simplified' game modes with cache invalidation."""
     try:
         sid = request.sid  # type: ignore
         if sid not in state.dashboard_clients:
@@ -360,10 +360,11 @@ def on_toggle_game_mode() -> None:
         previous_mode = state.game_mode
         previous_theme = state.game_theme
 
-        # Toggle the mode
-        new_mode = 'new' if state.game_mode == 'classic' else 'classic'
-        state.game_mode = new_mode
-        logger.info(f"Game mode toggled to: {new_mode}")
+        # Toggle the mode (normalize deprecated alias)
+        current_mode = state.game_mode if state.game_mode != 'new' else 'simplified'
+        new_mode_val = 'simplified' if current_mode == 'classic' else 'classic'
+        state.game_mode = new_mode_val
+        logger.info(f"Game mode toggled to: {new_mode_val}")
         
         # Link theme when switching away from AQM Joe
         if previous_mode == 'aqmjoe' and new_mode != 'aqmjoe':
@@ -375,7 +376,7 @@ def on_toggle_game_mode() -> None:
         force_clear_all_caches()
         
         # Notify all clients (players and dashboards) about the mode change
-        socketio.emit('game_mode_changed', {'mode': new_mode})
+        socketio.emit('game_mode_changed', {'mode': new_mode_val})
         
         # Trigger dashboard update to recalculate metrics immediately
         emit_dashboard_full_update()
@@ -431,7 +432,7 @@ def on_change_game_theme(*args, **kwargs) -> None:
                 state.game_mode = 'aqmjoe'
                 mode_changed = True
             elif new_theme != 'aqmjoe' and state.game_mode == 'aqmjoe':
-                state.game_mode = 'new'
+                state.game_mode = 'simplified'
                 mode_changed = True
             injected_state = state
 
@@ -473,10 +474,10 @@ def on_set_theme_and_mode(data: Dict[str, Any]) -> None:
             return
 
         # Normalize mode alias
-        mode_norm = 'new' if requested_mode in ('simplified', 'new') else requested_mode
+        mode_norm = 'simplified' if requested_mode in ('simplified', 'new') else requested_mode
         # Validate
         supported_themes = ['classic', 'food', 'aqmjoe']
-        supported_modes = ['classic', 'new', 'aqmjoe']
+        supported_modes = ['classic', 'simplified', 'aqmjoe']
         if requested_theme not in supported_themes or mode_norm not in supported_modes:
             emit('error', {'message': 'Unsupported theme or mode'})  # type: ignore
             return
@@ -489,7 +490,7 @@ def on_set_theme_and_mode(data: Dict[str, Any]) -> None:
             final_mode = 'aqmjoe'
         # If switching away ensure we don't leave stray aqmjoe
         if final_theme != 'aqmjoe' and final_mode == 'aqmjoe':
-            final_mode = 'new'
+            final_mode = 'simplified'
         if final_mode != 'aqmjoe' and final_theme == 'aqmjoe':
             final_mode = 'aqmjoe'  # theme forces mode
 

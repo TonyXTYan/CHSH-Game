@@ -26,7 +26,7 @@ def get_effective_combo_repeats(game_mode=None):
     if game_mode == 'new':
         game_mode = 'simplified'
 
-    if game_mode == 'simplified':
+    if game_mode in ('simplified', 'aqmjoe'):
         return TARGET_COMBO_REPEATS * 2
     else:
         return TARGET_COMBO_REPEATS
@@ -69,8 +69,8 @@ def start_new_round_for_pair(team_name):
         effective_mode = state.game_mode if state.game_mode != 'new' else 'simplified'
 
         # Mode-specific question assignment logic
-        if effective_mode == 'simplified':
-            # New mode: Player 1 gets A,B only; Player 2 gets X,Y only
+        if effective_mode in ('simplified', 'aqmjoe'):
+            # Simplified/AQM Joe: Player 1 gets A,B only; Player 2 gets X,Y only
             player1_items = [ItemEnum.A, ItemEnum.B]
             player2_items = [ItemEnum.X, ItemEnum.Y]
             all_possible_combos = [(i1, i2) for i1 in player1_items for i2 in player2_items]
