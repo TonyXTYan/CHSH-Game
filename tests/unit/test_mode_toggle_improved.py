@@ -124,9 +124,9 @@ def test_mode_toggle_race_condition_prevention(mock_request, mock_state, mock_so
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
         
         # Simulate rapid successive calls
-        on_toggle_game_mode()  # new -> classic
-        on_toggle_game_mode()  # classic -> new
-        on_toggle_game_mode()  # new -> classic
+        on_toggle_game_mode()  # simplified -> classic
+        on_toggle_game_mode()  # classic -> simplified
+        on_toggle_game_mode()  # simplified -> classic
         
         # Each call should process independently without timeout interference
         assert mock_state.game_mode == 'classic'
@@ -219,12 +219,12 @@ def test_mode_toggle_performance_under_load(mock_request, mock_state, mock_socke
 
 def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_emit, mock_logger):
     """Test that mode toggle operations are idempotent"""
-    mock_state.game_mode = 'new'
+    mock_state.game_mode = 'simplified'
     
     with patch('src.sockets.dashboard.force_clear_all_caches') as mock_clear_cache, \
          patch('src.sockets.dashboard.emit_dashboard_full_update') as mock_full_update:
         
-        # First toggle: new -> classic
+        # First toggle: simplified -> classic
         on_toggle_game_mode()
         first_mode = mock_state.game_mode
         first_call_count = mock_clear_cache.call_count
@@ -234,7 +234,7 @@ def test_mode_toggle_idempotency(mock_request, mock_state, mock_socketio, mock_e
         second_mode = mock_state.game_mode
         second_call_count = mock_clear_cache.call_count
         
-        # Third toggle: new -> classic (back to first state)
+        # Third toggle: simplified -> classic (back to first state)
         on_toggle_game_mode()
         third_mode = mock_state.game_mode
         

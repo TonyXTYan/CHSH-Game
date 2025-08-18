@@ -358,26 +358,25 @@ def on_toggle_game_mode() -> None:
             return
 
         previous_mode = state.game_mode
-        previous_theme = state.game_theme
 
         # Toggle the mode (normalize deprecated alias)
         current_mode = state.game_mode if state.game_mode != 'new' else 'simplified'
-        new_mode_val = 'simplified' if current_mode == 'classic' else 'classic'
+        # If currently in AQM Joe, explicitly switch to simplified; otherwise cycle classic <-> simplified
+        if current_mode == 'aqmjoe':
+            new_mode_val = 'simplified'
+        else:
+            new_mode_val = 'simplified' if current_mode == 'classic' else 'classic'
         state.game_mode = new_mode_val
         logger.info(f"Game mode toggled to: {new_mode_val}")
 
-        # Enforce IFF: if leaving AQM Joe mode, also leave AQM Joe theme → set to classic
-        if previous_mode == 'aqmjoe' and new_mode_val != 'aqmjoe':
-            if state.game_theme == 'aqmjoe':
-                state.game_theme = 'classic'
-                logger.info("Theme auto-switched to 'classic' when leaving AQM Joe mode")
+        # Do not mutate theme here; IFF linking is handled via set_theme_and_mode and theme change handler
         
         # Clear caches to recalculate with new mode - use force clear since mode affects all calculations
         force_clear_all_caches()
         
         # Notify all clients (players and dashboards) about the mode change
         socketio.emit('game_mode_changed', {'mode': new_mode_val})
-        
+
         # Trigger dashboard update to recalculate metrics immediately
         emit_dashboard_full_update()
         
