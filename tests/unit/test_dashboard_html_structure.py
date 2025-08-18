@@ -70,8 +70,8 @@ class TestDashboardHTMLStructure:
         assert 'aria-label' in dashboard_html_content or 'for=' in dashboard_html_content, \
             "Theme dropdown should have proper labeling for accessibility"
         
-        # Check that it's not disabled by default
-        assert 'disabled' not in dashboard_html_content or 'disabled="false"' in dashboard_html_content, \
+        # Check that it's not disabled by default (disabled is a boolean attribute; absence means enabled)
+        assert 'disabled' not in dashboard_html_content, \
             "Theme dropdown should not be disabled by default"
 
 

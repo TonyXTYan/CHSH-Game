@@ -28,7 +28,7 @@ class AppState:
     def game_mode(self, value):
         if value == 'new':
             # Deprecated alias handling
-            logger.error('Deprecated mode "new" encountered; falling back to "simplified"')
+            logger.warning('Deprecated mode "new" encountered; falling back to "simplified"')
             self._game_mode = 'simplified'
             return
         if value in ('classic', 'simplified', 'aqmjoe'):

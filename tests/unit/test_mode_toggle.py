@@ -246,7 +246,7 @@ def test_game_mode_state_persistence(mock_request, mock_state, mock_socketio, mo
     with patch('src.sockets.dashboard.force_clear_all_caches'), \
          patch('src.sockets.dashboard.emit_dashboard_full_update'):
         
-        # First toggle: new -> classic
+        # First toggle: simplified -> classic
         on_toggle_game_mode()
         assert mock_state.game_mode == 'classic'
         
@@ -254,7 +254,7 @@ def test_game_mode_state_persistence(mock_request, mock_state, mock_socketio, mo
         on_toggle_game_mode()
         assert mock_state.game_mode == 'simplified'
         
-        # Third toggle: new -> classic
+        # Third toggle: simplified -> classic
         on_toggle_game_mode()
         assert mock_state.game_mode == 'classic'
         

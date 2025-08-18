@@ -209,9 +209,8 @@ function toggleGameMode() {
         
         // If currently in AQM Joe, switch to Simplified and Classic theme together; otherwise cycle classic <-> simplified
         if (currentGameMode === 'aqmjoe') {
-            // Locally sync dropdown to classic to reflect leaving AQM Joe theme
-            const themeDropdown = document.getElementById('theme-dropdown');
-            if (themeDropdown) themeDropdown.value = 'classic';
+            // Use updateGameThemeDisplay to sync dropdown and UI to classic when leaving AQM Joe theme
+            updateGameThemeDisplay('classic');
             socket.emit('set_theme_and_mode', { theme: 'classic', mode: 'simplified' });
         } else if (currentGameMode === 'classic') {
             socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'simplified' });
@@ -1063,7 +1062,7 @@ function updateTeamsImmediate(teams) {
         } else if (sortBy === 'date') {
             return new Date(b.created_at || 0) - new Date(a.created_at || 0);
         } else if (sortBy === 'success-rate') {
-            // Sort by success rate in NON-classic modes, CHSH value in CLASSIC mode
+            // Sort by success rate in non-classic modes, CHSH value in classic mode
             const getSortValue = (team) => {
                 if (currentGameMode === 'classic') {
                     return team.classic_stats?.cross_term_combination_statistic ?? -1;
