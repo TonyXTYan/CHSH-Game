@@ -365,12 +365,12 @@ def on_toggle_game_mode() -> None:
         new_mode_val = 'simplified' if current_mode == 'classic' else 'classic'
         state.game_mode = new_mode_val
         logger.info(f"Game mode toggled to: {new_mode_val}")
-        
-        # Link theme when switching away from AQM Joe
-        if previous_mode == 'aqmjoe' and new_mode != 'aqmjoe':
+
+        # Enforce IFF: if leaving AQM Joe mode, also leave AQM Joe theme → set to classic
+        if previous_mode == 'aqmjoe' and new_mode_val != 'aqmjoe':
             if state.game_theme == 'aqmjoe':
-                state.game_theme = 'food'
-                logger.info("Theme auto-switched to 'food' when leaving AQM Joe mode")
+                state.game_theme = 'classic'
+                logger.info("Theme auto-switched to 'classic' when leaving AQM Joe mode")
         
         # Clear caches to recalculate with new mode - use force clear since mode affects all calculations
         force_clear_all_caches()
@@ -482,17 +482,12 @@ def on_set_theme_and_mode(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'Unsupported theme or mode'})  # type: ignore
             return
 
-        # Apply linking rules
+        # Apply linking rules (IFF: theme=='aqmjoe' iff mode=='aqmjoe')
         final_theme = requested_theme
         final_mode = mode_norm
         if final_theme == 'aqmjoe' or final_mode == 'aqmjoe':
             final_theme = 'aqmjoe'
             final_mode = 'aqmjoe'
-        # If switching away ensure we don't leave stray aqmjoe
-        if final_theme != 'aqmjoe' and final_mode == 'aqmjoe':
-            final_mode = 'simplified'
-        if final_mode != 'aqmjoe' and final_theme == 'aqmjoe':
-            final_mode = 'aqmjoe'  # theme forces mode
 
         mode_changed = (final_mode != state.game_mode)
         theme_changed = (final_theme != state.game_theme)

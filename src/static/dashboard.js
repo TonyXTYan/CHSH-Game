@@ -207,13 +207,13 @@ function toggleGameMode() {
             gameModeToggleTimeout = null;
         }
         
-        // If currently in AQM Joe, switch to Simplified and Food together; otherwise cycle classic <-> simplified
+        // If currently in AQM Joe, switch to Simplified and Classic theme together; otherwise cycle classic <-> simplified
         if (currentGameMode === 'aqmjoe') {
-            socket.emit('set_theme_and_mode', { theme: 'food', mode: 'simplified' });
+            socket.emit('set_theme_and_mode', { theme: 'classic', mode: 'simplified' });
         } else if (currentGameMode === 'classic') {
             socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'aqmjoe' : currentGameTheme, mode: 'simplified' });
         } else {
-            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'food' : currentGameTheme, mode: 'classic' });
+            socket.emit('set_theme_and_mode', { theme: currentGameTheme === 'aqmjoe' ? 'classic' : currentGameTheme, mode: 'classic' });
         }
         
         // Set fallback timeout in case server doesn't respond
