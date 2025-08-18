@@ -13,7 +13,7 @@ document.addEventListener('change', (event) => {
 });
 
 // Game mode state
-let currentGameMode = 'new';
+let currentGameMode = 'simplified';
 
 // Theme state  
 let currentGameTheme = 'food';
@@ -1653,7 +1653,7 @@ function updateModalContent(team) {
 
     // Determine which matrix to show based on current mode and update title
     let matrixToShow, labelsToShow;
-    if (currentGameMode === 'new') {
+    if (currentGameMode === 'simplified') {
         matrixToShow = team.new_matrix || team.correlation_matrix;
         labelsToShow = team.correlation_labels;
         matrixTitle.textContent = 'Success Matrix (Successful/Total)';
