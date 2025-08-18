@@ -34,8 +34,8 @@ const THEMES = {
                     </ul>
                 `
             },
-            new: {
-                title: 'Game Rules (New Mode)', 
+            simplified: {
+                title: 'Game Rules (Simplified Mode)', 
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Discuss and agree on a shared strategy before the game starts.</li>
@@ -79,8 +79,8 @@ const THEMES = {
                     </div>
                 `
             },
-            new: {
-                title: 'Winning Conditions (New Mode)',
+            simplified: {
+                title: 'Winning Conditions (Simplified Mode)',
                 content: `
                     <div>
                         <strong>🏆 Best Success Rate:</strong>
@@ -128,8 +128,8 @@ const THEMES = {
                     </ul>
                 `
             },
-            new: {
-                title: 'Cooking Rules (New Mode)',
+            simplified: {
+                title: 'Cooking Rules (Simplified Mode)',
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Plan your cooking strategy with your partner before starting!</li>
@@ -171,8 +171,8 @@ const THEMES = {
                     </div>
                 `
             },
-            new: {
-                title: 'Recipe Success (New Mode)',
+            simplified: {
+                title: 'Recipe Success (Simplified Mode)',
                 content: `
                     <div>
                         <strong>🏆 Best Recipe Success Rate:</strong>
@@ -216,7 +216,7 @@ const THEMES = {
                     </ul>
                 `
             },
-            new: {
+            simplified: {
                 title: 'Game Rules (Simplified Mode)',
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
@@ -244,7 +244,7 @@ const THEMES = {
                     </div>
                 `
             },
-            new: {
+            simplified: {
                 title: 'Winning Conditions (Simplified Mode)',
                 content: `
                     <div>
@@ -272,7 +272,7 @@ const THEMES = {
 class ThemeManager {
     constructor() {
         this.currentTheme = 'food';
-        this.currentMode = 'new';
+        this.currentMode = 'simplified';
     }
     
     setTheme(themeName) {
@@ -310,7 +310,7 @@ class ThemeManager {
             }
         }
         
-        // In new mode, return player-specific hints
+        // In simplified mode, return player-specific hints
         return theme.playerHints[playerNumber] || '';
     }
     

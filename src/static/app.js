@@ -8,7 +8,7 @@ let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
-let currentGameMode = 'new'; // Track current game mode
+let currentGameMode = 'simplified'; // Track current game mode
 let currentGameTheme = 'food'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 let lastRoundResults = null; // Track last round results for display
@@ -140,7 +140,8 @@ function updatePlayerResponsibilityMessage() {
         message = window.themeManager.getPlayerHint(playerPosition);
     } else {
         // Fallback for when theme manager is not available
-        if (currentGameMode === 'new') {
+        const effectiveMode = currentGameMode === 'new' ? 'simplified' : currentGameMode;
+        if (effectiveMode === 'simplified') {
             if (playerPosition === 1) {
                 message = 'You are responsible for answering A and B questions';
             } else if (playerPosition === 2) {
@@ -176,11 +177,11 @@ function resetToInitialView() {
     teamId = null;
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
-    currentGameMode = 'new'; // Reset to new mode
+    currentGameMode = 'simplified'; // Reset to simplified mode
     currentGameTheme = 'food'; // Reset to food theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
-    updateGameMode('new');
+    updateGameMode('simplified');
     updateGameTheme('food');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
