@@ -17,4 +17,4 @@ uncertainties==3.2.3
 
 # Server and Deployment
 gunicorn==23.0.0
-eventlet==0.35.2
+eventlet==0.40.3
