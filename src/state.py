@@ -5,7 +5,7 @@ logger = logging.getLogger(__name__)
 
 class AppState:
     def __init__(self):
-        self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}}}
+        self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}, 'cheat_type': str}}
         self.player_to_team = {}  # {sid: team_name}
         self.connected_players = set()  # All connected player SIDs
         self.dashboard_clients = set() # Stores SIDs of connected dashboard clients
@@ -19,6 +19,7 @@ class AppState:
         self.team_id_to_name = {} # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
         self.disconnected_players = {}  # {team_name: {'player_session_id': old_sid, 'player_slot': 1|2, 'disconnect_time': timestamp}}
+        self.cheats_banned = False  # Track if cheats are banned
 
     @property
     def game_mode(self):
@@ -48,6 +49,7 @@ class AppState:
         self.answer_stream_enabled = False
         self.game_mode = 'simplified'  # Reset game mode to simplified
         self.game_theme = 'food'  # Reset game theme to food
+        self.cheats_banned = False  # Reset cheats banned flag
 
     def get_player_slot(self, team_name, sid):
         """Get the database player slot (1 or 2) for a session ID in a team"""
