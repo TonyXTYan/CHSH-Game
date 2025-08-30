@@ -188,6 +188,8 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 
                                 partner_sid_slot = 2
                                 partner_item = round_db_entry.player2_item
+                                # For single-player teams, player2_session_id is None, so use synthetic ID
+                                partner_sid = f"auto_{cheat_type}_{team_info['team_id']}_{round_id}_p2"
                             else:
                                 # Submitter is P2, auto-fill P1
                                 if cheat_type == 'tony':
@@ -200,9 +202,8 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 
                                 partner_sid_slot = 1
                                 partner_item = round_db_entry.player1_item
-                            
-                            # Create a synthetic partner session ID for the auto-filled answer
-                            partner_sid = f"auto_{cheat_type}_{team_info['team_id']}_{round_id}"
+                                # For single-player teams, use synthetic ID for the missing player
+                                partner_sid = f"auto_{cheat_type}_{team_info['team_id']}_{round_id}_p1"
                             
                             # Create auto-filled answer with transaction safety
                             partner_answer_db = Answers(
@@ -235,6 +236,10 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 db.session.commit()
                                 
                                 logger.info(f"Auto-filled partner answer for {cheat_type} team {team_name}: {partner_answer}")
+                                
+                                # Force round completion check after auto-fill
+                                # Since we just added a second answer, the round should complete
+                                # Note: The completion logic below will now trigger since answered_current_round has 2 entries
                             else:
                                 logger.warning(f"Partner answer already exists for round {round_id}, skipping auto-fill")
                                 
@@ -266,7 +271,10 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
             if round_db_entry:
                 # Get team info to map session IDs to player positions
                 db_team = Teams.query.get(team_info['team_id'])
-                if db_team and db_team.player1_session_id and db_team.player2_session_id:
+                # For auto-fill cases, we may only have one real session ID, so check differently
+                # Allow completion if we have 2 total answers (including auto-filled ones)
+                total_answers = Answers.query.filter_by(question_round_id=round_id).count()
+                if db_team and total_answers >= 2:
                     # Get both players' answers for this round
                     round_answers = Answers.query.filter_by(question_round_id=round_id).all()
                     
@@ -279,16 +287,43 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                     for answer in round_answers:
                         # CRITICAL: Match answers by session ID, not item value, to handle duplicate items
                         # (e.g., when both players receive the same item like "A" or "X")
-                        if answer.player_session_id == db_team.player1_session_id:
+                        # Also handle auto-filled answers with synthetic session IDs
+                        if (answer.player_session_id == db_team.player1_session_id or 
+                            (answer.player_session_id.startswith("auto_") and "_p1" in answer.player_session_id)):
                             p1_answer = answer.response_value
-                        elif answer.player_session_id == db_team.player2_session_id:
+                        elif (answer.player_session_id == db_team.player2_session_id or 
+                              (answer.player_session_id.startswith("auto_") and "_p2" in answer.player_session_id)):
                             p2_answer = answer.response_value
+                    
+                    # Calculate success for this round
+                    success = False
+                    if p1_answer is not None and p2_answer is not None:
+                        # Apply CHSH success rules
+                        is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+                        players_answered_differently = p1_answer != p2_answer
+                        
+                        if state.game_mode == 'aqmjoe':
+                            # Import AQM Joe success logic if needed
+                            try:
+                                from src.sockets.dashboard import _is_aqmjoe_success
+                                success = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
+                            except ImportError:
+                                # Fallback to standard logic
+                                success = players_answered_differently if is_by_combination else not players_answered_differently
+                        else:
+                            if is_by_combination:
+                                # B,Y combination: players should answer differently
+                                success = players_answered_differently
+                            else:
+                                # All other combinations: players should answer the same
+                                success = not players_answered_differently
                     
                     # Emit enhanced round_complete event with detailed results
                     # Note: Client safely handles None values in answers via generateLastRoundMessage()
                     socketio.emit('round_complete', {
                         'team_name': team_name,
                         'round_number': team_info['current_round_number'],
+                        'success': success,
                         'last_round_details': {
                             'p1_item': p1_item,
                             'p2_item': p2_item,

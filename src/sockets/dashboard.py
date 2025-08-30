@@ -2728,11 +2728,12 @@ def on_toggle_cheats_ban(data: Dict[str, Any]) -> None:
         logger.info(f"Cheat ban toggled to {banned}. Kicked {kicked_teams} teams and {kicked_players} players.")
         
         # Emit response to all dashboard clients
-        socketio.emit('cheats_ban_changed', {
-            'banned': banned,
-            'kicked_teams': kicked_teams,
-            'kicked_players': kicked_players
-        }, room='dashboard_clients')  # type: ignore
+        for dashboard_sid in state.dashboard_clients:
+            socketio.emit('cheats_ban_changed', {
+                'banned': banned,
+                'kicked_teams': kicked_teams,
+                'kicked_players': kicked_players
+            }, to=dashboard_sid)  # type: ignore
         
         # Update dashboard with new team list
         emit_dashboard_full_update()
