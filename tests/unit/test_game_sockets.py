@@ -139,7 +139,8 @@ def test_round_completion_when_both_players_answer(mock_request_context):
             'current_db_round_id': test_round_id,
             'current_round_number': 1,
             'answered_current_round': {},
-            'status': 'active'
+            'status': 'active',
+            'cheat_type': 'none'  # Add cheat_type field that the code now expects
         }
         
         # Mock database round query
@@ -166,6 +167,7 @@ def test_round_completion_when_both_players_answer(mock_request_context):
         mock_answer2.player_session_id = 'other_player_sid'  # Player 2
         
         mock_answers.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
+        mock_answers.query.filter_by.return_value.count.return_value = 2  # Mock count for round completion check
         
         # First player submits answer
         data = {

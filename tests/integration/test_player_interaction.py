@@ -15,6 +15,11 @@ from src.models.quiz_models import (
     db
 )
 
+# Import socket handlers to register them with SocketIO
+from src.sockets.team_management import handle_connect, handle_disconnect, on_create_team, on_join_team, on_leave_team
+from src.sockets.game import on_submit_answer
+from src.sockets import dashboard
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,

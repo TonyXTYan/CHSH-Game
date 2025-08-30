@@ -73,6 +73,14 @@ with app.app_context():
         inactive_count = Teams.query.filter_by(is_active=False).delete()
         logger.info(f"Deleted {inactive_count} inactive teams")
 
+        # Delete all users (for clean test environment)
+        try:
+            from src.models.user import User
+            users_count = User.query.delete()
+            logger.info(f"Deleted {users_count} users")
+        except Exception as user_cleanup_error:
+            logger.warning(f"Could not clean up users table: {str(user_cleanup_error)}")
+
         # Mark all remaining teams as inactive and rename if needed
         active_teams = Teams.query.filter_by(is_active=True).all()
         renamed_count = 0
