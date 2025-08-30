@@ -244,6 +244,7 @@ def test_create_team_success(mock_request_context):
         assert state.active_teams["new_team"]["team_id"] == team.team_id
         assert 'test_sid' in state.active_teams["new_team"]["players"]
         assert state.active_teams["new_team"]["status"] == "waiting_pair"
+        assert state.active_teams["new_team"]["cheat_type"] == "none"  # Normal team should have cheat_type 'none'
         assert state.player_to_team['test_sid'] == "new_team"
         assert state.team_id_to_name[team.team_id] == "new_team"
         
@@ -257,7 +258,8 @@ def test_create_team_success(mock_request_context):
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
-                'player_slot': 1  # Team creator is assigned to slot 1
+                'player_slot': 1,  # Team creator is assigned to slot 1
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             }
         )
         

@@ -324,7 +324,8 @@ def on_create_team(data: Dict[str, Any]) -> None:
                     'game_mode': state.game_mode,
                     'game_theme': state.game_theme,
                     'player_slot': 1,
-                    'is_reactivated': True  # Flag to indicate this was a reactivation
+                    'is_reactivated': True,  # Flag to indicate this was a reactivation
+                    'cheat_type': team_info.get('cheat_type', 'none')
                 })  # type: ignore
                 emit('team_status_update', {'status': 'created'}, to=request.sid)  # type: ignore
                 
@@ -371,7 +372,8 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'game_started': state.game_started,
             'game_mode': state.game_mode,
             'game_theme': state.game_theme,
-            'player_slot': 1  # Creator is always assigned to player1_session_id (slot 1)
+            'player_slot': 1,  # Creator is always assigned to player1_session_id (slot 1)
+            'cheat_type': cheat_type
         })  # type: ignore
         # This team_status_update for 'created' seems specific to the creator,
         # and might be redundant if 'team_created' already conveys enough.
@@ -468,7 +470,8 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'is_reconnection': is_valid_reconnection,
             'game_mode': state.game_mode,
             'game_theme': state.game_theme,
-            'player_slot': actual_player_slot
+            'player_slot': actual_player_slot,
+            'cheat_type': team_info.get('cheat_type', 'none')
         }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
@@ -478,7 +481,8 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'status': current_team_status_for_clients,
             'members': get_team_members(team_name),
             'game_started': state.game_started,
-            'disable_input': False if team_is_now_full else True  # Enable input only when team is full
+            'disable_input': False if team_is_now_full else True,  # Enable input only when team is full
+            'cheat_type': team_info.get('cheat_type', 'none')
         }, to=team_name)  # type: ignore
         
         # Update all clients about the list of available teams
@@ -492,13 +496,19 @@ def on_join_team(data: Dict[str, Any]) -> None:
         emit_dashboard_team_update, _, _, _, _ = _import_dashboard_functions()
         emit_dashboard_team_update()
         
-        # If the game has already started and the team is now full, start a new round for them
-        if state.game_started and team_is_now_full:
-            start_new_round_for_pair(team_name)
-            # No need for a separate 'game_start' emit here,
-            # as 'new_question' from start_new_round_for_pair will trigger game UI.
-            # The 'game_started': True flag in 'team_status_update' and 'team_joined'
-            # should be sufficient for clients to know the game is active.
+        # If the game has already started, start a new round for appropriate teams
+        if state.game_started:
+            # For normal teams, require full team
+            # For tony/kevin teams, allow single-player rounds
+            should_start_round = (team_is_now_full or 
+                                (team_info.get('cheat_type') in ['tony', 'kevin'] and len(team_info['players']) >= 1))
+            
+            if should_start_round:
+                start_new_round_for_pair(team_name)
+                # No need for a separate 'game_start' emit here,
+                # as 'new_question' from start_new_round_for_pair will trigger game UI.
+                # The 'game_started': True flag in 'team_status_update' and 'team_joined'
+                # should be sufficient for clients to know the game is active.
 
     except Exception as e:
         logger.error(f"Error in on_join_team: {str(e)}", exc_info=True)
@@ -543,7 +553,8 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
                 'player_slot': 1,  # Player reactivating team is assigned to player1_session_id (slot 1)
-                'is_reactivated': True  # Flag to indicate this was a reactivation
+                'is_reactivated': True,  # Flag to indicate this was a reactivation
+                'cheat_type': team_info.get('cheat_type', 'none')
             })  # type: ignore
             
             # ADD THIS: Send team_status_update event to properly set team status
@@ -552,7 +563,8 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'status': 'waiting_pair',
                 'members': get_team_members(team_name),
                 'game_started': state.game_started,
-                'disable_input': True  # Disable input when team is incomplete
+                'disable_input': True,  # Disable input when team is incomplete
+                'cheat_type': team_info.get('cheat_type', 'none')
             }, to=team_name)  # type: ignore
             
             socketio.emit('teams_updated', {

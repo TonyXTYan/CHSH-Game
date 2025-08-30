@@ -29,14 +29,32 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
             return
         team_name = state.player_to_team[sid]
         team_info = state.active_teams.get(team_name)
-        if not team_info or len(team_info['players']) != 2:
-            emit('error', {'message': 'Team not valid or other player missing.'})  # type: ignore
+        if not team_info:
+            emit('error', {'message': 'Team not valid.'})  # type: ignore
             return
         
-        # Check if team is in proper active state (both players connected)
-        if team_info.get('status') != 'active':
-            emit('error', {'message': 'Team is not active. Waiting for all players to connect.'})  # type: ignore
-            return
+        cheat_type = team_info.get('cheat_type', 'none')
+        
+        # Relaxed validation for single-player tony/kevin teams
+        if cheat_type in ['tony', 'kevin']:
+            # Allow single-player submission for tony/kevin teams
+            if len(team_info['players']) < 1:
+                emit('error', {'message': 'No players in team.'})  # type: ignore
+                return
+            # Allow submission when waiting_pair or active
+            if team_info.get('status') not in ['waiting_pair', 'active']:
+                emit('error', {'message': 'Team is not in a valid state for submission.'})  # type: ignore
+                return
+        else:
+            # Standard validation for non-cheat teams
+            if len(team_info['players']) != 2:
+                emit('error', {'message': 'Team not valid or other player missing.'})  # type: ignore
+                return
+            
+            # Check if team is in proper active state (both players connected)
+            if team_info.get('status') != 'active':
+                emit('error', {'message': 'Team is not active. Waiting for all players to connect.'})  # type: ignore
+                return
 
         round_id = data.get('round_id')
         assigned_item_str = data.get('item')
@@ -132,6 +150,95 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 }
                                 socketio.emit('cheat:hint', updated_hint_data, room=teammate_sid)  # type: ignore
                                 logger.debug(f"Emitted updated hint to {teammate_sid}: {teammate_recommendation}")
+
+        # Handle auto-fill for single-player tony/kevin teams
+        if cheat_type in ['tony', 'kevin'] and len(team_info['players']) == 1:
+            # Check if only one answer exists for this round (the one we just submitted)
+            existing_answers = Answers.query.filter_by(question_round_id=round_id).count()
+            if existing_answers == 1:  # Only the current player's answer exists
+                try:
+                    # Get round details for parity calculation
+                    round_db_entry = PairQuestionRounds.query.get(round_id)
+                    if round_db_entry:
+                        # Import parity helpers
+                        from src.game_logic import get_required_parity, recommend_answers
+                        
+                        # Calculate required parity
+                        parity = get_required_parity(round_db_entry.player1_item, round_db_entry.player2_item)
+                        
+                        # Get database team to determine player slots
+                        db_team = Teams.query.get(team_info['team_id'])
+                        if db_team:
+                            # Determine if submitter is player1 or player2
+                            is_submitter_p1 = (sid == db_team.player1_session_id)
+                            
+                            # Calculate partner answer based on cheat type
+                            if is_submitter_p1:
+                                # Submitter is P1, auto-fill P2
+                                if cheat_type == 'tony':
+                                    # Tony wins: get answer that makes team win
+                                    _, partner_answer = recommend_answers(parity, response_bool, None)
+                                else:  # kevin
+                                    # Kevin loses: get answer that makes team lose
+                                    _, partner_answer = recommend_answers(parity, response_bool, None)
+                                    partner_answer = not partner_answer  # Invert to lose
+                                
+                                partner_sid_slot = 2
+                                partner_item = round_db_entry.player2_item
+                            else:
+                                # Submitter is P2, auto-fill P1
+                                if cheat_type == 'tony':
+                                    # Tony wins: get answer that makes team win
+                                    partner_answer, _ = recommend_answers(parity, None, response_bool)
+                                else:  # kevin
+                                    # Kevin loses: get answer that makes team lose
+                                    partner_answer, _ = recommend_answers(parity, None, response_bool)
+                                    partner_answer = not partner_answer  # Invert to lose
+                                
+                                partner_sid_slot = 1
+                                partner_item = round_db_entry.player1_item
+                            
+                            # Create a synthetic partner session ID for the auto-filled answer
+                            partner_sid = f"auto_{cheat_type}_{team_info['team_id']}_{round_id}"
+                            
+                            # Create auto-filled answer with transaction safety
+                            partner_answer_db = Answers(
+                                team_id=team_info['team_id'],
+                                player_session_id=partner_sid,
+                                question_round_id=round_id,
+                                assigned_item=partner_item,
+                                response_value=partner_answer,
+                                timestamp=datetime.utcnow()
+                            )
+                            
+                            # Check for existing answer to prevent double-insert
+                            existing_partner_answer = Answers.query.filter_by(
+                                question_round_id=round_id,
+                                team_id=team_info['team_id']
+                            ).filter(Answers.player_session_id != sid).first()
+                            
+                            if not existing_partner_answer:
+                                db.session.add(partner_answer_db)
+                                
+                                # Update round timestamps
+                                if partner_sid_slot == 1:
+                                    round_db_entry.p1_answered_at = datetime.utcnow()
+                                else:
+                                    round_db_entry.p2_answered_at = datetime.utcnow()
+                                
+                                # Mark partner as answered in team state
+                                team_info['answered_current_round'][partner_sid] = True
+                                
+                                db.session.commit()
+                                
+                                logger.info(f"Auto-filled partner answer for {cheat_type} team {team_name}: {partner_answer}")
+                            else:
+                                logger.warning(f"Partner answer already exists for round {round_id}, skipping auto-fill")
+                                
+                except Exception as e:
+                    logger.error(f"Error in auto-fill for {cheat_type} team {team_name}: {str(e)}")
+                    db.session.rollback()
+                    emit('error', {'message': 'Error processing auto-fill'}, to=sid)  # type: ignore
 
         # Emit to dashboard
         answer_for_dash = {

@@ -86,8 +86,20 @@ def start_new_round_for_pair(team_name):
         from src.state import state  # Import inside function to avoid circular import
         
         team_info = state.active_teams.get(team_name)
-        if not team_info or len(team_info['players']) != 2:
+        if not team_info:
             return
+        
+        cheat_type = team_info.get('cheat_type', 'none')
+        
+        # Relaxed validation for single-player tony/kevin teams
+        if cheat_type in ['tony', 'kevin']:
+            # Allow single-player rounds for tony/kevin teams
+            if len(team_info['players']) < 1:
+                return
+        else:
+            # Standard validation: require 2 players for non-cheat teams
+            if len(team_info['players']) != 2:
+                return
 
         # Get the database team to determine actual player slots
         db_team = db.session.get(Teams, team_info['team_id'])
@@ -99,14 +111,26 @@ def start_new_round_for_pair(team_name):
         player1_sid = db_team.player1_session_id
         player2_sid = db_team.player2_session_id
         
-        if not player1_sid or not player2_sid:
-            logger.error(f"Team {team_name} missing player session IDs in database")
-            return
-        
-        # Verify both players are actually connected
-        if player1_sid not in team_info['players'] or player2_sid not in team_info['players']:
-            logger.error(f"Team {team_name} player session IDs don't match connected players")
-            return
+        # For single-player tony/kevin teams, only require one player
+        if cheat_type in ['tony', 'kevin']:
+            if not player1_sid and not player2_sid:
+                logger.error(f"Team {team_name} has no player session IDs in database")
+                return
+            # Verify at least one player is connected
+            connected_players = [sid for sid in [player1_sid, player2_sid] if sid and sid in team_info['players']]
+            if len(connected_players) == 0:
+                logger.error(f"Team {team_name} has no connected players")
+                return
+        else:
+            # Standard validation for non-cheat teams
+            if not player1_sid or not player2_sid:
+                logger.error(f"Team {team_name} missing player session IDs in database")
+                return
+            
+            # Verify both players are actually connected
+            if player1_sid not in team_info['players'] or player2_sid not in team_info['players']:
+                logger.error(f"Team {team_name} player session IDs don't match connected players")
+                return
 
         team_info['current_round_number'] += 1
         round_number = team_info['current_round_number']
@@ -168,9 +192,11 @@ def start_new_round_for_pair(team_name):
         team_info['answered_current_round'] = {}
 
         # Send questions to players using actual database player slots
-        # Player 1 (from database) gets p1_item, Player 2 (from database) gets p2_item
-        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1_sid)
-        socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2_sid)
+        # For single-player teams, only send to connected players
+        if player1_sid and player1_sid in team_info['players']:
+            socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p1_item.value}, room=player1_sid)
+        if player2_sid and player2_sid in team_info['players']:
+            socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2_sid)
         
         logger.debug(f"Team {team_name} round {round_number}: Player1({player1_sid}) gets {p1_item.value}, Player2({player2_sid}) gets {p2_item.value}")
         
@@ -187,17 +213,20 @@ def start_new_round_for_pair(team_name):
             # Generate reason string
             reason = f"Optimal strategy: {parity} answers for {p1_item.value}-{p2_item.value} combination"
             
-            # Emit hint to both players
+            # Emit hint to connected players only
             hint_data = {
                 'recommended': recommended_p1,
                 'parity': parity,
                 'reason': reason,
                 'at': datetime.utcnow().isoformat()
             }
-            socketio.emit('cheat:hint', hint_data, room=player1_sid)
             
-            hint_data['recommended'] = recommended_p2
-            socketio.emit('cheat:hint', hint_data, room=player2_sid)
+            if player1_sid and player1_sid in team_info['players']:
+                socketio.emit('cheat:hint', hint_data, room=player1_sid)
+            
+            if player2_sid and player2_sid in team_info['players']:
+                hint_data['recommended'] = recommended_p2
+                socketio.emit('cheat:hint', hint_data, room=player2_sid)
             
             logger.debug(f"Emitted hints to team {team_name}: parity={parity}, p1_rec={recommended_p1}, p2_rec={recommended_p2}")
         

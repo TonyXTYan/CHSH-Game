@@ -12,6 +12,7 @@ let currentGameMode = 'simplified'; // Track current game mode
 let currentGameTheme = 'food'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 let lastRoundResults = null; // Track last round results for display
+let currentCheatType = 'none'; // Track current team's cheat type
 
 // DOM elements
 const statusMessage = document.getElementById('statusMessage');
@@ -256,11 +257,20 @@ function updateGameState(newGameStarted = null, isReset = false) {
             }
             waitingMessage.classList.add('visible');
         } else if (teamIncomplete) {
-            // Team is incomplete - disable input
-            trueBtn.disabled = true;
-            falseBtn.disabled = true;
-            waitingMessage.textContent = "Waiting for teammate to reconnect...";
-            waitingMessage.classList.add('visible');
+            // Team is incomplete - disable input for normal teams, but allow for tony/kevin
+            if (currentCheatType === 'tony' || currentCheatType === 'kevin') {
+                // Keep buttons enabled for single-player cheat teams
+                trueBtn.disabled = gamePaused;
+                falseBtn.disabled = gamePaused;
+                waitingMessage.textContent = `Single-player ${currentCheatType} mode active`;
+                waitingMessage.classList.add('visible');
+            } else {
+                // Disable input for normal incomplete teams
+                trueBtn.disabled = true;
+                falseBtn.disabled = true;
+                waitingMessage.textContent = "Waiting for teammate to reconnect...";
+                waitingMessage.classList.add('visible');
+            }
         } else {
             trueBtn.disabled = gamePaused;
             falseBtn.disabled = gamePaused;
@@ -556,6 +566,7 @@ const callbacks = {
         isCreator = true;
         gameStarted = data.game_started;
         currentTeamStatus = 'created'; // Set initial team status
+        currentCheatType = data.cheat_type || 'none'; // Track cheat type
         
         // Use actual player slot from backend instead of assuming
         if (data.player_slot) {
@@ -588,6 +599,7 @@ const callbacks = {
         isCreator = false; // Player joining is never the creator of an existing team
         gameStarted = data.game_started;
         teamId = data.team_id; // Assuming team_id is sent, if not, it might be part of team_status_update
+        currentCheatType = data.cheat_type || 'none'; // Track cheat type
 
         // Use actual player slot from backend instead of assuming
         // This fixes the bug where player position was incorrectly determined by join order
@@ -642,6 +654,7 @@ const callbacks = {
 
         if (currentTeam === data.team_name) { // Ensure this update is for the current player's team
             currentTeamStatus = data.status; // Update tracked team status
+            currentCheatType = data.cheat_type || 'none'; // Update cheat type
             updateTeamStatus(data.status); // Update the "Team Paired Up!" or "Waiting for Player..." header
             updatePlayerResponsibilityMessage(); // Update responsibility message visibility
 
@@ -652,7 +665,12 @@ const callbacks = {
                     showStatus('Your team is paired up! Waiting for game to start.', 'success');
                 }
             } else if (data.status === 'waiting_pair') {
-                showStatus('Waiting for another player to join...', 'info');
+                // For tony/kevin teams, show different message
+                if (currentCheatType === 'tony' || currentCheatType === 'kevin') {
+                    showStatus('Single-player mode enabled for cheat team...', 'info');
+                } else {
+                    showStatus('Waiting for another player to join...', 'info');
+                }
             }
         }
         updateGameState(); // Refresh main game UI (team vs question section)
