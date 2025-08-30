@@ -671,6 +671,12 @@ const callbacks = {
         lastClickedButton = null; // Reset last clicked button for new round
         // Don't clear lastRoundResults here - we want to show it during the new round until answered
         
+        // Reset rainbow glow for new round
+        const trueBtn = document.getElementById('answer-true');
+        const falseBtn = document.getElementById('answer-false');
+        if (trueBtn) trueBtn.classList.remove('rainbow-glow');
+        if (falseBtn) falseBtn.classList.remove('rainbow-glow');
+        
         // Apply themed display to the question item
         if (window.themeManager && data.item) {
             const themedItem = window.themeManager.getItemDisplay(data.item);
@@ -698,6 +704,13 @@ const callbacks = {
 
     onAnswerConfirmed: (data) => {
         if (currentRound) currentRound.alreadyAnswered = true;
+        
+        // Reset rainbow glow when answer is confirmed
+        const trueBtn = document.getElementById('answer-true');
+        const falseBtn = document.getElementById('answer-false');
+        if (trueBtn) trueBtn.classList.remove('rainbow-glow');
+        if (falseBtn) falseBtn.classList.remove('rainbow-glow');
+        
         showStatus(data.message, 'success');
     },
 
@@ -742,6 +755,33 @@ const callbacks = {
         }
         if (data.theme && data.theme !== currentGameTheme) {
             updateGameTheme(data.theme);
+        }
+    },
+
+    onPartnerChoice: (data) => {
+        // Display partner's choice immediately
+        const choice = data.partnerChoice ? 'True' : 'False';
+        showStatus(`Partner chose: ${choice}`, 'info');
+    },
+
+    onCheatHint: (data) => {
+        // Display hint and apply rainbow glow to recommended button
+        const recommendation = data.recommended ? 'True' : 'False';
+        showStatus(`💡 Hint: Choose ${recommendation} (${data.reason})`, 'info');
+        
+        // Apply rainbow glow to the recommended button
+        const trueBtn = document.getElementById('answer-true');
+        const falseBtn = document.getElementById('answer-false');
+        
+        // Remove existing glow from both buttons
+        trueBtn.classList.remove('rainbow-glow');
+        falseBtn.classList.remove('rainbow-glow');
+        
+        // Add glow to recommended button
+        if (data.recommended) {
+            trueBtn.classList.add('rainbow-glow');
+        } else {
+            falseBtn.classList.add('rainbow-glow');
         }
     }
 };

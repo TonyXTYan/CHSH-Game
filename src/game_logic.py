@@ -1,6 +1,7 @@
 import random
 import logging
 from datetime import datetime
+from typing import Tuple, Optional, Literal
 from src.config import socketio, db
 from src.models.quiz_models import ItemEnum, PairQuestionRounds, Answers, Teams
 
@@ -31,6 +32,54 @@ def get_effective_combo_repeats(game_mode=None):
         return TARGET_COMBO_REPEATS * 2
     else:
         return TARGET_COMBO_REPEATS
+
+def get_required_parity(p1_item: ItemEnum, p2_item: ItemEnum) -> Literal["same", "different"]:
+    """
+    Get the required parity for optimal CHSH strategy.
+    Rule: BY and YB require different answers; all others require same answers.
+    """
+    combo = (p1_item.value, p2_item.value)
+    if combo in [("B", "Y"), ("Y", "B")]:
+        return "different"
+    else:
+        return "same"
+
+def recommend_answers(parity: Literal["same", "different"], 
+                     known_left: Optional[bool], 
+                     known_right: Optional[bool]) -> Tuple[bool, bool]:
+    """
+    Recommend optimal answers given parity requirement and known answers.
+    
+    Args:
+        parity: Required parity ("same" or "different")
+        known_left: Player 1's answer if known, None if unknown
+        known_right: Player 2's answer if known, None if unknown
+        
+    Returns:
+        Tuple of (player1_answer, player2_answer) recommendations
+    """
+    if known_left is not None and known_right is not None:
+        # Both known, return as-is
+        return (known_left, known_right)
+    elif known_left is not None:
+        # Only left known, compute right
+        if parity == "same":
+            return (known_left, known_left)
+        else:  # different
+            return (known_left, not known_left)
+    elif known_right is not None:
+        # Only right known, compute left
+        if parity == "same":
+            return (known_right, known_right)
+        else:  # different
+            return (not known_right, known_right)
+    else:
+        # Both unknown, choose random seed
+        seed = random.choice([True, False])
+        if parity == "same":
+            return (seed, seed)
+        else:  # different
+            return (seed, not seed)
 
 def start_new_round_for_pair(team_name):
     try:
@@ -124,6 +173,33 @@ def start_new_round_for_pair(team_name):
         socketio.emit('new_question', {'round_id': new_round_db.round_id, 'round_number': round_number, 'item': p2_item.value}, room=player2_sid)
         
         logger.debug(f"Team {team_name} round {round_number}: Player1({player1_sid}) gets {p1_item.value}, Player2({player2_sid}) gets {p2_item.value}")
+        
+        # Emit hints for cheat-hint teams (but not in AQM Joe mode)
+        cheat_type = team_info.get('cheat_type', 'none')
+        if cheat_type == 'hint' and state.game_mode != 'aqmjoe':
+            # Calculate parity and cache it in team_info for performance
+            parity = get_required_parity(p1_item, p2_item)
+            team_info['current_round_parity'] = parity
+            
+            # Get recommended answers (both unknown at round start)
+            recommended_p1, recommended_p2 = recommend_answers(parity, None, None)
+            
+            # Generate reason string
+            reason = f"Optimal strategy: {parity} answers for {p1_item.value}-{p2_item.value} combination"
+            
+            # Emit hint to both players
+            hint_data = {
+                'recommended': recommended_p1,
+                'parity': parity,
+                'reason': reason,
+                'at': datetime.utcnow().isoformat()
+            }
+            socketio.emit('cheat:hint', hint_data, room=player1_sid)
+            
+            hint_data['recommended'] = recommended_p2
+            socketio.emit('cheat:hint', hint_data, room=player2_sid)
+            
+            logger.debug(f"Emitted hints to team {team_name}: parity={parity}, p1_rec={recommended_p1}, p2_rec={recommended_p2}")
         
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()

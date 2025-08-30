@@ -4,7 +4,7 @@ from flask_socketio import emit, join_room, leave_room
 from src.config import socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
-from src.game_logic import start_new_round_for_pair
+from src.game_logic import start_new_round_for_pair, recommend_answers
 import logging
 from typing import Dict, Any, Optional
 
@@ -84,6 +84,54 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         _, _, _, _, invalidate_team_caches = _import_dashboard_functions()
         invalidate_team_caches(team_name)
         emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, to=sid)  # type: ignore
+
+        # Handle cheat functionality after answer is confirmed
+        cheat_type = team_info.get('cheat_type', 'none')
+        if cheat_type in ['com', 'hint']:
+            # Emit partner choice to teammate
+            teammate_sid = None
+            for player_sid in team_info['players']:
+                if player_sid != sid:
+                    teammate_sid = player_sid
+                    break
+            
+            if teammate_sid:
+                partner_choice_data = {
+                    'partnerChoice': response_bool,
+                    'at': new_answer_db.timestamp.isoformat()
+                }
+                socketio.emit('cheat:partner_choice', partner_choice_data, room=teammate_sid)  # type: ignore
+                logger.debug(f"Emitted partner choice to {teammate_sid}: {response_bool}")
+                
+                # For cheat-hint, emit updated hint after first answer (but not in AQM Joe mode)
+                if cheat_type == 'hint' and state.game_mode != 'aqmjoe':
+                    # Get the current round parity (cached during round start)
+                    parity = team_info.get('current_round_parity')
+                    if parity:
+                        # Determine which player submitted and compute new recommendation
+                        round_db_entry = PairQuestionRounds.query.get(round_id)
+                        if round_db_entry:
+                            db_team = Teams.query.get(team_info['team_id'])
+                            if db_team:
+                                # Determine if submitter is player1 or player2
+                                is_submitter_p1 = (sid == db_team.player1_session_id)
+                                is_teammate_p1 = not is_submitter_p1
+                                
+                                # Get recommended answer for teammate given submitter's answer
+                                if is_submitter_p1:
+                                    _, teammate_recommendation = recommend_answers(parity, response_bool, None)
+                                else:
+                                    teammate_recommendation, _ = recommend_answers(parity, None, response_bool)
+                                
+                                # Emit updated hint to teammate
+                                updated_hint_data = {
+                                    'recommended': teammate_recommendation,
+                                    'parity': parity,
+                                    'reason': f"Updated hint: partner answered {response_bool}, optimal strategy requires {parity} answers",
+                                    'at': datetime.utcnow().isoformat()
+                                }
+                                socketio.emit('cheat:hint', updated_hint_data, room=teammate_sid)  # type: ignore
+                                logger.debug(f"Emitted updated hint to {teammate_sid}: {teammate_recommendation}")
 
         # Emit to dashboard
         answer_for_dash = {
