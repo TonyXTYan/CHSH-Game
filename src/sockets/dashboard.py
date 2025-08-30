@@ -21,9 +21,28 @@ from typing import Dict, List, Tuple, Any, Optional, Union, Set
 from flask import request
 from contextlib import contextmanager
 import weakref
+import re
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Cheat detection regex (duplicated from team_management to avoid circular import)
+CHEAT_RE = re.compile(r'^cheat-(com|hint|tony|kevin)(?:$|[-_\s].*)', re.IGNORECASE)
+
+def parse_cheat_type(team_name: str) -> str:
+    """
+    Parse cheat type from team name.
+    Returns: "none", "com", "hint", "tony", or "kevin"
+    """
+    try:
+        name = (team_name or "").strip()
+        m = CHEAT_RE.match(name)
+        if not m:
+            return "none"
+        return m.group(1).lower()
+    except Exception:
+        # Never throw from parsing; default to no-cheat on any error
+        return "none"
 
 # Dashboard client activity tracking for keep-alive functionality
 dashboard_last_activity: Dict[str, float] = {}
@@ -1626,6 +1645,9 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
             display_labels = item_values
             display_stats = classic_stats
         
+        # Get cheat information
+        cheat_type = team_info.get('cheat_type', 'none') if team_info else parse_cheat_type(team_name)
+        
         team_data = {
             'team_name': team_name,
             'team_id': team_id,
@@ -1646,6 +1668,10 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
             'created_at': created_at,
             'game_mode': state.game_mode  # Include current mode
         }
+        
+        # Add cheat information
+        team_data['cheat'] = cheat_type != 'none'
+        team_data['cheat_type'] = cheat_type
         
         # Add status field for active teams
         if team_info and 'status' in team_info:
@@ -1705,6 +1731,9 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         classic_stats = _calculate_team_statistics(team_name)
         new_stats = _calculate_success_statistics(team_name)
         
+        # Get cheat information
+        cheat_type = team_info.get('cheat_type', 'none') if team_info else parse_cheat_type(team_name)
+        
         # Determine which matrix and stats to use for the main display based on game mode
         if state.game_mode == 'new':
             display_matrix = success_matrix_tuples
@@ -1735,6 +1764,10 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
             'created_at': created_at,
             'game_mode': state.game_mode  # Include current mode
         }
+        
+        # Add cheat information
+        team_data['cheat'] = cheat_type != 'none'
+        team_data['cheat_type'] = cheat_type
         
         # Add status field for active teams
         if team_info and 'status' in team_info:
@@ -2632,3 +2665,85 @@ def _is_aqmjoe_success(p1_item: str, p2_item: str, p1_bool: bool, p2_bool: bool)
 
     # Color–Color: neutral (success for purposes of success rate metric)
     return True
+
+@socketio.on('dashboard:toggle_cheats_ban')
+def on_toggle_cheats_ban(data: Dict[str, Any]) -> None:
+    """Handle dashboard request to toggle cheat ban status"""
+    try:
+        sid = request.sid  # type: ignore
+        if sid not in state.dashboard_clients:
+            emit('error', {'message': 'Unauthorized: Not a dashboard client'})  # type: ignore
+            return
+        
+        banned = data.get('banned', False)
+        if not isinstance(banned, bool):
+            emit('error', {'message': 'Invalid banned value'})  # type: ignore
+            return
+        
+        # Update global state
+        state.cheats_banned = banned
+        
+        kicked_teams = 0
+        kicked_players = 0
+        
+        # If banning cheats, kick existing cheating teams
+        if banned:
+            teams_to_remove = []
+            for team_name, team_info in state.active_teams.items():
+                cheat_type = team_info.get('cheat_type', 'none')
+                if cheat_type != 'none':
+                    teams_to_remove.append(team_name)
+                    kicked_teams += 1
+                    kicked_players += len(team_info.get('players', []))
+            
+            # Remove cheating teams
+            for team_name in teams_to_remove:
+                team_info = state.active_teams.get(team_name)
+                if team_info:
+                    # Disconnect all players in the team
+                    for player_sid in team_info.get('players', []):
+                        if player_sid in state.player_to_team:
+                            del state.player_to_team[player_sid]
+                        # Emit team disbanded to the player
+                        socketio.emit('team_disbanded', {
+                            'message': 'Your team has been disbanded due to cheat ban policy.'
+                        }, to=player_sid)  # type: ignore
+                    
+                    # Mark team as inactive in database
+                    try:
+                        db_team = db.session.get(Teams, team_info['team_id'])
+                        if db_team:
+                            db_team.is_active = False
+                            db_team.player1_session_id = None
+                            db_team.player2_session_id = None
+                        db.session.commit()
+                    except Exception as e:
+                        logger.error(f"Error updating database for kicked team {team_name}: {str(e)}")
+                    
+                    # Remove from state
+                    del state.active_teams[team_name]
+                    if team_info['team_id'] in state.team_id_to_name:
+                        del state.team_id_to_name[team_info['team_id']]
+        
+        logger.info(f"Cheat ban toggled to {banned}. Kicked {kicked_teams} teams and {kicked_players} players.")
+        
+        # Emit response to all dashboard clients
+        socketio.emit('cheats_ban_changed', {
+            'banned': banned,
+            'kicked_teams': kicked_teams,
+            'kicked_players': kicked_players
+        }, room='dashboard_clients')  # type: ignore
+        
+        # Update dashboard with new team list
+        emit_dashboard_full_update()
+        
+        # Update available teams for players
+        from src.sockets.team_management import get_available_teams_list
+        socketio.emit('teams_updated', {
+            'teams': get_available_teams_list(),
+            'game_started': state.game_started
+        })  # type: ignore
+        
+    except Exception as e:
+        logger.error(f"Error in on_toggle_cheats_ban: {str(e)}", exc_info=True)
+        emit('error', {'message': 'An error occurred while toggling cheat ban'})  # type: ignore
