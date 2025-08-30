@@ -1160,6 +1160,23 @@ function updateTeamsImmediate(teams) {
         }
         statusDot.className = `team-status ${statusClass}`;
         nameCell.appendChild(statusDot);
+        
+        // Add cheat indicator and type tag if team is cheating
+        if (team.cheat) {
+            const cheatEmoji = document.createElement('span');
+            cheatEmoji.textContent = '🤡';
+            cheatEmoji.style.marginRight = '4px';
+            nameCell.appendChild(cheatEmoji);
+            
+            const cheatTag = document.createElement('span');
+            cheatTag.textContent = `[${team.cheat_type}]`;
+            cheatTag.style.fontSize = '0.8em';
+            cheatTag.style.color = '#ff6b6b';
+            cheatTag.style.fontWeight = 'bold';
+            cheatTag.style.marginRight = '4px';
+            nameCell.appendChild(cheatTag);
+        }
+        
         nameCell.appendChild(document.createTextNode(team.team_name));
         
         // Status cell
@@ -1843,3 +1860,50 @@ function showTeamDetails(team) {
     };
     window.addEventListener('click', window._modalClickHandler);
 }
+
+// Global state for cheat ban status
+let cheatsBanned = false;
+
+// Function to toggle cheat ban
+function toggleCheatsBan() {
+    cheatsBanned = !cheatsBanned;
+    
+    // Emit to server
+    socket.emit('dashboard:toggle_cheats_ban', { banned: cheatsBanned });
+    
+    // Update UI immediately for responsiveness
+    updateCheatBanUI();
+}
+
+// Function to update cheat ban UI
+function updateCheatBanUI() {
+    const button = document.getElementById('toggle-cheats-ban-btn');
+    const status = document.getElementById('cheat-ban-status');
+    
+    if (cheatsBanned) {
+        button.classList.add('ban-active');
+        button.classList.remove('ban-inactive');
+        status.textContent = 'Ban';
+        button.style.backgroundColor = '#ff6b6b';
+    } else {
+        button.classList.add('ban-inactive');
+        button.classList.remove('ban-active');
+        status.textContent = 'Allow';
+        button.style.backgroundColor = '#51cf66';
+    }
+}
+
+// Listen for cheat ban changes from server
+socket.on('cheats_ban_changed', function(data) {
+    cheatsBanned = data.banned;
+    updateCheatBanUI();
+    
+    if (data.kicked_teams > 0) {
+        console.log(`Cheat ban ${data.banned ? 'enabled' : 'disabled'}. Kicked ${data.kicked_teams} teams and ${data.kicked_players} players.`);
+    }
+});
+
+// Initialize cheat ban UI on page load
+document.addEventListener('DOMContentLoaded', function() {
+    updateCheatBanUI();
+});

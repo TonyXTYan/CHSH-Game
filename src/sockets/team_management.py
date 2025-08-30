@@ -8,10 +8,29 @@ from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.game_logic import start_new_round_for_pair
 import logging
 import time
+import re
 from typing import Dict, Any, List, Optional
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
+# Cheat detection regex
+CHEAT_RE = re.compile(r'^cheat-(com|hint|tony|kevin)(?:$|[-_\s].*)', re.IGNORECASE)
+
+def parse_cheat_type(team_name: str) -> str:
+    """
+    Parse cheat type from team name.
+    Returns: "none", "com", "hint", "tony", or "kevin"
+    """
+    try:
+        name = (team_name or "").strip()
+        m = CHEAT_RE.match(name)
+        if not m:
+            return "none"
+        return m.group(1).lower()
+    except Exception:
+        # Never throw from parsing; default to no-cheat on any error
+        return "none"
 
 def _get_player_slot_in_team(team_info: Dict[str, Any], sid: str) -> Optional[int]:
     """Get which player slot (1 or 2) a session ID occupies in a team"""
@@ -95,6 +114,7 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
         last_played_round_number = max_round_obj if max_round_obj is not None else 0
         
         # Set up team state
+        cheat_type = parse_cheat_type(team_name)
         state.active_teams[team_name] = {
             'players': [sid],
             'team_id': team.team_id,
@@ -102,7 +122,8 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
             'combo_tracker': {},
             'answered_current_round': {},
             'status': 'waiting_pair',
-            'player_slots': {sid: 1}  # Reactivator becomes Player 1
+            'player_slots': {sid: 1},  # Reactivator becomes Player 1
+            'cheat_type': cheat_type
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[team.team_id] = team_name
@@ -277,6 +298,12 @@ def on_create_team(data: Dict[str, Any]) -> None:
         if not team_name:
             emit('error', {'message': 'Team name is required'})  # type: ignore
             return
+        
+        # Check for cheat detection and ban enforcement
+        cheat_type = parse_cheat_type(team_name)
+        if state.cheats_banned and cheat_type != "none":
+            emit('error', {'message': 'Cheat teams are currently banned'})  # type: ignore
+            return
             
         # Check if team name already exists as active team
         if team_name in state.active_teams or Teams.query.filter_by(team_name=team_name, is_active=True).first():
@@ -297,7 +324,8 @@ def on_create_team(data: Dict[str, Any]) -> None:
                     'game_mode': state.game_mode,
                     'game_theme': state.game_theme,
                     'player_slot': 1,
-                    'is_reactivated': True  # Flag to indicate this was a reactivation
+                    'is_reactivated': True,  # Flag to indicate this was a reactivation
+                    'cheat_type': team_info.get('cheat_type', 'none')
                 })  # type: ignore
                 emit('team_status_update', {'status': 'created'}, to=request.sid)  # type: ignore
                 
@@ -330,7 +358,8 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'combo_tracker': {},
             'answered_current_round': {},
             'status': 'waiting_pair',
-            'player_slots': {sid: 1}  # Creator is always Player 1
+            'player_slots': {sid: 1},  # Creator is always Player 1
+            'cheat_type': cheat_type
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[new_team_db.team_id] = team_name
@@ -343,7 +372,8 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'game_started': state.game_started,
             'game_mode': state.game_mode,
             'game_theme': state.game_theme,
-            'player_slot': 1  # Creator is always assigned to player1_session_id (slot 1)
+            'player_slot': 1,  # Creator is always assigned to player1_session_id (slot 1)
+            'cheat_type': cheat_type
         })  # type: ignore
         # This team_status_update for 'created' seems specific to the creator,
         # and might be redundant if 'team_created' already conveys enough.
@@ -370,6 +400,13 @@ def on_join_team(data: Dict[str, Any]) -> None:
         if not team_name or team_name not in state.active_teams:
             emit('error', {'message': 'Team not found or invalid team name.'})  # type: ignore
             return
+        
+        # Check for cheat detection and ban enforcement
+        cheat_type = parse_cheat_type(team_name)
+        if state.cheats_banned and cheat_type != "none":
+            emit('error', {'message': 'Cheat teams are currently banned'})  # type: ignore
+            return
+            
         team_info = state.active_teams[team_name]
         if len(team_info['players']) >= 2:
             emit('error', {'message': 'Team is already full.'})  # type: ignore
@@ -433,7 +470,8 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'is_reconnection': is_valid_reconnection,
             'game_mode': state.game_mode,
             'game_theme': state.game_theme,
-            'player_slot': actual_player_slot
+            'player_slot': actual_player_slot,
+            'cheat_type': team_info.get('cheat_type', 'none')
         }, to=sid)  # type: ignore
         
         # Notify all team members (including the one who just joined) about the team's current state
@@ -443,7 +481,8 @@ def on_join_team(data: Dict[str, Any]) -> None:
             'status': current_team_status_for_clients,
             'members': get_team_members(team_name),
             'game_started': state.game_started,
-            'disable_input': False if team_is_now_full else True  # Enable input only when team is full
+            'disable_input': False if team_is_now_full else True,  # Enable input only when team is full
+            'cheat_type': team_info.get('cheat_type', 'none')
         }, to=team_name)  # type: ignore
         
         # Update all clients about the list of available teams
@@ -457,13 +496,19 @@ def on_join_team(data: Dict[str, Any]) -> None:
         emit_dashboard_team_update, _, _, _, _ = _import_dashboard_functions()
         emit_dashboard_team_update()
         
-        # If the game has already started and the team is now full, start a new round for them
-        if state.game_started and team_is_now_full:
-            start_new_round_for_pair(team_name)
-            # No need for a separate 'game_start' emit here,
-            # as 'new_question' from start_new_round_for_pair will trigger game UI.
-            # The 'game_started': True flag in 'team_status_update' and 'team_joined'
-            # should be sufficient for clients to know the game is active.
+        # If the game has already started, start a new round for appropriate teams
+        if state.game_started:
+            # For normal teams, require full team
+            # For tony/kevin teams, allow single-player rounds
+            should_start_round = (team_is_now_full or 
+                                (team_info.get('cheat_type') in ['tony', 'kevin'] and len(team_info['players']) >= 1))
+            
+            if should_start_round:
+                start_new_round_for_pair(team_name)
+                # No need for a separate 'game_start' emit here,
+                # as 'new_question' from start_new_round_for_pair will trigger game UI.
+                # The 'game_started': True flag in 'team_status_update' and 'team_joined'
+                # should be sufficient for clients to know the game is active.
 
     except Exception as e:
         logger.error(f"Error in on_join_team: {str(e)}", exc_info=True)
@@ -477,6 +522,12 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
         
         if not team_name:
             emit('error', {'message': 'Team name is required'})  # type: ignore
+            return
+        
+        # Check for cheat detection and ban enforcement
+        cheat_type = parse_cheat_type(team_name)
+        if state.cheats_banned and cheat_type != "none":
+            emit('error', {'message': 'Cheat teams are currently banned'})  # type: ignore
             return
             
         # Check if team exists as inactive
@@ -502,7 +553,8 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
                 'player_slot': 1,  # Player reactivating team is assigned to player1_session_id (slot 1)
-                'is_reactivated': True  # Flag to indicate this was a reactivation
+                'is_reactivated': True,  # Flag to indicate this was a reactivation
+                'cheat_type': team_info.get('cheat_type', 'none')
             })  # type: ignore
             
             # ADD THIS: Send team_status_update event to properly set team status
@@ -511,7 +563,8 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
                 'status': 'waiting_pair',
                 'members': get_team_members(team_name),
                 'game_started': state.game_started,
-                'disable_input': True  # Disable input when team is incomplete
+                'disable_input': True,  # Disable input when team is incomplete
+                'cheat_type': team_info.get('cheat_type', 'none')
             }, to=team_name)  # type: ignore
             
             socketio.emit('teams_updated', {
