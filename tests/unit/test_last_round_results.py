@@ -56,7 +56,8 @@ class TestLastRoundResults:
                 'current_db_round_id': test_round_id,
                 'current_round_number': 1,
                 'answered_current_round': {},
-                'status': 'active'
+                'status': 'active',
+                'cheat_type': 'none'  # Add cheat_type field
             }
             
             # Mock the round database entry
@@ -83,6 +84,7 @@ class TestLastRoundResults:
             mock_answer2.player_session_id = 'other_player_sid'  # Player 2
             
             mock_answers_class.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
+            mock_answers_class.query.filter_by.return_value.count.return_value = 2  # Mock count for round completion check
             
             # First player submits answer
             data = {
@@ -138,7 +140,8 @@ class TestLastRoundResults:
                 'current_db_round_id': test_round_id,
                 'current_round_number': 1,
                 'answered_current_round': {},
-                'status': 'active'
+                'status': 'active',
+                'cheat_type': 'none'  # Add cheat_type field
             }
             
             # Mock round not found
@@ -378,7 +381,8 @@ class TestLastRoundResults:
                 'current_db_round_id': test_round_id,
                 'current_round_number': 1,
                 'answered_current_round': {},
-                'status': 'active'
+                'status': 'active',
+                'cheat_type': 'none'  # Add cheat_type field
             }
             
             # Mock the round database entry - BOTH PLAYERS GET THE SAME ITEM
@@ -405,6 +409,7 @@ class TestLastRoundResults:
             mock_answer2.player_session_id = 'other_player_sid'  # Player 2 answered False
             
             mock_answers_class.query.filter_by.return_value.all.return_value = [mock_answer1, mock_answer2]
+            mock_answers_class.query.filter_by.return_value.count.return_value = 2  # Mock count for round completion check
             
             # First player submits answer
             data = {
