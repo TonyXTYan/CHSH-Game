@@ -126,6 +126,9 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                     # Get the current round parity (cached during round start)
                     parity = team_info.get('current_round_parity')
                     if parity:
+                        # Import here to avoid circular import
+                        from src.game_logic import recommend_answers as rec_answers
+                        
                         # Determine which player submitted and compute new recommendation
                         round_db_entry = PairQuestionRounds.query.get(round_id)
                         if round_db_entry:
@@ -137,9 +140,9 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 
                                 # Get recommended answer for teammate given submitter's answer
                                 if is_submitter_p1:
-                                    _, teammate_recommendation = recommend_answers(parity, response_bool, None)
+                                    _, teammate_recommendation = rec_answers(parity, response_bool, None)
                                 else:
-                                    teammate_recommendation, _ = recommend_answers(parity, None, response_bool)
+                                    teammate_recommendation, _ = rec_answers(parity, None, response_bool)
                                 
                                 # Emit updated hint to teammate
                                 updated_hint_data = {
@@ -161,7 +164,7 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                     round_db_entry = PairQuestionRounds.query.get(round_id)
                     if round_db_entry:
                         # Import parity helpers
-                        from src.game_logic import get_required_parity, recommend_answers
+                        from src.game_logic import get_required_parity, recommend_answers as rec_answers
                         
                         # Calculate required parity
                         parity = get_required_parity(round_db_entry.player1_item, round_db_entry.player2_item)
@@ -177,10 +180,10 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 # Submitter is P1, auto-fill P2
                                 if cheat_type == 'tony':
                                     # Tony wins: get answer that makes team win
-                                    _, partner_answer = recommend_answers(parity, response_bool, None)
+                                    _, partner_answer = rec_answers(parity, response_bool, None)
                                 else:  # kevin
                                     # Kevin loses: get answer that makes team lose
-                                    _, partner_answer = recommend_answers(parity, response_bool, None)
+                                    _, partner_answer = rec_answers(parity, response_bool, None)
                                     partner_answer = not partner_answer  # Invert to lose
                                 
                                 partner_sid_slot = 2
@@ -189,10 +192,10 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                                 # Submitter is P2, auto-fill P1
                                 if cheat_type == 'tony':
                                     # Tony wins: get answer that makes team win
-                                    partner_answer, _ = recommend_answers(parity, None, response_bool)
+                                    partner_answer, _ = rec_answers(parity, None, response_bool)
                                 else:  # kevin
                                     # Kevin loses: get answer that makes team lose
-                                    partner_answer, _ = recommend_answers(parity, None, response_bool)
+                                    partner_answer, _ = rec_answers(parity, None, response_bool)
                                     partner_answer = not partner_answer  # Invert to lose
                                 
                                 partner_sid_slot = 1
