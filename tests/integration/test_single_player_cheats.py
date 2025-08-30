@@ -566,6 +566,58 @@ class TestSinglePlayerCheats:
                 client.disconnect()
 
     @pytest.mark.integration
+    def test_kevin_auto_fill_different_parity(self, app_context):
+        """Test kevin auto-fill with different parity requirement (BY/YB)"""
+        team_name = 'cheat-kevin-different'
+        client, team_id = self.setup_single_player_team(team_name, 'kevin', app_context)
+        
+        try:
+            # Enable game
+            state.game_started = True
+            
+            # Create round with BY (requires different answers for win)
+            test_round = PairQuestionRounds(
+                team_id=team_id,
+                round_number_for_team=1,
+                player1_item=ItemEnum.B,
+                player2_item=ItemEnum.Y
+            )
+            db.session.add(test_round)
+            db.session.commit()
+            
+            # Update team state
+            team_info = state.active_teams.get(team_name)
+            team_info['current_db_round_id'] = test_round.round_id
+            team_info['current_round_number'] = 1
+            team_info['status'] = 'waiting_pair'
+            
+            # Player submits True
+            client.emit('submit_answer', {
+                'round_id': test_round.round_id,
+                'item': 'B',
+                'answer': True
+            })
+            
+            # Wait for round completion
+            round_complete = self.wait_for_event(client, 'round_complete')
+            assert round_complete is not None, "Should receive round_complete"
+            
+            # Should lose (kevin auto-loses)
+            round_data = round_complete.get('args', [{}])[0]
+            assert round_data.get('success') is False, "Kevin should auto-lose"
+            
+            # Verify database: auto-filled answer should be True (same as True for loss in different parity)
+            answers = Answers.query.filter_by(question_round_id=test_round.round_id).all()
+            assert len(answers) == 2, "Should have 2 answers"
+            
+            auto_answer = next(a for a in answers if a.player_session_id.startswith('auto_'))
+            assert auto_answer.response_value is True, "Auto-filled answer should be True to cause loss in different parity"
+            
+        finally:
+            if client.connected:
+                client.disconnect()
+
+    @pytest.mark.integration
     def test_single_player_stops_auto_fill_when_second_joins(self, app_context):
         """Test that auto-fill stops working when a second player joins mid-round"""
         # Ensure clean database state for this test
