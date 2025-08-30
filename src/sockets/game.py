@@ -97,6 +97,10 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         else:
             round_db_entry.p2_answered_at = datetime.utcnow()
 
+        # Cache database objects to avoid redundant queries
+        cached_round_entry = round_db_entry  # Already fetched above
+        cached_db_team = None
+        
         db.session.commit()
         # Selectively invalidate caches for the affected team only
         _, _, _, _, invalidate_team_caches = _import_dashboard_functions()
@@ -129,142 +133,137 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                         # Import here to avoid circular import
                         from src.game_logic import recommend_answers as rec_answers
                         
-                        # Determine which player submitted and compute new recommendation
-                        round_db_entry = PairQuestionRounds.query.get(round_id)
-                        if round_db_entry:
-                            db_team = Teams.query.get(team_info['team_id'])
-                            if db_team:
-                                # Determine if submitter is player1 or player2
-                                is_submitter_p1 = (sid == db_team.player1_session_id)
-                                is_teammate_p1 = not is_submitter_p1
-                                
-                                # Get recommended answer for teammate given submitter's answer
-                                if is_submitter_p1:
-                                    _, teammate_recommendation = rec_answers(parity, response_bool, None)
-                                else:
-                                    teammate_recommendation, _ = rec_answers(parity, None, response_bool)
-                                
-                                # Emit updated hint to teammate
-                                updated_hint_data = {
-                                    'recommended': teammate_recommendation,
-                                    'parity': parity,
-                                    'reason': f"Updated hint: partner answered {response_bool}, optimal strategy requires {parity} answers",
-                                    'at': datetime.utcnow().isoformat()
-                                }
-                                socketio.emit('cheat:hint', updated_hint_data, room=teammate_sid)  # type: ignore
-                                logger.debug(f"Emitted updated hint to {teammate_sid}: {teammate_recommendation}")
+                        # Get database team if not already cached
+                        if not cached_db_team:
+                            cached_db_team = Teams.query.get(team_info['team_id'])
+                        
+                        if cached_db_team:
+                            # Determine if submitter is player1 or player2
+                            is_submitter_p1 = (sid == cached_db_team.player1_session_id)
+                            
+                            # Get recommended answer for teammate given submitter's answer
+                            if is_submitter_p1:
+                                _, teammate_recommendation = rec_answers(parity, response_bool, None)
+                            else:
+                                teammate_recommendation, _ = rec_answers(parity, None, response_bool)
+                            
+                            # Emit updated hint to teammate
+                            updated_hint_data = {
+                                'recommended': teammate_recommendation,
+                                'parity': parity,
+                                'reason': f"Updated hint: partner answered {response_bool}, optimal strategy requires {parity} answers",
+                                'at': datetime.utcnow().isoformat()
+                            }
+                            socketio.emit('cheat:hint', updated_hint_data, room=teammate_sid)  # type: ignore
+                            logger.debug(f"Emitted updated hint to {teammate_sid}: {teammate_recommendation}")
 
         # Handle auto-fill for single-player tony/kevin teams
+        auto_fill_success = False
         if cheat_type in ['tony', 'kevin'] and len(team_info['players']) == 1:
-            # Use database transaction to prevent race conditions
-            try:
-                # Begin transaction for atomic auto-fill operation
-                db.session.begin()
-                
-                # Get round details for parity calculation (single query)
-                round_db_entry = PairQuestionRounds.query.get(round_id)
-                if not round_db_entry:
-                    logger.error(f"Round {round_id} not found for auto-fill")
-                    db.session.rollback()
-                    return
-                
-                # Get database team to determine player slots (single query)
-                db_team = Teams.query.get(team_info['team_id'])
-                if not db_team:
-                    logger.error(f"Team {team_info['team_id']} not found for auto-fill")
-                    db.session.rollback()
-                    return
-                
-                # Check for existing partner answer atomically to prevent double-insert
-                existing_partner_answer = Answers.query.filter_by(
-                    question_round_id=round_id,
-                    team_id=team_info['team_id']
-                ).filter(Answers.player_session_id != sid).with_for_update().first()
-                
-                if existing_partner_answer:
-                    logger.warning(f"Partner answer already exists for round {round_id}, skipping auto-fill")
-                    db.session.rollback()
-                    return
-                
-                # Import parity helpers
-                from src.game_logic import get_required_parity, recommend_answers as rec_answers
-                
-                # Calculate required parity
-                parity = get_required_parity(round_db_entry.player1_item, round_db_entry.player2_item)
-                
-                # Determine if submitter is player1 or player2
-                is_submitter_p1 = (sid == db_team.player1_session_id)
-                
-                # Calculate partner answer based on cheat type
-                if is_submitter_p1:
-                    # Submitter is P1, auto-fill P2
-                    if cheat_type == 'tony':
-                        # Tony wins: get answer that makes team win
-                        _, partner_answer = rec_answers(parity, response_bool, None)
-                    else:  # kevin
-                        # Kevin loses: compute losing strategy directly based on parity
-                        if parity == "same":
-                            # For same parity, losing means answering differently
-                            partner_answer = not response_bool
-                        else:  # different parity
-                            # For different parity, losing means answering the same
-                            partner_answer = response_bool
+            # Check if only one answer exists for this round (the one we just submitted)
+            existing_answers_count = Answers.query.filter_by(question_round_id=round_id).count()
+            if existing_answers_count == 1:  # Only the current player's answer exists
+                try:
+                    # Get database team if not already cached
+                    if not cached_db_team:
+                        cached_db_team = Teams.query.get(team_info['team_id'])
                     
-                    partner_sid_slot = 2
-                    partner_item = round_db_entry.player2_item
-                    # Use team_id and round_id for unique synthetic ID
-                    partner_sid = f"auto_{cheat_type}_{team_info['team_id']}_{round_id}_p2"
-                else:
-                    # Submitter is P2, auto-fill P1
-                    if cheat_type == 'tony':
-                        # Tony wins: get answer that makes team win
-                        partner_answer, _ = rec_answers(parity, None, response_bool)
-                    else:  # kevin
-                        # Kevin loses: compute losing strategy directly based on parity
-                        if parity == "same":
-                            # For same parity, losing means answering differently
-                            partner_answer = not response_bool
-                        else:  # different parity
-                            # For different parity, losing means answering the same
-                            partner_answer = response_bool
+                    if not cached_db_team:
+                        logger.error(f"Team {team_info['team_id']} not found for auto-fill")
+                        emit('error', {'message': 'Team data not found for auto-fill'}, to=sid)  # type: ignore
+                        return
                     
-                    partner_sid_slot = 1
-                    partner_item = round_db_entry.player1_item
-                    # Use team_id and round_id for unique synthetic ID
-                    partner_sid = f"auto_{cheat_type}_{team_info['team_id']}_{round_id}_p1"
-                
-                # Create auto-filled answer
-                partner_answer_db = Answers(
-                    team_id=team_info['team_id'],
-                    player_session_id=partner_sid,
-                    question_round_id=round_id,
-                    assigned_item=partner_item,
-                    response_value=partner_answer,
-                    timestamp=datetime.utcnow()
-                )
-                
-                # Insert the auto-filled answer
-                db.session.add(partner_answer_db)
-                
-                # Update round timestamps
-                if partner_sid_slot == 1:
-                    round_db_entry.p1_answered_at = datetime.utcnow()
-                else:
-                    round_db_entry.p2_answered_at = datetime.utcnow()
-                
-                # Mark partner as answered in team state
-                team_info['answered_current_round'][partner_sid] = True
-                
-                # Commit the transaction
-                db.session.commit()
-                
-                logger.info(f"Auto-filled partner answer for {cheat_type} team {team_name}: {partner_answer} (parity: {parity}, submitter_answer: {response_bool})")
-                
-            except Exception as e:
-                logger.error(f"Error in auto-fill for {cheat_type} team {team_name}: {str(e)}")
-                db.session.rollback()
-                emit('error', {'message': 'Error processing auto-fill'}, to=sid)  # type: ignore
-                return
+                    # Check for existing partner answer with row locking to prevent race conditions
+                    # Use a separate query within the same transaction
+                    existing_partner_answer = Answers.query.filter_by(
+                        question_round_id=round_id,
+                        team_id=team_info['team_id']
+                    ).filter(Answers.player_session_id != sid).with_for_update().first()
+                    
+                    if existing_partner_answer:
+                        logger.warning(f"Partner answer already exists for round {round_id}, skipping auto-fill")
+                        return
+                    
+                    # Import parity helpers
+                    from src.game_logic import get_required_parity, recommend_answers as rec_answers
+                    
+                    # Calculate required parity using cached round entry
+                    parity = get_required_parity(cached_round_entry.player1_item, cached_round_entry.player2_item)
+                    
+                    # Determine if submitter is player1 or player2
+                    is_submitter_p1 = (sid == cached_db_team.player1_session_id)
+                    
+                    # Calculate partner answer based on cheat type
+                    if is_submitter_p1:
+                        # Submitter is P1, auto-fill P2
+                        if cheat_type == 'tony':
+                            # Tony wins: get answer that makes team win
+                            _, partner_answer = rec_answers(parity, response_bool, None)
+                        else:  # kevin
+                            # Kevin loses: compute losing strategy directly based on parity
+                            if parity == "same":
+                                # For same parity, losing means answering differently
+                                partner_answer = not response_bool
+                            else:  # different parity
+                                # For different parity, losing means answering the same
+                                partner_answer = response_bool
+                        
+                        partner_sid_slot = 2
+                        partner_item = cached_round_entry.player2_item
+                        # Create highly unique synthetic ID with timestamp to prevent collisions
+                        partner_sid = f"auto_{cheat_type}_t{team_info['team_id']}_r{round_id}_p2_{int(datetime.utcnow().timestamp() * 1000000)}"
+                    else:
+                        # Submitter is P2, auto-fill P1
+                        if cheat_type == 'tony':
+                            # Tony wins: get answer that makes team win
+                            partner_answer, _ = rec_answers(parity, None, response_bool)
+                        else:  # kevin
+                            # Kevin loses: compute losing strategy directly based on parity
+                            if parity == "same":
+                                # For same parity, losing means answering differently
+                                partner_answer = not response_bool
+                            else:  # different parity
+                                # For different parity, losing means answering the same
+                                partner_answer = response_bool
+                        
+                        partner_sid_slot = 1
+                        partner_item = cached_round_entry.player1_item
+                        # Create highly unique synthetic ID with timestamp to prevent collisions
+                        partner_sid = f"auto_{cheat_type}_t{team_info['team_id']}_r{round_id}_p1_{int(datetime.utcnow().timestamp() * 1000000)}"
+                    
+                    # Create auto-filled answer
+                    partner_answer_db = Answers(
+                        team_id=team_info['team_id'],
+                        player_session_id=partner_sid,
+                        question_round_id=round_id,
+                        assigned_item=partner_item,
+                        response_value=partner_answer,
+                        timestamp=datetime.utcnow()
+                    )
+                    
+                    # Insert the auto-filled answer (Flask-SQLAlchemy manages transaction)
+                    db.session.add(partner_answer_db)
+                    
+                    # Update round timestamps
+                    if partner_sid_slot == 1:
+                        cached_round_entry.p1_answered_at = datetime.utcnow()
+                    else:
+                        cached_round_entry.p2_answered_at = datetime.utcnow()
+                    
+                    # Mark partner as answered in team state
+                    team_info['answered_current_round'][partner_sid] = True
+                    
+                    # Commit the auto-fill changes
+                    db.session.commit()
+                    auto_fill_success = True
+                    
+                    logger.info(f"Auto-filled partner answer for {cheat_type} team {team_name}: {partner_answer} (parity: {parity}, submitter_answer: {response_bool})")
+                    
+                except Exception as e:
+                    logger.error(f"Error in auto-fill for {cheat_type} team {team_name}: {str(e)}")
+                    db.session.rollback()
+                    emit('error', {'message': 'Error processing auto-fill'}, to=sid)  # type: ignore
+                    return
 
         # Emit to dashboard
         answer_for_dash = {
@@ -283,107 +282,94 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         emit_dashboard_team_update, _, _, _, _ = _import_dashboard_functions()
         emit_dashboard_team_update()
 
+        # Round completion logic - only proceed if we have 2 answers
         if len(team_info['answered_current_round']) == 2:
-            # Use cached round_db_entry and db_team from auto-fill if available
-            if 'round_db_entry' not in locals():
-                round_db_entry = PairQuestionRounds.query.get(round_id)
-            if 'db_team' not in locals():
-                db_team = Teams.query.get(team_info['team_id'])
+            # Use cached database objects or fetch if needed
+            completion_round_entry = cached_round_entry
+            completion_db_team = cached_db_team
+            
+            if not completion_db_team:
+                completion_db_team = Teams.query.get(team_info['team_id'])
                 
-            if round_db_entry and db_team:
-                # Get both players' answers for this round
-                round_answers = Answers.query.filter_by(question_round_id=round_id).all()
-                
-                # Verify we have exactly 2 answers
-                if len(round_answers) == 2:
-                    # Organize the answer data by player position using session IDs
-                    p1_answer = None
-                    p2_answer = None
-                    p1_item = round_db_entry.player1_item.value if round_db_entry.player1_item else None
-                    p2_item = round_db_entry.player2_item.value if round_db_entry.player2_item else None
-                    
-                    for answer in round_answers:
-                        # Match answers by session ID with improved synthetic ID handling
-                        # For real players, match exact session ID
-                        # For auto-filled answers, match by synthetic ID pattern
-                        if answer.player_session_id == db_team.player1_session_id:
-                            p1_answer = answer.response_value
-                        elif answer.player_session_id == db_team.player2_session_id:
-                            p2_answer = answer.response_value
-                        elif answer.player_session_id.startswith("auto_") and f"_{round_id}_p1" in answer.player_session_id:
-                            p1_answer = answer.response_value
-                        elif answer.player_session_id.startswith("auto_") and f"_{round_id}_p2" in answer.player_session_id:
-                            p2_answer = answer.response_value
-                        else:
-                            logger.warning(f"Unmatched answer session ID: {answer.player_session_id} for team {team_name}")
-                    
-                    # Ensure we have both answers before proceeding
-                    if p1_answer is None or p2_answer is None:
-                        logger.error(f"Missing answers for round completion: p1={p1_answer}, p2={p2_answer}")
-                        # Emit basic round complete without success calculation
-                        socketio.emit('round_complete', {
-                            'team_name': team_name,
-                            'round_number': team_info['current_round_number'],
-                            'success': False,
-                            'error': 'Missing player answers'
-                        }, to=team_name)  # type: ignore
-                        start_new_round_for_pair(team_name)
-                        return
-                    
-                    # Calculate success for this round
-                    success = False
-                    if p1_answer is not None and p2_answer is not None:
-                        # Apply CHSH success rules
-                        is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
-                        players_answered_differently = p1_answer != p2_answer
-                        
-                        if state.game_mode == 'aqmjoe':
-                            # Import AQM Joe success logic if needed
-                            try:
-                                from src.sockets.dashboard import _is_aqmjoe_success
-                                success = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
-                            except ImportError:
-                                # Fallback to standard logic
-                                success = players_answered_differently if is_by_combination else not players_answered_differently
-                        else:
-                            if is_by_combination:
-                                # B,Y combination: players should answer differently
-                                success = players_answered_differently
-                            else:
-                                # All other combinations: players should answer the same
-                                success = not players_answered_differently
-                    
-                    # Emit enhanced round_complete event with detailed results
-                    # Note: Client safely handles None values in answers via generateLastRoundMessage()
-                    socketio.emit('round_complete', {
-                        'team_name': team_name,
-                        'round_number': team_info['current_round_number'],
-                        'success': success,
-                        'last_round_details': {
-                            'p1_item': p1_item,
-                            'p2_item': p2_item,
-                            'p1_answer': p1_answer,  # May be None if session ID mismatch
-                            'p2_answer': p2_answer   # May be None if session ID mismatch
-                        }
-                    }, to=team_name)  # type: ignore
+            if not completion_round_entry or not completion_db_team:
+                logger.error(f"Missing data for round completion: round_entry={completion_round_entry is not None}, team={completion_db_team is not None}")
+                # Don't advance round on error - let team retry
+                emit('error', {'message': 'Round completion failed due to missing data'}, to=sid)  # type: ignore
+                return
+            
+            # Get both players' answers for this round
+            round_answers = Answers.query.filter_by(question_round_id=round_id).all()
+            
+            # Verify we have exactly 2 answers
+            if len(round_answers) != 2:
+                logger.error(f"Round {round_id} has {len(round_answers)} answers, expected 2")
+                # Don't advance round on error - let team retry
+                emit('error', {'message': f'Round has {len(round_answers)} answers, expected 2'}, to=sid)  # type: ignore
+                return
+            
+            # Organize the answer data by player position using session IDs
+            p1_answer = None
+            p2_answer = None
+            p1_item = completion_round_entry.player1_item.value if completion_round_entry.player1_item else None
+            p2_item = completion_round_entry.player2_item.value if completion_round_entry.player2_item else None
+            
+            for answer in round_answers:
+                # Match answers by session ID with improved synthetic ID handling
+                # For real players, match exact session ID
+                # For auto-filled answers, match by improved synthetic ID pattern
+                if answer.player_session_id == completion_db_team.player1_session_id:
+                    p1_answer = answer.response_value
+                elif answer.player_session_id == completion_db_team.player2_session_id:
+                    p2_answer = answer.response_value
+                elif answer.player_session_id.startswith("auto_") and f"_r{round_id}_p1_" in answer.player_session_id:
+                    p1_answer = answer.response_value
+                elif answer.player_session_id.startswith("auto_") and f"_r{round_id}_p2_" in answer.player_session_id:
+                    p2_answer = answer.response_value
                 else:
-                    # Insufficient answers for round completion
-                    logger.error(f"Round {round_id} has {len(round_answers)} answers, expected 2")
-                    socketio.emit('round_complete', {
-                        'team_name': team_name,
-                        'round_number': team_info['current_round_number'],
-                        'success': False,
-                        'error': 'Insufficient answers for round completion'
-                    }, to=team_name)  # type: ignore
+                    logger.warning(f"Unmatched answer session ID: {answer.player_session_id} for team {team_name}")
+            
+            # Ensure we have both answers before proceeding
+            if p1_answer is None or p2_answer is None:
+                logger.error(f"Missing answers for round completion: p1={p1_answer}, p2={p2_answer}")
+                # Don't advance round on error - let team retry
+                emit('error', {'message': 'Round completion failed: missing player answers'}, to=sid)  # type: ignore
+                return
+            
+            # Calculate success for this round
+            success = False
+            is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
+            players_answered_differently = p1_answer != p2_answer
+            
+            if state.game_mode == 'aqmjoe':
+                # Import AQM Joe success logic if needed
+                try:
+                    from src.sockets.dashboard import _is_aqmjoe_success
+                    success = _is_aqmjoe_success(p1_item, p2_item, p1_answer, p2_answer)
+                except ImportError:
+                    # Fallback to standard logic
+                    success = players_answered_differently if is_by_combination else not players_answered_differently
             else:
-                # Missing round or team data
-                logger.error(f"Missing data for round completion: round_entry={round_db_entry is not None}, team={db_team is not None}")
-                socketio.emit('round_complete', {
-                    'team_name': team_name,
-                    'round_number': team_info['current_round_number'],
-                    'success': False,
-                    'error': 'Missing round or team data'
-                }, to=team_name)  # type: ignore
+                if is_by_combination:
+                    # B,Y combination: players should answer differently
+                    success = players_answered_differently
+                else:
+                    # All other combinations: players should answer the same
+                    success = not players_answered_differently
+            
+            # Emit enhanced round_complete event with detailed results
+            socketio.emit('round_complete', {
+                'team_name': team_name,
+                'round_number': team_info['current_round_number'],
+                'success': success,
+                'last_round_details': {
+                    'p1_item': p1_item,
+                    'p2_item': p2_item,
+                    'p1_answer': p1_answer,
+                    'p2_answer': p2_answer
+                }
+            }, to=team_name)  # type: ignore
+            
+            # Start new round after successful completion
             start_new_round_for_pair(team_name)
     except Exception as e:
         logger.error(f"Error in on_submit_answer: {str(e)}", exc_info=True)
