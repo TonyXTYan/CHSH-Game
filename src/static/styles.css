@@ -426,3 +426,20 @@ button:disabled {
     color: #2e7d32;
     text-align: center;
 }
+
+/* Rainbow glow animation for cheat hints */
+.rainbow-glow {
+    animation: rainbow-glow 1.2s linear infinite;
+    box-shadow: 0 0 12px 4px currentColor;
+    border: 2px solid transparent;
+    border-radius: 12px;
+}
+
+@keyframes rainbow-glow {
+    0% { color: #ff0040; }
+    20% { color: #ff8000; }
+    40% { color: #ffff00; }
+    60% { color: #00ff00; }
+    80% { color: #00a0ff; }
+    100% { color: #ff00ff; }
+}

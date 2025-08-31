@@ -138,7 +138,8 @@ def test_reactivate_team_success(mock_request_context, inactive_team):
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
                 'player_slot': 1,  # Player reactivating is assigned to slot 1
-                'is_reactivated': True  # Flag to indicate this was a reactivation
+                'is_reactivated': True,  # Flag to indicate this was a reactivation
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             }
         )
         
@@ -244,6 +245,7 @@ def test_create_team_success(mock_request_context):
         assert state.active_teams["new_team"]["team_id"] == team.team_id
         assert 'test_sid' in state.active_teams["new_team"]["players"]
         assert state.active_teams["new_team"]["status"] == "waiting_pair"
+        assert state.active_teams["new_team"]["cheat_type"] == "none"  # Normal team should have cheat_type 'none'
         assert state.player_to_team['test_sid'] == "new_team"
         assert state.team_id_to_name[team.team_id] == "new_team"
         
@@ -257,7 +259,8 @@ def test_create_team_success(mock_request_context):
                 'game_started': state.game_started,
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
-                'player_slot': 1  # Team creator is assigned to slot 1
+                'player_slot': 1,  # Team creator is assigned to slot 1
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             }
         )
         
@@ -331,7 +334,8 @@ def test_create_team_reactivates_inactive_team(mock_request_context, inactive_te
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
                 'player_slot': 1,
-                'is_reactivated': True  # This flag indicates automatic reactivation
+                'is_reactivated': True,  # This flag indicates automatic reactivation
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             }
         )
         
@@ -503,7 +507,8 @@ def test_join_team_success(mock_request_context, active_team):
                 'is_reconnection': False,
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
-                'player_slot': 2  # Player joins into player2_session_id slot
+                'player_slot': 2,  # Player joins into player2_session_id slot
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             },
             to='test_sid'
         )
@@ -892,7 +897,8 @@ def test_reconnection_join_team_different_player(mock_request_context, active_te
                 'is_reconnection': False,
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
-                'player_slot': 2  # New player joins into the available slot
+                'player_slot': 2,  # New player joins into the available slot
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             },
             to='new_session_id'
         )
@@ -905,7 +911,8 @@ def test_reconnection_join_team_different_player(mock_request_context, active_te
                 'status': 'full',
                 'members': ['player1_sid', 'new_session_id'],
                 'game_started': state.game_started,
-                'disable_input': False
+                'disable_input': False,
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             },
             to='active_team'
         )
@@ -948,7 +955,8 @@ def test_reconnection_join_team_same_player(mock_request_context, active_team):
                 'is_reconnection': True,
                 'game_mode': state.game_mode,
                 'game_theme': state.game_theme,
-                'player_slot': 2  # Player reconnects to their original slot
+                'player_slot': 2,  # Player reconnects to their original slot
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             },
             to='player2_sid'
         )
@@ -961,7 +969,8 @@ def test_reconnection_join_team_same_player(mock_request_context, active_team):
                 'status': 'full',
                 'members': ['player1_sid', 'player2_sid'],
                 'game_started': state.game_started,
-                'disable_input': False
+                'disable_input': False,
+                'cheat_type': 'none'  # Normal team should have cheat_type 'none'
             },
             to='active_team'
         )

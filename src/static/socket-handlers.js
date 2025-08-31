@@ -144,6 +144,15 @@ function initializeSocketHandlers(socket, callbacks) {
         callbacks.onLeftTeam(data);
     });
 
+    // Cheat event handlers
+    socket.on('cheat:partner_choice', (data) => {
+        callbacks.onPartnerChoice(data);
+    });
+
+    socket.on('cheat:hint', (data) => {
+        callbacks.onCheatHint(data);
+    });
+
     socket.on('game_reset', () => {
         // Reset client-side state
         callbacks.showStatus('Game has been reset. Ready to start new game.', 'info');
