@@ -1,17 +1,19 @@
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 
 class AppState:
     def __init__(self):
-        self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}}}
+        self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}, 'cheat_type': 'none', 'cached_round_parity': None}}
         self.player_to_team = {}  # {sid: team_name}
         self.connected_players = set()  # All connected player SIDs
         self.dashboard_clients = set() # Stores SIDs of connected dashboard clients
         self.game_started = False # Track if game has started
         self.game_paused = False # Track if game is paused
         self.answer_stream_enabled = False # Track if answer streaming is enabled
+        self.cheats_banned = os.getenv('CHEATS_DISABLED', 'false').lower() == 'true'
         # Internal storage for game mode with normalization
         self._game_mode = 'simplified'  # Track current game mode: 'classic', 'simplified', or 'aqmjoe'
         self.game_theme = 'food'  # Track current game theme: 'classic', 'food', etc.
@@ -48,6 +50,7 @@ class AppState:
         self.answer_stream_enabled = False
         self.game_mode = 'simplified'  # Reset game mode to simplified
         self.game_theme = 'food'  # Reset game theme to food
+        self.cheats_banned = os.getenv('CHEATS_DISABLED', 'false').lower() == 'true'
 
     def get_player_slot(self, team_name, sid):
         """Get the database player slot (1 or 2) for a session ID in a team"""
