@@ -1,4 +1,5 @@
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,8 @@ class AppState:
         self.team_id_to_name = {} # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
         self.disconnected_players = {}  # {team_name: {'player_session_id': old_sid, 'player_slot': 1|2, 'disconnect_time': timestamp}}
+        # Cheats feature flags
+        self.cheats_banned = os.environ.get('CHEATS_DISABLED', '').lower() == 'true'  # Ban cheats by default if env var is set
 
     @property
     def game_mode(self):
@@ -48,6 +51,7 @@ class AppState:
         self.answer_stream_enabled = False
         self.game_mode = 'simplified'  # Reset game mode to simplified
         self.game_theme = 'food'  # Reset game theme to food
+        self.cheats_banned = os.environ.get('CHEATS_DISABLED', '').lower() == 'true'  # Reset cheats ban status
 
     def get_player_slot(self, team_name, sid):
         """Get the database player slot (1 or 2) for a session ID in a team"""
