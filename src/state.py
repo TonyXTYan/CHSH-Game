@@ -1,24 +1,30 @@
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
 
 class AppState:
     def __init__(self):
-        self.active_teams = {}  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}}}
+        self.active_teams = (
+            {}
+        )  # {team_name: {'players': [], 'team_id': db_team_id, 'current_round_number': 0, 'combo_tracker': {}, 'current_db_round_id': None, 'answered_current_round': {}, 'player_slots': {sid: slot_number}, 'cheat_type': 'none', 'cached_round_parity': None}}
         self.player_to_team = {}  # {sid: team_name}
         self.connected_players = set()  # All connected player SIDs
-        self.dashboard_clients = set() # Stores SIDs of connected dashboard clients
-        self.game_started = False # Track if game has started
-        self.game_paused = False # Track if game is paused
-        self.answer_stream_enabled = False # Track if answer streaming is enabled
+        self.dashboard_clients = set()  # Stores SIDs of connected dashboard clients
+        self.game_started = False  # Track if game has started
+        self.game_paused = False  # Track if game is paused
+        self.answer_stream_enabled = False  # Track if answer streaming is enabled
+        self.cheats_banned = os.environ.get("CHEATS_DISABLED", "").lower() == "true"
         # Internal storage for game mode with normalization
-        self._game_mode = 'simplified'  # Track current game mode: 'classic', 'simplified', or 'aqmjoe'
-        self.game_theme = 'food'  # Track current game theme: 'classic', 'food', etc.
+        self._game_mode = "simplified"  # Track current game mode: 'classic', 'simplified', or 'aqmjoe'
+        self.game_theme = "food"  # Track current game theme: 'classic', 'food', etc.
         # Store team ID to team name mapping for faster lookups
-        self.team_id_to_name = {} # {team_id: team_name}
+        self.team_id_to_name = {}  # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
-        self.disconnected_players = {}  # {team_name: {'player_session_id': old_sid, 'player_slot': 1|2, 'disconnect_time': timestamp}}
+        self.disconnected_players = (
+            {}
+        )  # {team_name: {'player_session_id': old_sid, 'player_slot': 1|2, 'disconnect_time': timestamp}}
 
     @property
     def game_mode(self):
@@ -26,15 +32,19 @@ class AppState:
 
     @game_mode.setter
     def game_mode(self, value):
-        if value == 'new':
+        if value == "new":
             # Deprecated alias handling
-            logger.warning('Deprecated mode "new" encountered; falling back to "simplified"')
-            self._game_mode = 'simplified'
+            logger.warning(
+                'Deprecated mode "new" encountered; falling back to "simplified"'
+            )
+            self._game_mode = "simplified"
             return
-        if value in ('classic', 'simplified', 'aqmjoe'):
+        if value in ("classic", "simplified", "aqmjoe"):
             self._game_mode = value
         else:
-            logger.error(f"Unsupported game mode '{value}' provided; keeping previous mode '{self._game_mode}'")
+            logger.error(
+                f"Unsupported game mode '{value}' provided; keeping previous mode '{self._game_mode}'"
+            )
 
     def reset(self):
         self.active_teams.clear()
@@ -46,27 +56,30 @@ class AppState:
         self.game_started = False
         self.game_paused = False
         self.answer_stream_enabled = False
-        self.game_mode = 'simplified'  # Reset game mode to simplified
-        self.game_theme = 'food'  # Reset game theme to food
+        self.game_mode = "simplified"  # Reset game mode to simplified
+        self.game_theme = "food"  # Reset game theme to food
+        self.cheats_banned = os.environ.get("CHEATS_DISABLED", "").lower() == "true"
 
     def get_player_slot(self, team_name, sid):
         """Get the database player slot (1 or 2) for a session ID in a team"""
         team_info = self.active_teams.get(team_name)
         if not team_info:
             return None
-        return team_info.get('player_slots', {}).get(sid)
-    
+        return team_info.get("player_slots", {}).get(sid)
+
     def set_player_slot(self, team_name, sid, slot):
         """Set the database player slot for a session ID in a team"""
         team_info = self.active_teams.get(team_name)
         if team_info:
-            if 'player_slots' not in team_info:
-                team_info['player_slots'] = {}
-            team_info['player_slots'][sid] = slot
+            if "player_slots" not in team_info:
+                team_info["player_slots"] = {}
+            team_info["player_slots"][sid] = slot
+
 
 # Backwards‑compatibility alias for tests
 class GameState(AppState):
     pass
+
 
 # Create singleton instance for state
 state = AppState()
