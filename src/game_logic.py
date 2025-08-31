@@ -113,7 +113,7 @@ def start_new_round_for_pair(team_name):
         
         # For single-player tony/kevin teams, only require one player
         if cheat_type in ['tony', 'kevin']:
-            if not player1_sid and not player2_sid:
+            if not (player1_sid or player2_sid):
                 logger.error(f"Team {team_name} has no player session IDs in database")
                 return
             # Verify at least one player is connected

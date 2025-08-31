@@ -23,26 +23,10 @@ from contextlib import contextmanager
 import weakref
 import re
 
+from src.utils.cheat_utils import CHEAT_RE, parse_cheat_type
+
 # Configure logging
 logger = logging.getLogger(__name__)
-
-# Cheat detection regex (duplicated from team_management to avoid circular import)
-CHEAT_RE = re.compile(r'^cheat-(com|hint|tony|kevin)(?:$|[-_\s].*)', re.IGNORECASE)
-
-def parse_cheat_type(team_name: str) -> str:
-    """
-    Parse cheat type from team name.
-    Returns: "none", "com", "hint", "tony", or "kevin"
-    """
-    try:
-        name = (team_name or "").strip()
-        m = CHEAT_RE.match(name)
-        if not m:
-            return "none"
-        return m.group(1).lower()
-    except Exception:
-        # Never throw from parsing; default to no-cheat on any error
-        return "none"
 
 # Dashboard client activity tracking for keep-alive functionality
 dashboard_last_activity: Dict[str, float] = {}

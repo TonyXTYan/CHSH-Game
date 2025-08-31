@@ -5,6 +5,7 @@ from src.config import socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
 from src.game_logic import start_new_round_for_pair, recommend_answers
+from src.utils.cheat_utils import create_synthetic_partner_sid, is_synthetic_sid
 import logging
 from typing import Dict, Any, Optional
 
@@ -175,6 +176,7 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                     
                     # Check for existing partner answer with row locking to prevent race conditions
                     # Use a separate query within the same transaction
+                    # TODO: Consider adding composite index on (question_round_id, team_id) for performance optimization
                     existing_partner_answer = Answers.query.filter_by(
                         question_round_id=round_id,
                         team_id=team_info['team_id']
@@ -210,8 +212,9 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                         
                         partner_sid_slot = 2
                         partner_item = cached_round_entry.player2_item
-                        # Create highly unique synthetic ID with timestamp to prevent collisions
-                        partner_sid = f"auto_{cheat_type}_t{team_info['team_id']}_r{round_id}_p2_{int(datetime.utcnow().timestamp() * 1000000)}"
+                        # Create synthetic partner session ID using shared utility
+                        timestamp = int(datetime.utcnow().timestamp() * 1000000)
+                        partner_sid = create_synthetic_partner_sid(cheat_type, team_info['team_id'], round_id, 2, timestamp)
                     else:
                         # Submitter is P2, auto-fill P1
                         if cheat_type == 'tony':
@@ -228,8 +231,9 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                         
                         partner_sid_slot = 1
                         partner_item = cached_round_entry.player1_item
-                        # Create highly unique synthetic ID with timestamp to prevent collisions
-                        partner_sid = f"auto_{cheat_type}_t{team_info['team_id']}_r{round_id}_p1_{int(datetime.utcnow().timestamp() * 1000000)}"
+                        # Create synthetic partner session ID using shared utility
+                        timestamp = int(datetime.utcnow().timestamp() * 1000000)
+                        partner_sid = create_synthetic_partner_sid(cheat_type, team_info['team_id'], round_id, 1, timestamp)
                     
                     # Create auto-filled answer
                     partner_answer_db = Answers(
@@ -321,9 +325,9 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
                     p1_answer = answer.response_value
                 elif answer.player_session_id == completion_db_team.player2_session_id:
                     p2_answer = answer.response_value
-                elif answer.player_session_id.startswith("auto_") and f"_r{round_id}_p1_" in answer.player_session_id:
+                elif is_synthetic_sid(answer.player_session_id) and f"_r{round_id}_p1_" in answer.player_session_id:
                     p1_answer = answer.response_value
-                elif answer.player_session_id.startswith("auto_") and f"_r{round_id}_p2_" in answer.player_session_id:
+                elif is_synthetic_sid(answer.player_session_id) and f"_r{round_id}_p2_" in answer.player_session_id:
                     p2_answer = answer.response_value
                 else:
                     logger.warning(f"Unmatched answer session ID: {answer.player_session_id} for team {team_name}")

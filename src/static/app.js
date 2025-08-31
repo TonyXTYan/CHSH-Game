@@ -31,6 +31,14 @@ const sessionInfo = document.getElementById('sessionInfo');
 const connectionStatus = document.getElementById('connectionStatus');
 const playerResponsibilityMessage = document.getElementById('playerResponsibilityMessage');
 
+// Helper function to reset rainbow glow from answer buttons
+function resetRainbowGlow() {
+    const trueBtn = document.getElementById('answer-true');
+    const falseBtn = document.getElementById('answer-false');
+    if (trueBtn) trueBtn.classList.remove('rainbow-glow');
+    if (falseBtn) falseBtn.classList.remove('rainbow-glow');
+}
+
 // Connection status handling
 function updateConnectionStatus(status) {
     connectionStatus.textContent = status;
@@ -690,10 +698,7 @@ const callbacks = {
         // Don't clear lastRoundResults here - we want to show it during the new round until answered
         
         // Reset rainbow glow for new round
-        const trueBtn = document.getElementById('answer-true');
-        const falseBtn = document.getElementById('answer-false');
-        if (trueBtn) trueBtn.classList.remove('rainbow-glow');
-        if (falseBtn) falseBtn.classList.remove('rainbow-glow');
+        resetRainbowGlow();
         
         // Apply themed display to the question item
         if (window.themeManager && data.item) {
@@ -724,10 +729,7 @@ const callbacks = {
         if (currentRound) currentRound.alreadyAnswered = true;
         
         // Reset rainbow glow when answer is confirmed
-        const trueBtn = document.getElementById('answer-true');
-        const falseBtn = document.getElementById('answer-false');
-        if (trueBtn) trueBtn.classList.remove('rainbow-glow');
-        if (falseBtn) falseBtn.classList.remove('rainbow-glow');
+        resetRainbowGlow();
         
         showStatus(data.message, 'success');
     },
@@ -792,8 +794,7 @@ const callbacks = {
         const falseBtn = document.getElementById('answer-false');
         
         // Remove existing glow from both buttons
-        trueBtn.classList.remove('rainbow-glow');
-        falseBtn.classList.remove('rainbow-glow');
+        resetRainbowGlow();
         
         // Add glow to recommended button
         if (data.recommended) {
