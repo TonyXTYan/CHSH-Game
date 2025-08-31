@@ -1,4 +1,5 @@
 import logging
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -19,6 +20,8 @@ class AppState:
         self.team_id_to_name = {} # {team_id: team_name}
         # Track disconnected players for reconnection - maps team_name to disconnected player info
         self.disconnected_players = {}  # {team_name: {'player_session_id': old_sid, 'player_slot': 1|2, 'disconnect_time': timestamp}}
+        # Moderation kill switch for cheats feature
+        self.cheats_banned = os.getenv('CHEATS_DISABLED', '').lower() == 'true'
 
     @property
     def game_mode(self):

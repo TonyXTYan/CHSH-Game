@@ -50,7 +50,9 @@ def active_team():
             'current_round_number': 0,
             'combo_tracker': {},
             'answered_current_round': {},
-            'status': 'waiting_pair'
+            'status': 'waiting_pair',
+            'cheat_type': 'none',
+            'cached_round_parity': None,
         }
         state.player_to_team['player1_sid'] = 'active_team'
         state.team_id_to_name[team.team_id] = 'active_team'
@@ -80,7 +82,9 @@ def full_team():
             'current_round_number': 0,
             'combo_tracker': {},
             'answered_current_round': {},
-            'status': 'active'
+            'status': 'active',
+            'cheat_type': 'none',
+            'cached_round_parity': None,
         }
         state.player_to_team['player1_sid'] = 'full_team'
         state.player_to_team['player2_sid'] = 'full_team'
@@ -100,6 +104,7 @@ def cleanup_state():
     state.connected_players.clear()
     state.dashboard_clients.clear()
     state.disconnected_players.clear()
+    state.cheats_banned = False
 
 def test_reactivate_team_success(mock_request_context, inactive_team):
     """Test successful team reactivation"""
@@ -365,6 +370,73 @@ def test_create_team_reactivation_failure_fallback(mock_request_context, inactiv
             'error',
             {'message': 'An error occurred while reactivating the team'}
         )
+
+
+def test_create_cheat_team_stores_type(mock_request_context):
+    """Cheat team creation stores cheat_type when allowed"""
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit') as mock_socketio_emit, \
+         patch('src.sockets.dashboard.emit_dashboard_team_update'), \
+         patch('src.sockets.team_management.join_room'):
+
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'cheat-com-team'})
+
+        assert 'cheat-com-team' in state.active_teams
+        assert state.active_teams['cheat-com-team']['cheat_type'] == 'com'
+
+        team = Teams.query.filter_by(team_name='cheat-com-team').first()
+        assert team is not None
+        db.session.delete(team)
+        db.session.commit()
+
+
+def test_create_cheat_team_blocked_when_banned(mock_request_context):
+    """Cheat teams are rejected when cheats are banned"""
+    state.cheats_banned = True
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'cheat-hint'})
+        mock_emit.assert_called_once_with('error', {'message': 'Cheats are disabled'})
+        assert 'cheat-hint' not in state.active_teams
+
+
+def test_create_non_cheat_team_allowed_when_banned(mock_request_context):
+    """Non-cheat team creation succeeds even when cheats are banned"""
+    state.cheats_banned = True
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.socketio.emit'), \
+         patch('src.sockets.dashboard.emit_dashboard_team_update'), \
+         patch('src.sockets.team_management.join_room'):
+
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'fair_team'})
+        assert 'fair_team' in state.active_teams
+        team = Teams.query.filter_by(team_name='fair_team').first()
+        db.session.delete(team)
+        db.session.commit()
+
+
+def test_join_cheat_team_blocked_when_banned(mock_request_context):
+    """Joining existing cheat team is blocked if cheats are banned"""
+    with patch('src.sockets.team_management.emit'), \
+         patch('src.sockets.team_management.socketio.emit'), \
+         patch('src.sockets.dashboard.emit_dashboard_team_update'), \
+         patch('src.sockets.team_management.join_room'):
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'cheat-tony'})
+
+    state.cheats_banned = True
+    with patch('src.sockets.team_management.emit') as mock_emit, \
+         patch('src.sockets.team_management.join_room'):
+        from src.sockets.team_management import on_join_team
+        request.sid = 'other_sid'
+        on_join_team({'team_name': 'cheat-tony'})
+        mock_emit.assert_called_once_with('error', {'message': 'Cheats are disabled'})
+
+    team = Teams.query.filter_by(team_name='cheat-tony').first()
+    db.session.delete(team)
+    db.session.commit()
 
 def test_reactivate_team_internal_success(mock_request_context, inactive_team):
     """Test _reactivate_team_internal helper function success"""
