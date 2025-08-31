@@ -127,5 +127,84 @@ def start_new_round_for_pair(team_name):
         
         from src.sockets.dashboard import emit_dashboard_team_update
         emit_dashboard_team_update()
+        
+        # Handle cheat-hint: emit hints after questions
+        from src.state import state
+        team_info = state.active_teams.get(team_name)
+        if team_info and team_info.get('cheat_type') == 'hint':
+            # Don't emit hints in AQM Joe mode (per spec)
+            if state.game_mode != 'aqmjoe':
+                parity = get_required_parity(p1_item, p2_item)
+                reason = get_parity_reason(p1_item, p2_item)
+                
+                # Calculate recommendations for both players
+                p1_rec, p2_rec = recommend_answers(parity, None, None)
+                
+                # Emit hint to player 1
+                socketio.emit('cheat:hint', {
+                    'recommended': p1_rec,
+                    'parity': parity,
+                    'reason': reason,
+                    'at': datetime.utcnow().isoformat()
+                }, to=player1_sid)
+                
+                # Emit hint to player 2
+                socketio.emit('cheat:hint', {
+                    'recommended': p2_rec,
+                    'parity': parity,
+                    'reason': reason,
+                    'at': datetime.utcnow().isoformat()
+                }, to=player2_sid)
+                
+                logger.info(f"Emitted hints for team {team_name}: parity={parity}, p1={p1_rec}, p2={p2_rec}")
+        
     except Exception as e:
         logger.error(f"Error in start_new_round_for_pair: {str(e)}", exc_info=True)
+
+
+def get_required_parity(p1_item: ItemEnum, p2_item: ItemEnum) -> str:
+    """
+    Get the required parity (same/different) for optimal play.
+    Rule: BY and YB require different answers, all others require same.
+    """
+    # BY or YB combinations require different answers
+    if (p1_item == ItemEnum.B and p2_item == ItemEnum.Y) or \
+       (p1_item == ItemEnum.Y and p2_item == ItemEnum.B):
+        return "different"
+    else:
+        return "same"
+
+
+def get_parity_reason(p1_item: ItemEnum, p2_item: ItemEnum) -> str:
+    """Get a human-readable reason for the parity requirement."""
+    if (p1_item == ItemEnum.B and p2_item == ItemEnum.Y) or \
+       (p1_item == ItemEnum.Y and p2_item == ItemEnum.B):
+        return f"{p1_item.value}{p2_item.value} requires different answers for success"
+    else:
+        return f"{p1_item.value}{p2_item.value} requires same answers for success"
+
+
+def recommend_answers(parity: str, known_left: bool = None, known_right: bool = None) -> tuple[bool, bool]:
+    """
+    Recommend answers based on parity and any known answer.
+    Returns (p1_recommendation, p2_recommendation).
+    """
+    if known_left is not None:
+        # If we know player 1's answer, calculate player 2's
+        if parity == "same":
+            return known_left, known_left
+        else:
+            return known_left, not known_left
+    elif known_right is not None:
+        # If we know player 2's answer, calculate player 1's
+        if parity == "same":
+            return known_right, known_right
+        else:
+            return not known_right, known_right
+    else:
+        # Neither answer known, pick randomly
+        seed = random.choice([True, False])
+        if parity == "same":
+            return seed, seed
+        else:
+            return seed, not seed

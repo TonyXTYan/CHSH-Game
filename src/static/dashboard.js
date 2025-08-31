@@ -280,6 +280,80 @@ socket.on('game_mode_changed', (data) => {
     }, 3000);
 });
 
+// Cheat ban management
+let cheatsBanned = false;
+
+function toggleCheatsBan() {
+    const toggleBtn = document.getElementById('toggle-cheat-ban-btn');
+    if (toggleBtn && !toggleBtn.disabled) {
+        toggleBtn.disabled = true;
+        toggleBtn.textContent = 'Processing...';
+        
+        // Toggle the ban state
+        const newBanState = !cheatsBanned;
+        socket.emit('dashboard:toggle_cheats_ban', { banned: newBanState });
+        
+        // Set timeout in case server doesn't respond
+        setTimeout(() => {
+            if (toggleBtn.disabled) {
+                toggleBtn.disabled = false;
+                updateCheatBanDisplay(cheatsBanned); // Revert to current state
+                
+                // Show error notification
+                connectionStatusDiv.textContent = "Failed to change cheat ban status - please try again";
+                connectionStatusDiv.className = "status-disconnected";
+                
+                setTimeout(() => {
+                    connectionStatusDiv.textContent = "Connected to server";
+                    connectionStatusDiv.className = "status-connected";
+                }, 3000);
+            }
+        }, 5000);
+    }
+}
+
+function updateCheatBanDisplay(banned) {
+    cheatsBanned = banned;
+    const statusSpan = document.getElementById('cheat-ban-status');
+    const toggleBtn = document.getElementById('toggle-cheat-ban-btn');
+    const descriptionDiv = document.getElementById('cheat-ban-description-text');
+    
+    if (statusSpan) {
+        statusSpan.textContent = banned ? 'Banned' : 'Allowed';
+        statusSpan.style.color = banned ? '#ff6b6b' : '#51cf66';
+    }
+    
+    if (toggleBtn) {
+        toggleBtn.textContent = banned ? 'Allow Cheats' : 'Ban Cheats';
+        toggleBtn.disabled = false;
+    }
+    
+    if (descriptionDiv) {
+        descriptionDiv.innerHTML = banned 
+            ? '<strong>Cheats Banned:</strong> Teams with cheat prefixes cannot join or be reactivated. Active cheat teams have been kicked.'
+            : 'Teams with cheat prefixes (cheat-com, cheat-hint, cheat-tony, cheat-kevin) are currently allowed to join.';
+    }
+}
+
+// Handle cheat ban status changes from server
+socket.on('cheats_ban_changed', (data) => {
+    console.log('Cheats ban status changed:', data);
+    updateCheatBanDisplay(data.banned);
+    
+    // Show notification
+    const message = data.banned 
+        ? `Cheats banned. Kicked ${data.kicked_teams || 0} teams and ${data.kicked_players || 0} players.`
+        : 'Cheats are now allowed.';
+    
+    connectionStatusDiv.textContent = message;
+    connectionStatusDiv.className = "status-connected";
+    
+    setTimeout(() => {
+        connectionStatusDiv.textContent = "Connected to server";
+        connectionStatusDiv.className = "status-connected";
+    }, 3000);
+});
+
 // Handle theme changes from server
 socket.on('game_theme_changed', (data) => {
     console.log('Game theme changed:', data);
@@ -751,6 +825,11 @@ socket.on("dashboard_update", (data) => {
             updateGameThemeDisplay(data.game_state.theme, true); // Skip dropdown update for dashboard updates
         }
         
+        // Update cheats ban status if provided
+        if (data.game_state.hasOwnProperty('cheats_banned')) {
+            updateCheatBanDisplay(data.game_state.cheats_banned);
+        }
+        
         // Persist full game state from server
         localStorage.setItem('game_started', data.game_state.started.toString());
         if (data.game_state.paused !== undefined) {
@@ -1160,7 +1239,26 @@ function updateTeamsImmediate(teams) {
         }
         statusDot.className = `team-status ${statusClass}`;
         nameCell.appendChild(statusDot);
+        
+        // Add cheat indicator if team is cheating
+        if (team.cheat) {
+            const clownEmoji = document.createElement('span');
+            clownEmoji.textContent = '🤡 ';
+            clownEmoji.style.marginRight = '4px';
+            nameCell.appendChild(clownEmoji);
+        }
+        
         nameCell.appendChild(document.createTextNode(team.team_name));
+        
+        // Add cheat type tag if cheating
+        if (team.cheat_type && team.cheat_type !== 'none') {
+            const cheatTag = document.createElement('span');
+            cheatTag.textContent = ` [${team.cheat_type}]`;
+            cheatTag.style.color = '#ff6b6b';
+            cheatTag.style.fontSize = '0.9em';
+            cheatTag.style.fontWeight = 'bold';
+            nameCell.appendChild(cheatTag);
+        }
         
         // Status cell
         let statusText = 'Inactive';

@@ -84,6 +84,63 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         _, _, _, _, invalidate_team_caches = _import_dashboard_functions()
         invalidate_team_caches(team_name)
         emit('answer_confirmed', {'message': f'Round {team_info["current_round_number"]} answer received'}, to=sid)  # type: ignore
+        
+        # Handle cheat-com and cheat-hint: emit partner's choice
+        cheat_type = team_info.get('cheat_type', 'none')
+        if cheat_type in ('com', 'hint'):
+            # Find the partner's SID
+            partner_sid = None
+            for player_sid in team_info['players']:
+                if player_sid != sid:
+                    partner_sid = player_sid
+                    break
+            
+            if partner_sid:
+                # Emit the partner's choice to the teammate
+                socketio.emit('cheat:partner_choice', {
+                    'partnerChoice': response_bool,
+                    'at': datetime.utcnow().isoformat()
+                }, to=partner_sid)  # type: ignore
+                logger.info(f"Emitted partner choice for {cheat_type} team {team_name}: {response_bool} to {partner_sid}")
+        
+        # Handle cheat-hint: emit updated hint after first answer
+        if cheat_type == 'hint' and len(team_info['answered_current_round']) == 1:
+            # Don't emit hints in AQM Joe mode
+            from src.state import state
+            if state.game_mode != 'aqmjoe':
+                # Get the current round info
+                round_db = PairQuestionRounds.query.get(round_id)
+                if round_db and partner_sid:
+                    # Import helper functions
+                    from src.game_logic import get_required_parity, get_parity_reason, recommend_answers
+                    
+                    # Calculate parity
+                    parity = get_required_parity(round_db.player1_item, round_db.player2_item)
+                    reason = get_parity_reason(round_db.player1_item, round_db.player2_item)
+                    
+                    # Determine which player answered (p1 or p2) based on database slots
+                    db_team = Teams.query.get(team_info['team_id'])
+                    if db_team:
+                        if sid == db_team.player1_session_id:
+                            # Player 1 answered, calculate recommendation for player 2
+                            _, p2_rec = recommend_answers(parity, response_bool, None)
+                            socketio.emit('cheat:hint', {
+                                'recommended': p2_rec,
+                                'parity': parity,
+                                'reason': reason,
+                                'at': datetime.utcnow().isoformat()
+                            }, to=partner_sid)  # type: ignore
+                            logger.info(f"Emitted updated hint for team {team_name} to player 2: {p2_rec}")
+                        elif sid == db_team.player2_session_id:
+                            # Player 2 answered, calculate recommendation for player 1
+                            p1_rec, _ = recommend_answers(parity, None, response_bool)
+                            socketio.emit('cheat:hint', {
+                                'recommended': p1_rec,
+                                'parity': parity,
+                                'reason': reason,
+                                'at': datetime.utcnow().isoformat()
+                            }, to=partner_sid)  # type: ignore
+                            logger.info(f"Emitted updated hint for team {team_name} to player 1: {p1_rec}")
 
         # Emit to dashboard
         answer_for_dash = {
