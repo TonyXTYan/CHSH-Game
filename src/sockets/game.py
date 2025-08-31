@@ -106,7 +106,6 @@ def on_submit_answer(data: Dict[str, Any]) -> None:
         # Handle cheat-hint: emit updated hint after first answer
         if cheat_type == 'hint' and len(team_info['answered_current_round']) == 1:
             # Don't emit hints in AQM Joe mode
-            from src.state import state
             if state.game_mode != 'aqmjoe':
                 # Get the current round info
                 round_db = PairQuestionRounds.query.get(round_id)
