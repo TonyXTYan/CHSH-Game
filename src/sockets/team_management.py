@@ -5,6 +5,7 @@ from sqlalchemy import func
 from src.config import app, socketio, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers
+from src.cheats_utils import parse_cheat_type
 from src.game_logic import start_new_round_for_pair
 import logging
 import time
@@ -72,6 +73,11 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
     Returns True if successful, False otherwise.
     """
     try:
+        cheat_type = parse_cheat_type(team_name)
+        if state.cheats_banned and cheat_type != 'none':
+            logger.warning(f"Cheat team {team_name} blocked from reactivation")
+            return False
+
         # Find the inactive team in the database
         team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
         if not team:
@@ -102,8 +108,12 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
             'combo_tracker': {},
             'answered_current_round': {},
             'status': 'waiting_pair',
-            'player_slots': {sid: 1}  # Reactivator becomes Player 1
+            'player_slots': {sid: 1},  # Reactivator becomes Player 1
+            'cheat_type': cheat_type,
+            'cached_round_parity': None,
         }
+        if cheat_type != 'none':
+            logger.info(f"Team {team_name} reactivated with cheat type {cheat_type}")
         state.player_to_team[sid] = team_name
         state.team_id_to_name[team.team_id] = team_name
         
@@ -277,10 +287,17 @@ def on_create_team(data: Dict[str, Any]) -> None:
         if not team_name:
             emit('error', {'message': 'Team name is required'})  # type: ignore
             return
-            
+
         # Check if team name already exists as active team
         if team_name in state.active_teams or Teams.query.filter_by(team_name=team_name, is_active=True).first():
             emit('error', {'message': 'Team name already exists or is active'})  # type: ignore
+            return
+
+        cheat_type = parse_cheat_type(team_name)
+        if cheat_type != 'none':
+            logger.info(f"Team {team_name} detected with cheat type {cheat_type}")
+        if state.cheats_banned and cheat_type != 'none':
+            emit('error', {'message': 'Cheats are disabled'})  # type: ignore
             return
 
         # Check if team name exists as inactive team - if so, reactivate it
@@ -330,7 +347,9 @@ def on_create_team(data: Dict[str, Any]) -> None:
             'combo_tracker': {},
             'answered_current_round': {},
             'status': 'waiting_pair',
-            'player_slots': {sid: 1}  # Creator is always Player 1
+            'player_slots': {sid: 1},  # Creator is always Player 1
+            'cheat_type': cheat_type,
+            'cached_round_parity': None,
         }
         state.player_to_team[sid] = team_name
         state.team_id_to_name[new_team_db.team_id] = team_name
@@ -371,6 +390,12 @@ def on_join_team(data: Dict[str, Any]) -> None:
             emit('error', {'message': 'Team not found or invalid team name.'})  # type: ignore
             return
         team_info = state.active_teams[team_name]
+        cheat_type = team_info.get('cheat_type', 'none')
+        if cheat_type != 'none':
+            logger.info(f"Player {sid} joining cheat team {team_name} ({cheat_type})")
+        if state.cheats_banned and cheat_type != 'none':
+            emit('error', {'message': 'Cheats are disabled'})  # type: ignore
+            return
         if len(team_info['players']) >= 2:
             emit('error', {'message': 'Team is already full.'})  # type: ignore
             return
@@ -474,11 +499,18 @@ def on_reactivate_team(data: Dict[str, Any]) -> None:
     try:
         team_name = data.get('team_name')
         sid = request.sid  # type: ignore
-        
+
         if not team_name:
             emit('error', {'message': 'Team name is required'})  # type: ignore
             return
-            
+
+        cheat_type = parse_cheat_type(team_name)
+        if cheat_type != 'none':
+            logger.info(f"Team {team_name} attempting reactivation with cheat type {cheat_type}")
+        if state.cheats_banned and cheat_type != 'none':
+            emit('error', {'message': 'Cheats are disabled'})  # type: ignore
+            return
+
         # Check if team exists as inactive
         inactive_team = Teams.query.filter_by(team_name=team_name, is_active=False).first()
         if not inactive_team:
