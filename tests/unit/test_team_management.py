@@ -100,6 +100,15 @@ def cleanup_state():
     state.connected_players.clear()
     state.dashboard_clients.clear()
     state.disconnected_players.clear()
+    state.cheats_banned = False
+
+def test_create_cheat_team_when_banned(mock_request_context):
+    """Creating a cheat team should be blocked when cheats are banned"""
+    state.cheats_banned = True
+    with patch('src.sockets.team_management.emit') as mock_emit:
+        from src.sockets.team_management import on_create_team
+        on_create_team({'team_name': 'cheat-com-foo'})
+        mock_emit.assert_called_once_with('error', {'message': 'Cheats are disabled'})
 
 def test_reactivate_team_success(mock_request_context, inactive_team):
     """Test successful team reactivation"""

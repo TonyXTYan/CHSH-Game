@@ -23,6 +23,7 @@ def test_app_state_initialization():
     
     assert isinstance(state.team_id_to_name, dict)
     assert len(state.team_id_to_name) == 0
+    assert state.cheats_banned is False
 
 def test_app_state_reset():
     """Test that AppState.reset() properly clears all state"""
@@ -37,6 +38,7 @@ def test_app_state_reset():
     state.connected_players = {"player1", "player2"}
     state.game_paused = True
     state.team_id_to_name = {1: "team1"}
+    state.cheats_banned = True
     
     # Reset state
     state.reset()
@@ -50,6 +52,7 @@ def test_app_state_reset():
     assert len(state.connected_players) == 0
     assert state.game_paused is False
     assert len(state.team_id_to_name) == 0
+    assert state.cheats_banned is False
 
 def test_app_state_team_tracking():
     """Test adding and removing teams from state"""
