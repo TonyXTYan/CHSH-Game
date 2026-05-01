@@ -8,3 +8,7 @@ downloaded_test.csv
 src/static/sub/hello.txt
 .idea
 coverage.xml
+
+# AI workspace — memory is machine-local
+.ai/memory/*
+!.ai/memory/.gitkeep
