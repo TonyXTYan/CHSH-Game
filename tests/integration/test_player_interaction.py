@@ -1,11 +1,12 @@
-import eventlet
-eventlet.monkey_patch()  # This must be at the very top
-
 import pytest
 import time
 import logging
 from flask_socketio import SocketIOTestClient
 from src.config import app, socketio as server_socketio
+# Importing these modules registers their @socketio.on handlers with server_socketio.
+import src.sockets.team_management  # noqa: F401
+import src.sockets.game  # noqa: F401
+import src.sockets.dashboard  # noqa: F401
 from src.state import state
 from src.models.quiz_models import (
     Teams,
@@ -156,7 +157,7 @@ class TestPlayerInteraction:
         """Helper method to wait for and get a specific event"""
         start_time = time.time()
         while (time.time() - start_time) < timeout:
-            eventlet.sleep(0.1)  # type: ignore
+            time.sleep(0.1)  # type: ignore
             event = self.get_received_event(client, event_name)
             if event is not None:
                 return event
@@ -211,7 +212,7 @@ class TestPlayerInteraction:
                 'item': 'Y' if round_num % 2 == 0 else 'X',
                 'answer': False
             })
-            eventlet.sleep(0.2)
+            time.sleep(0.2)
 
             # Verify answer confirmations
             return (
@@ -232,7 +233,7 @@ class TestPlayerInteraction:
         
         # Create team
         socket_client.emit('create_team', {'team_name': 'TestTeam'})
-        eventlet.sleep(0.2)  # Use eventlet sleep instead of time.sleep
+        time.sleep(0.2)  # Use eventlet sleep instead of time.sleep
 
         # Get all messages since team creation
         messages = socket_client.get_received()
@@ -256,7 +257,7 @@ class TestPlayerInteraction:
         # Setup and create team with first client
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'TeamToJoin'})
-        eventlet.sleep(0.2)  # Use eventlet sleep
+        time.sleep(0.2)  # Use eventlet sleep
         socket_client.get_received()  # Clear messages
 
         # Connect second client and join team
@@ -264,7 +265,7 @@ class TestPlayerInteraction:
         second_client.get_received()  # Clear connection messages
         
         second_client.emit('join_team', {'team_name': 'TeamToJoin'})
-        eventlet.sleep(0.2)  # Use eventlet sleep
+        time.sleep(0.2)  # Use eventlet sleep
 
         # Get all messages since team join
         p2_messages = second_client.get_received()
@@ -299,7 +300,7 @@ class TestPlayerInteraction:
 
         self.verify_connection(second_client)
         second_client.emit('join_team', {'team_name': 'AnswerTeam'})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         second_client.get_received()
 
         # Turn on game state
@@ -327,7 +328,7 @@ class TestPlayerInteraction:
             'item': 'X',  # Use valid ItemEnum value
             'answer': True
         })
-        eventlet.sleep(0.2)  # Use eventlet sleep
+        time.sleep(0.2)  # Use eventlet sleep
         
         # Get all messages since answer submission
         messages = socket_client.get_received()
@@ -349,7 +350,7 @@ class TestPlayerInteraction:
 
         # Leave team
         socket_client.emit('leave_team', {})  # Socket event requires data object
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
 
         # Get messages after leaving
         messages = socket_client.get_received()
@@ -375,7 +376,7 @@ class TestPlayerInteraction:
 
         self.verify_connection(second_client)
         second_client.emit('join_team', {'team_name': 'MultiRoundTeam'})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         second_client.get_received()
 
         # Start game
@@ -428,7 +429,7 @@ class TestPlayerInteraction:
                     'item': 'Y' if round_num % 2 == 0 else 'X',
                     'answer': False
                 })
-                eventlet.sleep(0.2)
+                time.sleep(0.2)
                 
                 p1_confirm = self.wait_for_event(socket_client, 'answer_confirmed')
                 p2_confirm = self.wait_for_event(second_client, 'answer_confirmed')
@@ -456,7 +457,7 @@ class TestPlayerInteraction:
         # Pause game
         state.game_paused = True
         server_socketio.emit('game_paused')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
 
         # Verify pause event received
         pause_event = self.wait_for_event(socket_client, 'game_paused')
@@ -465,7 +466,7 @@ class TestPlayerInteraction:
         # Resume game
         state.game_paused = False
         server_socketio.emit('game_resumed')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
 
         # Verify resume event received
         resume_event = self.wait_for_event(socket_client, 'game_resumed')
@@ -595,7 +596,7 @@ class TestPlayerInteraction:
                 'item': 'Y',
                 'answer': p2_answer
             })
-            eventlet.sleep(0.2)
+            time.sleep(0.2)
 
             # Verify answer confirmations
             p1_confirm = self.wait_for_event(socket_client, 'answer_confirmed')
@@ -625,17 +626,17 @@ class TestPlayerInteraction:
         # Create dashboard client
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
         
         # Request teams update after enabling streaming
         dashboard_client.emit('request_teams_update')
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
 
         # Player 1 creates team
@@ -657,7 +658,7 @@ class TestPlayerInteraction:
 
         # Player 2 disconnects
         self.simulate_disconnect(second_client)
-        eventlet.sleep(0.5)  # Increased time for disconnect processing and throttling
+        time.sleep(0.5)  # Increased time for disconnect processing and throttling
         
         # FIXED: Use helper method to check status with throttling support
         found = self.check_dashboard_team_status(dashboard_client, 'DisconnectTeam', 'waiting_pair')
@@ -665,7 +666,7 @@ class TestPlayerInteraction:
 
         # Player 1 disconnects
         self.simulate_disconnect(socket_client)
-        eventlet.sleep(0.5)  # Increased time for disconnect processing and throttling
+        time.sleep(0.5)  # Increased time for disconnect processing and throttling
         
         # FIXED: Use helper method to check status with throttling support
         found = self.check_dashboard_team_status(dashboard_client, 'DisconnectTeam', 'inactive')
@@ -677,17 +678,17 @@ class TestPlayerInteraction:
         """Two players form a team, both disconnect, one reconnects (reactivates team), dashboard reflects this."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
         
         # Request teams update after enabling streaming
         dashboard_client.emit('request_teams_update')
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
 
         # Player 1 creates team
@@ -706,21 +707,21 @@ class TestPlayerInteraction:
         # Both disconnect
         self.simulate_disconnect(second_client)
         self.simulate_disconnect(socket_client)
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
 
         # Player 1 reconnects and reactivates team
         new_client = SocketIOTestClient(app, server_socketio)
         self.verify_connection(new_client)
         new_client.emit('reactivate_team', {'team_name': 'ReactivateTeam'})
-        eventlet.sleep(0.8)  # Increased time for server to process reactivation and clear cache
+        time.sleep(0.8)  # Increased time for server to process reactivation and clear cache
         new_client.get_received()
 
         # Dashboard should see team as waiting_pair
         dashboard_client.emit('dashboard_join')  # First join to trigger update
-        eventlet.sleep(0.5)  # Increased wait for throttling
+        time.sleep(0.5)  # Increased wait for throttling
         dashboard_client.emit('dashboard_join')  # Second join to ensure cache refresh
-        eventlet.sleep(0.5)  # Increased wait for throttling
+        time.sleep(0.5)  # Increased wait for throttling
         dash_msgs = dashboard_client.get_received()
         found = False
         for msg in dash_msgs:
@@ -738,12 +739,12 @@ class TestPlayerInteraction:
         """Dashboard client sees correct team/player status after each disconnect/reconnect."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
 
         # Player 1 creates team
@@ -765,7 +766,7 @@ class TestPlayerInteraction:
 
         # Player 2 disconnects, dashboard sees waiting_pair
         self.simulate_disconnect(second_client)
-        eventlet.sleep(0.5)  # Increased time for disconnect processing and throttling
+        time.sleep(0.5)  # Increased time for disconnect processing and throttling
         
         # FIXED: Use helper method to check status with throttling support
         found = self.check_dashboard_team_status(dashboard_client, 'DashStatusTeam', 'waiting_pair')
@@ -789,12 +790,12 @@ class TestPlayerInteraction:
         """Edge case: Player disconnects and reconnects with same SID, dashboard and team state remain consistent."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
 
         # Player 1 creates team
@@ -812,7 +813,7 @@ class TestPlayerInteraction:
 
         # Player 2 disconnects
         self.simulate_disconnect(second_client)
-        eventlet.sleep(0.5)  # Increased time for disconnect processing and throttling
+        time.sleep(0.5)  # Increased time for disconnect processing and throttling
         
         # FIXED: Use helper method to check status with throttling support
         found = self.check_dashboard_team_status(dashboard_client, 'ReconnectSIDTeam', 'waiting_pair')
@@ -837,12 +838,12 @@ class TestPlayerInteraction:
         """Edge case: Two teams, one loses a player, dashboard only updates that team's status."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
 
         # Team 1
@@ -875,7 +876,7 @@ class TestPlayerInteraction:
 
         # TeamOne loses a player
         self.simulate_disconnect(client2a)
-        eventlet.sleep(0.5)  # Increased time for disconnect processing and throttling
+        time.sleep(0.5)  # Increased time for disconnect processing and throttling
         
         # FIXED: Check each team status individually with throttling support
         found_waiting = self.check_dashboard_team_status(dashboard_client, 'TeamOne', 'waiting_pair')
@@ -893,12 +894,12 @@ class TestPlayerInteraction:
         """Two players rapidly join and leave a team multiple times, dashboard always reflects correct status."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
         for i in range(3):
             player1 = SocketIOTestClient(app, server_socketio)
@@ -915,7 +916,7 @@ class TestPlayerInteraction:
             player2.get_received()
             # Player 2 leaves
             player2.emit('leave_team', {})
-            eventlet.sleep(0.2)
+            time.sleep(0.2)
             player2.get_received()
             # Player 2 rejoins
             player2.emit('join_team', {'team_name': f'RapidTeam{i}'})
@@ -923,7 +924,7 @@ class TestPlayerInteraction:
             player2.get_received()
             # Player 1 leaves
             player1.emit('leave_team', {})
-            eventlet.sleep(0.2)
+            time.sleep(0.2)
             player1.get_received()
             # Dashboard should see team as inactive or waiting_pair (teams streaming enabled above)
             self.force_fresh_dashboard_update(dashboard_client)
@@ -945,12 +946,12 @@ class TestPlayerInteraction:
         """Both players disconnect at nearly the same time, team becomes inactive, dashboard reflects this."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'SimulTeam'})
@@ -963,7 +964,7 @@ class TestPlayerInteraction:
         # Both disconnect nearly simultaneously
         self.simulate_disconnect(second_client)
         self.simulate_disconnect(socket_client)
-        eventlet.sleep(0.5)
+        time.sleep(0.5)
         # Use force refresh to ensure fresh data (teams streaming enabled above)
         self.force_fresh_dashboard_update(dashboard_client)
         dash_msgs = dashboard_client.get_received()
@@ -990,16 +991,16 @@ class TestPlayerInteraction:
         second_client.get_received()
         # Both leave
         second_client.emit('leave_team', {})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         second_client.get_received()
         socket_client.emit('leave_team', {})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         socket_client.get_received()
         # Try to join as a new client before reactivation
         new_client = SocketIOTestClient(app, server_socketio)
         self.verify_connection(new_client)
         new_client.emit('join_team', {'team_name': 'InactiveTeam'})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         msgs = new_client.get_received()
         found_error = any(msg.get('name') == 'error' for msg in msgs)
         assert found_error, "Player did not get error when joining inactive team before reactivation"
@@ -1021,13 +1022,13 @@ class TestPlayerInteraction:
         second_client.get_received()
         # Player 2 leaves
         second_client.emit('leave_team', {})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         second_client.get_received()
         
         # Dashboard connects now - test both streaming enabled and disabled scenarios
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.3)
+        time.sleep(0.3)
         initial_msgs = dashboard_client.get_received()
         
         # First check: Dashboard should receive basic metrics regardless of teams streaming state
@@ -1047,12 +1048,12 @@ class TestPlayerInteraction:
         
         # Second check: Enable teams streaming and verify we can see teams data
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Request teams update after enabling streaming
         dashboard_client.emit('request_teams_update')
-        eventlet.sleep(0.3)
+        time.sleep(0.3)
         dash_msgs = dashboard_client.get_received()
         
         found_team_with_streaming = False
@@ -1073,12 +1074,12 @@ class TestPlayerInteraction:
         """Third player tries to join a full team, gets error, dashboard unchanged."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'FullTeam'})
@@ -1092,7 +1093,7 @@ class TestPlayerInteraction:
         third_client = SocketIOTestClient(app, server_socketio)
         self.verify_connection(third_client)
         third_client.emit('join_team', {'team_name': 'FullTeam'})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         msgs = third_client.get_received()
         found_error = any(msg.get('name') == 'error' for msg in msgs)
         assert found_error, "Third player did not get error when joining full team"
@@ -1115,12 +1116,12 @@ class TestPlayerInteraction:
         """Player leaves and immediately rejoins, team goes from waiting_pair to active, dashboard reflects this."""
         dashboard_client = SocketIOTestClient(app, server_socketio)
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         dashboard_client.get_received()
         
         # Enable teams streaming
         dashboard_client.emit('set_teams_streaming', {'enabled': True})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         dashboard_client.get_received()
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'QuickRejoinTeam'})
@@ -1132,7 +1133,7 @@ class TestPlayerInteraction:
         second_client.get_received()
         # Player 2 leaves and immediately rejoins
         second_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         second_client.emit('join_team', {'team_name': 'QuickRejoinTeam'})
         self.wait_for_event(second_client, 'team_joined')
         second_client.get_received()
@@ -1160,7 +1161,7 @@ class TestPlayerInteraction:
         new_client = SocketIOTestClient(app, server_socketio)
         self.verify_connection(new_client)
         new_client.emit('reactivate_team', {'team_name': 'CollisionTeam'})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         msgs = new_client.get_received()
         found_error = any(msg.get('name') == 'error' for msg in msgs)
         assert found_error, "Player did not get error when reactivating already active team name"
@@ -1184,10 +1185,10 @@ class TestPlayerInteraction:
         
         # Both players leave to make team inactive
         socket_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         socket_client.get_received()
         second_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         second_client.get_received()
         
         # Verify team is now inactive in database
@@ -1252,10 +1253,10 @@ class TestPlayerInteraction:
         
         # Both players leave
         socket_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         socket_client.get_received()
         second_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         second_client.get_received()
         
         # New player reactivates by creating team with same name
@@ -1293,7 +1294,7 @@ class TestPlayerInteraction:
         team1_id = team1_created.get('args', [{}])[0].get('team_id')
         socket_client.get_received()
         socket_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         socket_client.get_received()
         
         # Create and deactivate second team
@@ -1302,7 +1303,7 @@ class TestPlayerInteraction:
         team2_id = team2_created.get('args', [{}])[0].get('team_id')
         second_client.get_received()
         second_client.emit('leave_team', {})
-        eventlet.sleep(0.1)
+        time.sleep(0.1)
         second_client.get_received()
         
         # Reactivate first team through create_team
@@ -1346,7 +1347,7 @@ class TestPlayerInteraction:
         # Try to create another team with same name while first is active
         self.verify_connection(second_client)
         second_client.emit('create_team', {'team_name': 'ConflictTeam'})
-        eventlet.sleep(0.2)
+        time.sleep(0.2)
         msgs = second_client.get_received()
         
         # Should get error, not reactivation
@@ -1399,13 +1400,13 @@ class TestPlayerInteraction:
         try:
             from src.sockets.dashboard import force_clear_all_caches
             force_clear_all_caches()
-            eventlet.sleep(0.2)  # Allow time for cache clearing to take effect
+            time.sleep(0.2)  # Allow time for cache clearing to take effect
         except ImportError:
             try:
                 # Fallback to clear_team_caches if force_clear_all_caches not available
                 from src.sockets.dashboard import clear_team_caches
                 clear_team_caches()
-                eventlet.sleep(0.2)
+                time.sleep(0.2)
             except ImportError:
                 pass  # Function may not be available in test environment
 
@@ -1416,19 +1417,19 @@ class TestPlayerInteraction:
             from src.sockets.dashboard import force_clear_all_caches
             # Use force_clear_all_caches to completely clear throttling caches
             force_clear_all_caches()
-            eventlet.sleep(0.2)  # Allow time for cache clearing
+            time.sleep(0.2)  # Allow time for cache clearing
         except ImportError:
             try:
                 # Fallback to clear_team_caches if force_clear_all_caches not available
                 from src.sockets.dashboard import clear_team_caches
                 clear_team_caches()
-                eventlet.sleep(0.2)
+                time.sleep(0.2)
             except ImportError:
                 pass  # Function may not be available in test environment
         
         # Trigger dashboard update after clearing caches
         dashboard_client.emit('dashboard_join')
-        eventlet.sleep(0.5)  # Increased wait time for new throttling delays
+        time.sleep(0.5)  # Increased wait time for new throttling delays
 
     def check_dashboard_team_status(self, dashboard_client, team_name, expected_status, timeout=3.0):
         """Check dashboard for team status, forcing fresh updates if needed and retrying."""
@@ -1441,7 +1442,7 @@ class TestPlayerInteraction:
             else:
                 # First attempt - just trigger normal update
                 dashboard_client.emit('dashboard_join')
-                eventlet.sleep(0.5)  # Increased wait for new throttling delays
+                time.sleep(0.5)  # Increased wait for new throttling delays
             
             dash_msgs = dashboard_client.get_received()
             for msg in dash_msgs:
@@ -1452,7 +1453,7 @@ class TestPlayerInteraction:
                             return True
             
             if attempt < attempts - 1:
-                eventlet.sleep(0.8)  # Increased wait before retry due to throttling
+                time.sleep(0.8)  # Increased wait before retry due to throttling
         
         return False
 

@@ -51,8 +51,8 @@
                 <div class="metric-card">
                     <h3 id="game-control-text">Game Control</h3>
                     <div class="game-controls">
-                        <button id="start-game-btn" onclick="startGame()" style="border: 2px solid #4CAF50;">Start Game</button>
-                        <button id="pause-game-btn" onclick="togglePause()" style="border: 2px solid #FFC107;">Pause</button>
+                        <button id="start-game-btn" onclick="startGame()" style="border: 2px solid #4CAF50;" aria-label="Start game">Start Game</button>
+                        <button id="pause-game-btn" onclick="togglePause()" style="border: 2px solid #FFC107;" aria-label="Pause game">Pause</button>
                     </div>
                 </div>
             </div>
@@ -190,7 +190,7 @@
                         <div class="reset-description">
                             Reset all game statistics and remove inactive teams.
                         </div>
-                        <button id="reset-game-btn" onclick="handleResetGame()" class="control-btn reset-btn" style="display: none;">
+                        <button id="reset-game-btn" onclick="handleResetGame()" class="control-btn reset-btn" style="display: none;" aria-label="Reset game stats">
                             Reset Game Stats
                         </button>
                     </div>
@@ -204,7 +204,7 @@
                             <span>Current Mode: </span>
                             <span id="current-game-mode" class="mode-indicator">New</span>
                         </div>
-                        <button id="toggle-mode-btn" onclick="toggleGameMode()" class="control-btn mode-toggle-btn">
+                        <button id="toggle-mode-btn" onclick="toggleGameMode()" class="control-btn mode-toggle-btn" aria-label="Toggle game mode">
                             Switch to Classic Mode
                         </button>
                         <div class="mode-description">

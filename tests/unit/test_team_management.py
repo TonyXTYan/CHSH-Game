@@ -1235,12 +1235,122 @@ def test_track_disconnected_player_no_slot():
     
     # Mock team_info that will cause _get_player_slot_in_team to return None
     team_info = {'players': ['other_player']}  # test_sid not in players
-    
+
     with patch('src.sockets.team_management.state') as mock_state:
         mock_state.disconnected_players = {}
-        
+
         # Should not add to disconnected_players when slot is None
         _track_disconnected_player('test_team', 'test_sid', team_info)
-        
+
         # No disconnected player should be tracked
         assert 'test_team' not in mock_state.disconnected_players
+
+
+# ---------------------------------------------------------------------------
+# _validate_team_name
+# ---------------------------------------------------------------------------
+
+class TestValidateTeamName:
+    def setup_method(self):
+        from src.sockets.team_management import _validate_team_name
+        self.validate = _validate_team_name
+
+    def test_valid_simple(self):
+        ok, msg, name = self.validate('Alpha')
+        assert ok and name == 'Alpha'
+
+    def test_valid_with_allowed_specials(self):
+        ok, msg, name = self.validate('Team-A_(1)')
+        assert ok and name == 'Team-A_(1)'
+
+    def test_trims_whitespace(self):
+        ok, msg, name = self.validate('  Padded  ')
+        assert ok and name == 'Padded'
+
+    def test_empty_string(self):
+        ok, msg, name = self.validate('')
+        assert not ok
+        assert 'required' in msg
+
+    def test_whitespace_only(self):
+        ok, msg, name = self.validate('   ')
+        assert not ok
+        assert 'required' in msg
+
+    def test_non_string_dict(self):
+        ok, msg, name = self.validate({'x': 1})
+        assert not ok
+        assert 'required' in msg
+
+    def test_non_string_none(self):
+        ok, msg, name = self.validate(None)
+        assert not ok
+        assert 'required' in msg
+
+    def test_non_string_int(self):
+        ok, msg, name = self.validate(42)
+        assert not ok
+        assert 'required' in msg
+
+    def test_disallows_special_chars(self):
+        for bad in ['Team<1>', 'Name"here', "It's", 'slash/name', 'back\\slash']:
+            ok, msg, _ = self.validate(bad)
+            assert not ok, f"Expected rejection for: {bad}"
+            assert 'only contain' in msg
+
+    def test_max_length_exactly_50(self):
+        ok, msg, name = self.validate('A' * 50)
+        assert ok and len(name) == 50
+
+    def test_max_length_exceeded(self):
+        ok, msg, name = self.validate('A' * 51)
+        assert not ok
+        assert '50' in msg
+
+    def test_create_team_rejects_invalid_name(self, mock_request_context):
+        with patch('src.sockets.team_management.emit') as mock_emit:
+            from src.sockets.team_management import on_create_team
+            on_create_team({'team_name': 'Bad<Name>'})
+            mock_emit.assert_called_once_with(
+                'error',
+                {'message': 'Team name may only contain letters, numbers, spaces, and - _ ( )'}
+            )
+
+    def test_create_team_rejects_non_dict_data(self, mock_request_context):
+        with patch('src.sockets.team_management.emit') as mock_emit:
+            from src.sockets.team_management import on_create_team
+            on_create_team("not-a-dict")
+            mock_emit.assert_called_once_with(
+                'error',
+                {'message': 'Team name is required'}
+            )
+
+    def test_create_team_trims_and_accepts(self, mock_request_context):
+        with patch('src.sockets.team_management.emit') as mock_emit, \
+             patch('src.sockets.team_management.socketio.emit'), \
+             patch('src.sockets.dashboard.emit_dashboard_team_update'), \
+             patch('src.sockets.team_management.join_room'):
+            from src.sockets.team_management import on_create_team
+            on_create_team({'team_name': '  TrimMe  '})
+
+            # team_created should carry the trimmed name
+            mock_emit.assert_any_call(
+                'team_created',
+                {
+                    'team_name': 'TrimMe',
+                    'team_id': ANY,
+                    'message': 'Team created. Waiting for another player.',
+                    'game_started': ANY,
+                    'game_mode': ANY,
+                    'game_theme': ANY,
+                    'player_slot': 1,
+                }
+            )
+
+            # Cleanup
+            from src.config import db
+            from src.models.quiz_models import Teams
+            team = Teams.query.filter_by(team_name='TrimMe').first()
+            if team:
+                db.session.delete(team)
+                db.session.commit()

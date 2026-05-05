@@ -67,7 +67,7 @@ TODO
 - Best **CHSH 🏆** (non-local correlation):
   - If one player is asked **B** and the other is asked **Y**, they have to answer **differently** as much as possible, i.e. one True and one False.
   - For any other question pair, you have to give same response as much as possible.
-</details>
+  </details>
 
 <details>
 <summary>Winning Strategy (click to unfold)</summary>
@@ -165,7 +165,7 @@ $$
 \vert p \rangle = \frac{1}{\sqrt{2}} \big( \vert g \rangle + \vert r \rangle \big) 
 \text{ and }
 \vert c \rangle = \frac{1}{\sqrt{2}} \big( \vert g \rangle - \vert r \rangle \big)
-$$ 
+$$
 
 
 
@@ -228,6 +228,5 @@ The `chsh_load_test.py` script simulates many teams and players. See [`LOAD_TEST
 
 
 ## Acknowledgements
-- More than 99% of the code are AI generated, thanks to GitHub Copilot, ChatGPT, Cursor, Manus, DeepSeek, Antropic, Qwen and more. Probably, more than few billion tokens got burned up in generating this app. 
-
+- More than 99% of the code are AI generated, thanks to GitHub Copilot, OpenAI Codex, Cursor, Manus, DeepSeek, Claude Code, Qwen and more. Probably, billions of tokens have burned up in vibe coding this app. 
 

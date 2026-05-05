@@ -1,10 +1,11 @@
-# Testing
-pytest==8.3.3
+# Shared load-test and CLI tooling dependencies
+-r load_test/load_test_requirements.txt
+
+# Project test helpers
 pytest-cov==6.1.1
 pytest-mock==3.14.0
 requests==2.32.4
 beautifulsoup4==4.12.3
 
 # Development Tools
-mypy==1.16.1
 pyright==1.1.402 

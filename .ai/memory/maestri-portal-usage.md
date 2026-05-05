@@ -24,27 +24,30 @@ maestri portal evaluate "Portal" "js"     # JS fallback if click by ref fails
 
 ## Running a Full Game Test
 
+Use stable `evaluate` + `getElementById` for all critical actions (immune to positional ref shifts):
+
 ```bash
 # 1. Game-L creates a team
-maestri portal snapshot "Game-L"          # find @e1=input, @e2=Create Team
-maestri portal fill "Game-L" @e1 "TeamName"
-maestri portal click "Game-L" @e2
+maestri portal evaluate "Game-L" "document.getElementById('teamNameInput').value = 'TeamName'; 'ok'"
+maestri portal evaluate "Game-L" "document.getElementById('createTeamBtn').click(); 'ok'"
 
-# 2. Game-R joins the team (Join Team button appears once a team exists)
-maestri portal snapshot "Game-R"          # find @e3=Join Team
-maestri portal click "Game-R" @e3
+# 2. Game-R joins the team (join button appears after team list updates)
+# Use data-team-name attribute — exact team name, no transform, collision-free
+maestri portal evaluate "Game-R" "document.querySelector('.join-btn[data-team-name=\"TeamName\"]').click(); 'ok'"
 
 # 3. Start game from dashboard
-maestri portal evaluate "Game-Dashboard" "document.querySelector('button').click(); 'clicked'"
-# Note: direct click by ref often fails for the Start Game button; JS eval is reliable
+maestri portal evaluate "Game-Dashboard" "document.getElementById('start-game-btn').click(); 'ok'"
 
 # 4. Each round — check ingredients, then answer
 maestri portal screenshot "Game-L"        # see Player 1's ingredient
 maestri portal screenshot "Game-R"        # see Player 2's ingredient
-maestri portal click "Game-L" @e1        # CHOOSE
-maestri portal click "Game-R" @e2        # SKIP
-# Run both in parallel with: cmd & cmd & wait
+maestri portal evaluate "Game-L" "document.getElementById('trueBtn').click(); 'ok'" &
+maestri portal evaluate "Game-R" "document.getElementById('falseBtn').click(); 'ok'" &
+wait
+# trueBtn = Choose/True, falseBtn = Skip/False (text varies by theme, IDs are stable)
 ```
+
+If you do use `snapshot` for exploration, key interactive controls now have `aria-label` attributes, so refs are more human-readable (e.g. `@e3 [button] "Start game"`).
 
 ## CHSH Ingredient Mapping (Simplified Mode)
 
@@ -66,8 +69,8 @@ Player 1 (Game-L) gets A/B ingredients; Player 2 (Game-R) gets X/Y ingredients.
 
 ## Gotchas
 
-- `click` by ref (`@eN`) can fail if the DOM changed since `snapshot`; re-run `snapshot` to refresh refs.
-- The Start Game button ref click consistently fails — use `evaluate` with `document.querySelector('button').click()` instead.
+- `click` by ref (`@eN`) can fail if the DOM changed since `snapshot`; prefer `evaluate` + `getElementById` for reliability.
 - Parallelise independent clicks with `cmd & cmd & wait` to simulate simultaneous answers.
 - After clicking, `sleep 1` before the next screenshot to let the server respond.
+- Dynamic join/reactivate buttons are targeted via `data-team-name` attribute (exact team name, no transform): `querySelector('.join-btn[data-team-name="My Team"]')`.
 - Stats Sig shows an hourglass until enough rounds are played for significance.

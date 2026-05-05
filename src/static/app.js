@@ -375,6 +375,8 @@ function updateTeamsList(teams) {
             
             const joinButton = document.createElement('button');
             joinButton.className = 'join-btn';
+            joinButton.setAttribute('data-team-name', team.team_name);
+            joinButton.setAttribute('aria-label', 'Join team: ' + team.team_name);
             joinButton.textContent = 'Join Team';
             joinButton.onclick = (e) => {
                 e.stopPropagation();
@@ -401,6 +403,8 @@ function updateTeamsList(teams) {
             
             const reactivateButton = document.createElement('button');
             reactivateButton.className = 'reactivate-btn';
+            reactivateButton.setAttribute('data-team-name', team.team_name);
+            reactivateButton.setAttribute('aria-label', 'Reactivate and join: ' + team.team_name);
             reactivateButton.textContent = 'Reactivate & Join';
             reactivateButton.onclick = (e) => {
                 e.stopPropagation();
@@ -426,7 +430,15 @@ function createTeam() {
         showStatus('Please enter a team name', 'error');
         return;
     }
-    
+    if (!/^[a-zA-Z0-9 _\-()]+$/.test(teamName)) {
+        showStatus('Team name may only contain letters, numbers, spaces, and - _ ( )', 'error');
+        return;
+    }
+    if (teamName.length > 50) {
+        showStatus('Team name must be 50 characters or fewer', 'error');
+        return;
+    }
+
     socket.emit('create_team', { team_name: teamName });
     showStatus('Creating team...', 'info');
 }

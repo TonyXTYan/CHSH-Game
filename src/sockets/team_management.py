@@ -269,15 +269,33 @@ def handle_disconnect() -> None:
     except Exception as e:
         logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
+def _validate_team_name(team_name: Any) -> tuple[bool, str, str]:
+    """Validate and canonicalize team name."""
+    import re
+    if not isinstance(team_name, str):
+        return False, 'Team name is required', ''
+
+    normalized_name = team_name.strip()
+    if not normalized_name:
+        return False, 'Team name is required', ''
+    if not re.fullmatch(r'[a-zA-Z0-9 _\-()]+', normalized_name):
+        return False, 'Team name may only contain letters, numbers, spaces, and - _ ( )', ''
+    if len(normalized_name) > 50:
+        return False, 'Team name must be 50 characters or fewer', ''
+    return True, '', normalized_name
+
 @socketio.on('create_team')
 def on_create_team(data: Dict[str, Any]) -> None:
     try:
-        team_name = data.get('team_name')
+        raw_team_name = data.get('team_name') if isinstance(data, dict) else None
         sid = request.sid  # type: ignore
-        if not team_name:
-            emit('error', {'message': 'Team name is required'})  # type: ignore
+
+        # Validate team name format
+        is_valid, error_msg, team_name = _validate_team_name(raw_team_name)
+        if not is_valid:
+            emit('error', {'message': error_msg})  # type: ignore
             return
-            
+
         # Check if team name already exists as active team
         if team_name in state.active_teams or Teams.query.filter_by(team_name=team_name, is_active=True).first():
             emit('error', {'message': 'Team name already exists or is active'})  # type: ignore

@@ -32,9 +32,9 @@
             <div id="createTeamSection">
                 <h3>Create a New Team</h3>
                 <div class="form-group">
-                    <input type="text" id="teamNameInput" placeholder="Enter Team Name">
+                    <input type="text" id="teamNameInput" placeholder="Enter Team Name" aria-label="Team name" maxlength="50">
                 </div>
-                <button id="createTeamBtn">Create Team</button>
+                <button id="createTeamBtn" aria-label="Create team">Create Team</button>
             </div>
             
             <!-- Join Team Section -->
@@ -63,8 +63,8 @@
             <div class="question-container">
                 <div class="question"><span id="questionItem"></span></div>
                 <div class="answer-buttons">
-                    <button id="trueBtn" class="answer-button true-button">True</button>
-                    <button id="falseBtn" class="answer-button false-button">False</button>
+                    <button id="trueBtn" class="answer-button true-button" aria-label="Answer true">True</button>
+                    <button id="falseBtn" class="answer-button false-button" aria-label="Answer false">False</button>
                 </div>
             </div>
             <div id="waitingMessage" class="status-message info">

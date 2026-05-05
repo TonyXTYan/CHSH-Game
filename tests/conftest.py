@@ -15,6 +15,10 @@ from typing import Optional, IO, Any
 # Add the project root to the path so we can import modules
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 
+# Prevent eventlet.monkey_patch() from running in the test process.
+# src/config.py checks this flag; it must be set before any src imports.
+os.environ.setdefault('TESTING', '1')
+
 # Global variable to track server process
 _server_process = None
 
@@ -108,15 +112,19 @@ def flask_server(pytestconfig, request):
         yield None
         return
     
-    # Start the server using gunicorn with eventlet worker
+    # Start the server using gunicorn with eventlet worker.
+    # TESTING is stripped from the subprocess env so src/config.py
+    # applies eventlet.monkey_patch() as normal inside the server process.
+    # Use the absolute path to gunicorn so this works with or without an activated venv.
+    server_env = {k: v for k, v in os.environ.items() if k != 'TESTING'}
+    gunicorn_bin = os.path.join(os.path.dirname(sys.executable), 'gunicorn')
     server_cmd = [
-        'gunicorn', 
+        gunicorn_bin,
         'wsgi:app',
         '--worker-class', 'eventlet',
         '--bind', '0.0.0.0:8080',
         '--timeout', '30',
-        '--preload',
-        '--log-level', 'info'
+        '--log-level', 'info',
     ]
     
     output_queue: queue.Queue = queue.Queue()
@@ -127,6 +135,7 @@ def flask_server(pytestconfig, request):
         print("Starting Flask server for integration tests...")
         _server_process = subprocess.Popen(
             server_cmd,
+            env=server_env,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             preexec_fn=os.setsid  # Create new process group

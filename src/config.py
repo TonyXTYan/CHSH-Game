@@ -1,6 +1,9 @@
 import os
-import eventlet
-eventlet.monkey_patch()
+
+_testing = os.environ.get('TESTING', '').lower() not in ('', '0', 'false', 'no')
+if not _testing:
+    import eventlet
+    eventlet.monkey_patch()
 
 from flask import Flask
 from flask_socketio import SocketIO
@@ -18,7 +21,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = database_url or 'sqlite:///' + os.path.j
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
-socketio = SocketIO(app, cors_allowed_origins="*", async_mode='eventlet', ping_timeout=30, ping_interval=5)
+# Use threading mode in tests so SocketIOTestClient works without an eventlet hub.
+_async_mode = 'threading' if _testing else 'eventlet'
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode=_async_mode, ping_timeout=30, ping_interval=5)
 
 # Import routes to register them
 from src.routes import static

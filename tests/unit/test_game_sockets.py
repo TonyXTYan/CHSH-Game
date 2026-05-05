@@ -1,7 +1,4 @@
 import pytest
-import eventlet
-eventlet.monkey_patch()
-
 from unittest.mock import MagicMock, patch, ANY
 from datetime import datetime
 from flask import request
