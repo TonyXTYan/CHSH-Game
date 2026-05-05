@@ -187,6 +187,29 @@ gunicorn wsgi:app --worker-class eventlet --bind 0.0.0.0:8080
 Visit [http://localhost:8080/](http://localhost:8080/) for the player view, and [http://localhost:8080/dashboard](http://localhost:8080/dashboard) for the dashboard.
 Feel free to change the port number `8080` in the command above.
 
+**Deploying to Fly.io:**
+
+Prerequisites: install the [Fly CLI](https://fly.io/docs/getting-started/installing-flyctl/).
+
+Login to Fly (first time only):
+```bash
+fly auth login
+```
+
+Deploy from the repo root:
+```bash
+fly deploy
+```
+
+Check deployment status:
+```bash
+fly status
+fly logs          # View live logs
+fly open          # Open the app in your browser
+```
+
+The `fly.toml` is configured to scale to zero after 1 hour of inactivity. For always-on hosting, set `min_machines_running = 1` in `fly.toml`.
+
 **Deploying to Render.com:**  
 Start command:  
 ```bash
