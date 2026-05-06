@@ -76,7 +76,7 @@ Backend stack: Flask + Flask-SocketIO + Eventlet + SQLAlchemy.
 
 ## Key Behaviour
 
-- Supported modes: `simplified` (default), `classic`, `aqmjoe`.
+- Supported modes: `aqmjoe` (default), `simplified`, `classic`.
 - Legacy mode value `'new'` is normalized to `'simplified'`.
 - In `simplified` mode, player 1 gets A/B items and player 2 gets X/Y items; other modes allow all combinations.
 - Some dashboard functions are imported inside function bodies in `src/sockets/game.py` to avoid circular imports.

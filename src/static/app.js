@@ -8,8 +8,8 @@ let lastClickedButton = null;
 let sessionId = null;
 let teamId = null;
 let currentTeamStatus = null; // Track current team status
-let currentGameMode = 'simplified'; // Track current game mode
-let currentGameTheme = 'food'; // Track current game theme
+let currentGameMode = 'aqmjoe'; // Track current game mode
+let currentGameTheme = 'aqmjoe'; // Track current game theme
 let playerPosition = null; // Track player position (1 or 2)
 let lastRoundResults = null; // Track last round results for display
 
@@ -23,6 +23,7 @@ const availableTeams = document.getElementById('availableTeams');
 const inactiveTeams = document.getElementById('inactiveTeams');
 const gameHeader = document.getElementById('gameHeader');
 const questionItem = document.getElementById('questionItem');
+const questionContainer = document.getElementById('questionContainer');
 const trueBtn = document.getElementById('trueBtn');
 const falseBtn = document.getElementById('falseBtn');
 const waitingMessage = document.getElementById('waitingMessage');
@@ -87,6 +88,22 @@ function updateButtonText() {
         trueBtn.textContent = 'True';
         falseBtn.textContent = 'False';
     }
+    updateAnswerAccessibilityLabels();
+}
+
+function updateQuestionAccessibilityLabel(questionText) {
+    if (!questionContainer) {
+        return;
+    }
+    const text = (questionText || '').trim();
+    questionContainer.setAttribute('aria-label', text ? `Question: ${text}` : 'Question');
+}
+
+function updateAnswerAccessibilityLabels() {
+    const trueText = (trueBtn.textContent || 'True').trim();
+    const falseText = (falseBtn.textContent || 'False').trim();
+    trueBtn.setAttribute('aria-label', `Answer option: ${trueText}`);
+    falseBtn.setAttribute('aria-label', `Answer option: ${falseText}`);
 }
 
 // Update game mode (only log to console, don't show in UI)
@@ -177,12 +194,12 @@ function resetToInitialView() {
     teamId = null;
     currentTeamStatus = null; // Reset team status
     playerPosition = null; // Reset player position
-    currentGameMode = 'simplified'; // Reset to simplified mode
-    currentGameTheme = 'food'; // Reset to food theme
+    currentGameMode = 'aqmjoe'; // Reset to default mode
+    currentGameTheme = 'aqmjoe'; // Reset to default theme
     localStorage.removeItem('quizSessionData');
     updatePlayerPosition(null);
-    updateGameMode('simplified');
-    updateGameTheme('food');
+    updateGameMode('aqmjoe');
+    updateGameTheme('aqmjoe');
     updateGameState(); // This will show team creation/joining
     showStatus('Disconnected, try refreshing the page.', 'info');
 }
@@ -225,6 +242,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         if (window.themeManager && currentRound.item) {
             const themedItem = window.themeManager.getItemDisplay(currentRound.item);
             questionItem.textContent = themedItem;
+            updateQuestionAccessibilityLabel(themedItem);
             
             // Apply theme colors
             const questionDiv = questionItem.closest('.question');
@@ -239,6 +257,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         } else {
             // Fallback to raw item
             questionItem.textContent = currentRound.item;
+            updateQuestionAccessibilityLabel(currentRound.item);
             updateButtonText();
         }
         
@@ -284,6 +303,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         teamSection.style.display = 'none';
         questionSection.style.display = 'block';
         questionItem.textContent = "...";
+        updateQuestionAccessibilityLabel("...");
         
         // Apply theme colors even for placeholder
         if (window.themeManager) {
@@ -326,6 +346,7 @@ function resetGameControls() {
     falseBtn.disabled = false;
     waitingMessage.classList.remove('visible');
     questionItem.textContent = '';
+    updateQuestionAccessibilityLabel('');
     currentRound = null;
     
     // Apply default theme styling
@@ -687,6 +708,7 @@ const callbacks = {
         if (window.themeManager && data.item) {
             const themedItem = window.themeManager.getItemDisplay(data.item);
             questionItem.textContent = themedItem;
+            updateQuestionAccessibilityLabel(themedItem);
             
             // Apply theme colors
             const questionDiv = questionItem.closest('.question');
@@ -701,6 +723,7 @@ const callbacks = {
         } else {
             // Fallback to raw item
             questionItem.textContent = data.item;
+            updateQuestionAccessibilityLabel(data.item);
             updateButtonText();
         }
         
@@ -766,6 +789,10 @@ initializeSocketHandlers(socket, callbacks);
 createTeamBtn.addEventListener('click', createTeam);
 trueBtn.addEventListener('click', () => submitAnswer(true));
 falseBtn.addEventListener('click', () => submitAnswer(false));
+
+// Initial accessibility labels for participant controls.
+updateQuestionAccessibilityLabel(questionItem.textContent || '');
+updateAnswerAccessibilityLabels();
 
 // Initialize all collapsible sections
 document.addEventListener('DOMContentLoaded', function() {

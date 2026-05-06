@@ -23,6 +23,8 @@ def test_app_state_initialization():
     
     assert isinstance(state.team_id_to_name, dict)
     assert len(state.team_id_to_name) == 0
+    assert state.game_mode == 'aqmjoe'
+    assert state.game_theme == 'aqmjoe'
 
 def test_app_state_reset():
     """Test that AppState.reset() properly clears all state"""
@@ -50,6 +52,8 @@ def test_app_state_reset():
     assert len(state.connected_players) == 0
     assert state.game_paused is False
     assert len(state.team_id_to_name) == 0
+    assert state.game_mode == 'aqmjoe'
+    assert state.game_theme == 'aqmjoe'
 
 def test_app_state_team_tracking():
     """Test adding and removing teams from state"""

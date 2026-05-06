@@ -84,6 +84,9 @@ def _reactivate_team_internal(team_name: str, sid: str) -> bool:
         # Reactivate the team
         team.is_active = True
         team.player1_session_id = sid
+        # Clear any stale second-player session from previous runs.
+        # The next join should always claim this slot deterministically.
+        team.player2_session_id = None
         db.session.commit()
         # Clear caches after team state change
         _, _, clear_team_caches, _, _ = _import_dashboard_functions()
@@ -410,10 +413,23 @@ def on_join_team(data: Dict[str, Any]) -> None:
         db_team = db.session.get(Teams, team_info['team_id'])
         assigned_slot = None
         if db_team:
-            if not db_team.player1_session_id:
+            # Preserve explicit reconnections first.
+            if db_team.player1_session_id == sid:
+                assigned_slot = 1
+            elif db_team.player2_session_id == sid:
+                assigned_slot = 2
+            elif not db_team.player1_session_id:
                 db_team.player1_session_id = sid
                 assigned_slot = 1
             elif not db_team.player2_session_id:
+                db_team.player2_session_id = sid
+                assigned_slot = 2
+            elif db_team.player1_session_id not in state.connected_players:
+                # Reclaim stale/disconnected slot to avoid blocking round dispatch.
+                db_team.player1_session_id = sid
+                assigned_slot = 1
+            elif db_team.player2_session_id not in state.connected_players:
+                # Reclaim stale/disconnected slot to avoid blocking round dispatch.
                 db_team.player2_session_id = sid
                 assigned_slot = 2
             db_team.is_active = True

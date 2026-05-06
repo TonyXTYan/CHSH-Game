@@ -271,8 +271,8 @@ const THEMES = {
 // Theme utility functions
 class ThemeManager {
     constructor() {
-        this.currentTheme = 'food';
-        this.currentMode = 'simplified';
+        this.currentTheme = 'aqmjoe';
+        this.currentMode = 'aqmjoe';
     }
     
     setTheme(themeName) {

@@ -61,7 +61,9 @@
         <!-- Question Section (Initially Hidden) -->
         <div id="questionSection" class="hidden">
             <div class="question-container">
-                <div class="question"><span id="questionItem"></span></div>
+                <div class="question" id="questionContainer" role="status" aria-live="polite" aria-atomic="true">
+                    <span id="questionItem"></span>
+                </div>
                 <div class="answer-buttons">
                     <button id="trueBtn" class="answer-button true-button" aria-label="Answer true">True</button>
                     <button id="falseBtn" class="answer-button false-button" aria-label="Answer false">False</button>

@@ -13,10 +13,10 @@ document.addEventListener('change', (event) => {
 });
 
 // Game mode state
-let currentGameMode = 'simplified';
+let currentGameMode = 'aqmjoe';
 
 // Theme state  
-let currentGameTheme = 'food';
+let currentGameTheme = 'aqmjoe';
 
 // Handle page visibility changes
 document.addEventListener('visibilitychange', () => {
@@ -84,11 +84,11 @@ function updateGameModeDisplay(mode) {
     const modeDescription = document.getElementById('mode-description-text');
     
     // Add CSS class to body to control column visibility
-    document.body.className = document.body.className.replace(/\b(classic|new)-mode\b/g, '');
+    document.body.className = document.body.className.replace(/\b(classic|simplified|aqmjoe|new)-mode\b/g, '');
     document.body.classList.add(`${mode}-mode`);
     
     if (modeIndicator) {
-        modeIndicator.textContent = mode.charAt(0).toUpperCase() + mode.slice(1);
+        modeIndicator.textContent = mode === 'aqmjoe' ? 'AQM Joe' : mode.charAt(0).toUpperCase() + mode.slice(1);
         modeIndicator.className = `mode-indicator ${mode}`;
     }
     
@@ -148,7 +148,7 @@ function updateGameThemeDisplay(theme, skipDropdownUpdate = false) {
     const themeDescription = document.getElementById('theme-description-text');
     
     if (themeIndicator) {
-        themeIndicator.textContent = theme.charAt(0).toUpperCase() + theme.slice(1);
+        themeIndicator.textContent = theme === 'aqmjoe' ? 'AQM Joe' : theme.charAt(0).toUpperCase() + theme.slice(1);
     }
     
     if (themeDropdown && !skipDropdownUpdate) {
@@ -160,6 +160,10 @@ function updateGameThemeDisplay(theme, skipDropdownUpdate = false) {
             themeDescription.innerHTML = `
                 <strong>Food Ingredients Theme:</strong> Questions use cooking ingredients (🍞 Bread, 🥟 Dumplings, 🥬 Lettuce, 🍫 Chocolate). 
                 Game rules are themed around cooking and recipe coordination.
+            `;
+        } else if (theme === 'aqmjoe') {
+            themeDescription.innerHTML = `
+                <strong>AQM Joe Theme:</strong> For color questions (A/B), answer Green/Red; for food questions (X/Y), answer Peas/Carrots.
             `;
         } else {
             themeDescription.innerHTML = `
