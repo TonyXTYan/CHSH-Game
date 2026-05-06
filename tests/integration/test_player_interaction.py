@@ -233,7 +233,7 @@ class TestPlayerInteraction:
         
         # Create team
         socket_client.emit('create_team', {'team_name': 'TestTeam'})
-        time.sleep(0.2)  # Use eventlet sleep instead of time.sleep
+        time.sleep(0.2)  # Allow SocketIO test client handlers to process.
 
         # Get all messages since team creation
         messages = socket_client.get_received()
@@ -257,7 +257,7 @@ class TestPlayerInteraction:
         # Setup and create team with first client
         self.verify_connection(socket_client)
         socket_client.emit('create_team', {'team_name': 'TeamToJoin'})
-        time.sleep(0.2)  # Use eventlet sleep
+        time.sleep(0.2)  # Allow SocketIO test client handlers to process.
         socket_client.get_received()  # Clear messages
 
         # Connect second client and join team
@@ -265,7 +265,7 @@ class TestPlayerInteraction:
         second_client.get_received()  # Clear connection messages
         
         second_client.emit('join_team', {'team_name': 'TeamToJoin'})
-        time.sleep(0.2)  # Use eventlet sleep
+        time.sleep(0.2)  # Allow SocketIO test client handlers to process.
 
         # Get all messages since team join
         p2_messages = second_client.get_received()
@@ -328,7 +328,7 @@ class TestPlayerInteraction:
             'item': 'X',  # Use valid ItemEnum value
             'answer': True
         })
-        time.sleep(0.2)  # Use eventlet sleep
+        time.sleep(0.2)  # Allow SocketIO test client handlers to process.
         
         # Get all messages since answer submission
         messages = socket_client.get_received()
@@ -1456,5 +1456,4 @@ class TestPlayerInteraction:
                 time.sleep(0.8)  # Increased wait before retry due to throttling
         
         return False
-
 
