@@ -8,7 +8,7 @@ from src.models.quiz_models import Teams, PairQuestionRounds, Answers
 from src.game_logic import start_new_round_for_pair
 import logging
 import time
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -272,7 +272,7 @@ def handle_disconnect() -> None:
     except Exception as e:
         logger.error(f"Disconnect handler error: {str(e)}", exc_info=True)
 
-def _validate_team_name(team_name: Any) -> tuple[bool, str, str]:
+def _validate_team_name(team_name: Any) -> Tuple[bool, str, str]:
     """Validate and canonicalize team name."""
     import re
     if not isinstance(team_name, str):
