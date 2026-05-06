@@ -1,13 +1,19 @@
 import pytest
 import tempfile
 import os
+import random
 from unittest.mock import patch, MagicMock
 
 from src.config import app, db
 from src.state import state
 from src.models.quiz_models import Teams, PairQuestionRounds, Answers, ItemEnum
-from src.game_logic import start_new_round_for_pair
-from src.sockets.dashboard import compute_success_metrics, on_set_theme_and_mode, on_change_game_theme
+from src.game_logic import TARGET_COMBO_REPEATS, start_new_round_for_pair
+from src.sockets.dashboard import (
+    _process_single_team,
+    compute_success_metrics,
+    on_set_theme_and_mode,
+    on_change_game_theme,
+)
 
 
 class TestAQMJoeIntegration:
@@ -115,6 +121,108 @@ class TestAQMJoeIntegration:
             # Validate Food–Food both Peas counted as failure
             assert pair_counts.get(('X', 'Y')) == 1
             assert success_counts.get(('X', 'Y'), 0) == 0
+
+    def test_aqmjoe_perfect_team_beats_seeded_random_team_after_stats_sig(self):
+        state.game_mode = 'aqmjoe'
+        item_values = [ItemEnum.A, ItemEnum.B, ItemEnum.X, ItemEnum.Y]
+        all_combos = [(p1_item, p2_item) for p1_item in item_values for p2_item in item_values]
+        combo_tracker = {
+            (p1_item.value, p2_item.value): TARGET_COMBO_REPEATS
+            for p1_item, p2_item in all_combos
+        }
+
+        def create_team(team_name, p1_sid, p2_sid):
+            team = Teams(team_name=team_name, is_active=True)
+            team.player1_session_id = p1_sid
+            team.player2_session_id = p2_sid
+            db.session.add(team)
+            db.session.flush()
+            state.active_teams[team_name] = {
+                'team_id': team.team_id,
+                'players': [p1_sid, p2_sid],
+                'current_round_number': len(all_combos) * TARGET_COMBO_REPEATS,
+                'combo_tracker': dict(combo_tracker),
+                'current_db_round_id': None,
+                'answered_current_round': {},
+                'player_slots': {p1_sid: 1, p2_sid: 2},
+                'status': 'active',
+            }
+            return team
+
+        def add_round(team, round_no, p1_item, p2_item, p1_answer, p2_answer):
+            rnd = PairQuestionRounds(
+                team_id=team.team_id,
+                round_number_for_team=round_no,
+                player1_item=p1_item,
+                player2_item=p2_item,
+            )
+            db.session.add(rnd)
+            db.session.flush()
+            db.session.add(Answers(
+                team_id=team.team_id,
+                question_round_id=rnd.round_id,
+                player_session_id=team.player1_session_id,
+                assigned_item=p1_item,
+                response_value=p1_answer,
+            ))
+            db.session.add(Answers(
+                team_id=team.team_id,
+                question_round_id=rnd.round_id,
+                player_session_id=team.player2_session_id,
+                assigned_item=p2_item,
+                response_value=p2_answer,
+            ))
+
+        with app.app_context():
+            perfect_team = create_team('perfect_team', 'perfect_p1', 'perfect_p2')
+            random_team = create_team('random_team', 'random_p1', 'random_p2')
+            rng = random.Random(20260506)
+
+            round_no = 0
+            for _ in range(TARGET_COMBO_REPEATS):
+                for p1_item, p2_item in all_combos:
+                    round_no += 1
+                    # False/False is Red/Carrots, which satisfies every AQM Joe pair.
+                    add_round(perfect_team, round_no, p1_item, p2_item, False, False)
+                    add_round(
+                        random_team,
+                        round_no,
+                        p1_item,
+                        p2_item,
+                        rng.choice([True, False]),
+                        rng.choice([True, False]),
+                    )
+            db.session.commit()
+
+            _process_single_team.cache_clear()
+            perfect_data = _process_single_team(
+                perfect_team.team_id, 'perfect_team', True, '2026-05-06', round_no,
+                perfect_team.player1_session_id, perfect_team.player2_session_id,
+            )
+            _process_single_team.cache_clear()
+            random_data = _process_single_team(
+                random_team.team_id, 'random_team', True, '2026-05-06', round_no,
+                random_team.player1_session_id, random_team.player2_session_id,
+            )
+
+        assert perfect_data is not None
+        assert random_data is not None
+        assert perfect_data['min_stats_sig'] is True
+        assert random_data['min_stats_sig'] is True
+        assert perfect_data['correlation_stats'] == perfect_data['new_stats']
+        assert random_data['correlation_stats'] == random_data['new_stats']
+
+        perfect_rate = perfect_data['new_stats']['trace_average_statistic']
+        random_rate = random_data['new_stats']['trace_average_statistic']
+        assert perfect_rate == 1.0
+        assert 0.0 <= random_rate < perfect_rate
+
+        eligible_teams = [perfect_data, random_data]
+        trophy_team = max(
+            eligible_teams,
+            key=lambda team: team['new_stats']['trace_average_statistic'],
+        )
+        assert trophy_team['team_name'] == 'perfect_team'
 
     def test_theme_mode_linking_and_alias_handling(self):
         # Real socket path for on_change_game_theme (linking enforced)

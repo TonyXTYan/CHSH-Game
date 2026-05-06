@@ -202,6 +202,19 @@ def _make_cache_key(*args, **kwargs) -> str:
         key_parts.append(f"{k}={repr(v)}")
     return f"({', '.join(key_parts)})"
 
+def is_success_mode(mode: Optional[str]) -> bool:
+    """Return whether a dashboard mode should display success-rate statistics."""
+    return mode in ('simplified', 'aqmjoe', 'new')
+
+def _get_min_stats_sig_combos(mode: Optional[str]) -> List[Tuple[str, str]]:
+    """Return the ordered item pairs required for dashboard statistical significance."""
+    if mode in ('simplified', 'new'):
+        player1_items = [ItemEnum.A, ItemEnum.B]
+        player2_items = [ItemEnum.X, ItemEnum.Y]
+        return [(i1.value, i2.value) for i1 in player1_items for i2 in player2_items]
+
+    return [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
+
 def selective_cache(cache_instance: SelectiveCache):
     """
     Decorator for selective caching that supports team-specific invalidation.
@@ -371,7 +384,7 @@ def on_toggle_game_mode() -> None:
 
         # Do not mutate theme here; IFF linking is handled via set_theme_and_mode and theme change handler
         
-        # Clear caches to recalculate with new mode - use force clear since mode affects all calculations
+        # Clear caches to recalculate mode-specific metrics.
         force_clear_all_caches()
         
         # Notify all clients (players and dashboards) about the mode change
@@ -556,7 +569,7 @@ def compute_team_hashes(team_name: str) -> Tuple[str, str]:
 @selective_cache(_success_cache)
 def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
     """
-    Compute success metrics for new mode instead of correlation matrix.
+    Compute success metrics for success-rate dashboard modes instead of correlation matrix.
     Returns success rate matrix, overall success metrics, and individual player balance data.
     """
     try:
@@ -634,7 +647,7 @@ def compute_success_metrics(team_name: str) -> Tuple[List[List[Tuple[int, int]]]
             player_responses[p1_item]['true' if p1_answer else 'false'] += 1
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
-            # Apply success rules for new mode
+            # Apply success rules for success-rate dashboard modes
             # Success Rule: {B,Y} combinations require different answers; all others require same answers
             is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
             players_answered_differently = p1_answer != p2_answer
@@ -991,7 +1004,7 @@ def _calculate_team_statistics(team_name: str) -> Dict[str, Optional[float]]:
 
 @selective_cache(_new_stats_cache)
 def _calculate_success_statistics(team_name: str) -> Dict[str, Optional[float]]:
-    """Calculate success statistics for new mode from success metrics for the given team."""
+    """Calculate success statistics for success-rate dashboard modes from success metrics."""
     try:
         # Get success metrics data for this team
         success_result = compute_success_metrics(team_name)
@@ -1047,7 +1060,7 @@ def _calculate_success_statistics(team_name: str) -> Dict[str, Optional[float]]:
             cross_term_avg = 0.0
             cross_term_uncertainty = None
             
-        # Calculate individual player balance for NEW mode
+        # Calculate individual player balance for success-rate dashboard modes
         # Balance measures how evenly each player distributes True/False answers for their question types
         individual_balances = []
         
@@ -1231,7 +1244,7 @@ def _compute_correlation_matrix_optimized(team_id: int, team_rounds: List[Any], 
                 ['A', 'B', 'X', 'Y'], 0.0, {}, {}, {}, {})
 
 def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], team_answers: List[Any], team_obj: Any = None) -> Tuple[List[List[Tuple[int, int]]], List[str], float, float, Dict[Tuple[str, str], int], Dict[Tuple[str, str], int], Dict[str, Dict[str, int]]]:
-    """Compute success metrics for new mode using pre-fetched rounds and answers data."""
+    """Compute success metrics for success-rate dashboard modes using pre-fetched data."""
     try:
         # Use pre-fetched team data to avoid N+1 queries
         if team_obj is None:
@@ -1302,7 +1315,7 @@ def _compute_success_metrics_optimized(team_id: int, team_rounds: List[Any], tea
             player_responses[p1_item]['true' if p1_answer else 'false'] += 1
             player_responses[p2_item]['true' if p2_answer else 'false'] += 1
                 
-            # Apply success rules for new mode
+            # Apply success rules for success-rate dashboard modes
             # Success Rule: {B,Y} combinations require different answers; all others require same answers
             is_by_combination = (p1_item == 'B' and p2_item == 'Y') or (p1_item == 'Y' and p2_item == 'B')
             players_answered_differently = p1_answer != p2_answer
@@ -1474,7 +1487,7 @@ def _calculate_team_statistics_from_data(correlation_result: Tuple) -> Dict[str,
         }
 
 def _calculate_success_statistics_from_data(success_result: Tuple) -> Dict[str, Optional[float]]:
-    """Calculate success statistics for new mode from pre-computed success metrics data."""
+    """Calculate success statistics for success-rate dashboard modes from pre-computed data."""
     try:
         (success_matrix_tuples, item_values, overall_success_rate, normalized_cumulative_score, 
          success_counts, pair_counts, player_responses) = success_result
@@ -1523,7 +1536,7 @@ def _calculate_success_statistics_from_data(success_result: Tuple) -> Dict[str, 
             cross_term_avg = 0.0
             cross_term_uncertainty = None
             
-        # Calculate individual player balance for NEW mode
+        # Calculate individual player balance for success-rate dashboard modes
         individual_balances = []
         
         for item, responses in player_responses.items():
@@ -1579,16 +1592,7 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
         # For active teams, check game progress
         team_info = state.active_teams.get(team_name)
         
-        # Mode-specific combo calculation for min_stats_sig
-        if state.game_mode == 'new':
-            # New mode: Only A,B x X,Y combinations are possible (Player 1: A/B, Player 2: X/Y)
-            player1_items = [ItemEnum.A, ItemEnum.B]
-            player2_items = [ItemEnum.X, ItemEnum.Y]
-            all_combos = [(i1.value, i2.value) for i1 in player1_items for i2 in player2_items]
-        else:
-            # Classic mode: All combinations possible
-            all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
-            
+        all_combos = _get_min_stats_sig_combos(state.game_mode)
         combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
         effective_combo_repeats = get_effective_combo_repeats(state.game_mode)
         min_stats_sig = all(combo_tracker.get(combo, 0) >= effective_combo_repeats
@@ -1617,7 +1621,7 @@ def _process_single_team_optimized(team_id: int, team_name: str, is_active: bool
         new_stats = _calculate_success_statistics_from_data(success_result)
         
         # Determine which matrix and stats to use for the main display based on game mode
-        if state.game_mode == 'new':
+        if is_success_mode(state.game_mode):
             display_matrix = success_matrix_tuples
             display_labels = success_item_values
             display_stats = new_stats
@@ -1669,16 +1673,7 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         # For active teams, check game progress
         team_info = state.active_teams.get(team_name)
         
-        # Mode-specific combo calculation for min_stats_sig
-        if state.game_mode == 'new':
-            # New mode: Only A,B x X,Y combinations are possible (Player 1: A/B, Player 2: X/Y)
-            player1_items = [ItemEnum.A, ItemEnum.B]
-            player2_items = [ItemEnum.X, ItemEnum.Y]
-            all_combos = [(i1.value, i2.value) for i1 in player1_items for i2 in player2_items]
-        else:
-            # Classic mode: All combinations possible
-            all_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
-            
+        all_combos = _get_min_stats_sig_combos(state.game_mode)
         combo_tracker = team_info.get('combo_tracker', {}) if team_info else {}
         effective_combo_repeats = get_effective_combo_repeats(state.game_mode)
         min_stats_sig = all(combo_tracker.get(combo, 0) >= effective_combo_repeats
@@ -1706,7 +1701,7 @@ def _process_single_team(team_id: int, team_name: str, is_active: bool, created_
         new_stats = _calculate_success_statistics(team_name)
         
         # Determine which matrix and stats to use for the main display based on game mode
-        if state.game_mode == 'new':
+        if is_success_mode(state.game_mode):
             display_matrix = success_matrix_tuples
             display_labels = success_item_values
             display_stats = new_stats

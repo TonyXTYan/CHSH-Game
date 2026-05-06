@@ -34,7 +34,7 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 
 
 ### New! v2
-The game now supports three modes:
+The game defaults to **AQM Joe Mode** and supports three modes:
 - **Classic Mode** Standard CHSH Bell Test game in the style of how physics experiments are done.
 - **Simplified Mode** Implementation of the CHSH game where player 1 only need to answer A/B questions, and player 2 only need to answer X/Y questions. 
 - **AQM Joe Mode** Each player is asked about their favourite color or food.
@@ -59,15 +59,19 @@ TODO
     - ***No communication*** is allowed during the game! 
 
 **Winning condition:**
-- Highest **balanced ⏐⟨Tr⟩⏐ 🎯** (consistency):
-  - If both players are asked the same question (A/A, B/B, X/X, or Y/Y), they should give the **same** answer. 
-    - Trace/4 = ⟨Tr⟩ = ±1 if partners always agree, and 0 if players always disagrees.
-    - Balance = 1 if answers to each question is True/False about 50:50 of the time, and 0 if always the same.
+- In **Classic Mode**, the dashboard awards CHSH/correlation trophies:
+    - Highest **balanced ⏐⟨Tr⟩⏐ 🎯** (consistency): if both players are asked the same question (A/A, B/B, X/X, or Y/Y), they should give the **same** answer.
+    - Trace/4 = ⟨Tr⟩ = ±1 if partners always agree, and 0 if players always disagree.
+    - Balance = 1 if answers to each question are True/False about 50:50 of the time, and 0 if always the same.
     - Balanced |⟨Tr⟩| = 0.5 * (balance + |⟨Tr⟩|); higher is better.
-- Best **CHSH 🏆** (non-local correlation):
-  - If one player is asked **B** and the other is asked **Y**, they have to answer **differently** as much as possible, i.e. one True and one False.
-  - For any other question pair, you have to give same response as much as possible.
-  </details>
+    - Best **CHSH 🏆** (non-local correlation): if one player is asked **B** and the other is asked **Y**, they should answer **differently** as much as possible; for any other question pair, they should give the same response as much as possible.
+- In **Simplified Mode** and **AQM Joe Mode**, the dashboard awards the success-rate **🏆** after Stats Sig eligibility is reached. Stats Sig means the required question-pair coverage has been reached, not merely that many rounds have been played.
+- In **AQM Joe Mode**, all 16 ordered item pairs are sampled, so a 30-round demo may still show the hourglass and no trophy before full Stats Sig eligibility.
+</details>
+
+Dashboard notes:
+- Teams progress independently; different teams can be on different round numbers.
+- The **Connected Players** count includes dashboard socket clients as well as player clients.
 
 <details>
 <summary>Winning Strategy (click to unfold)</summary>
@@ -229,4 +233,3 @@ The `chsh_load_test.py` script simulates many teams and players. See [`LOAD_TEST
 
 ## Acknowledgements
 - More than 99% of the code are AI generated, thanks to GitHub Copilot, OpenAI Codex, Cursor, Manus, DeepSeek, Claude Code, Qwen and more. Probably, billions of tokens have burned up in vibe coding this app. 
-

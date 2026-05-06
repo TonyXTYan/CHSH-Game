@@ -79,6 +79,11 @@ Backend stack: Flask + Flask-SocketIO + Eventlet + SQLAlchemy.
 - Supported modes: `aqmjoe` (default), `simplified`, `classic`.
 - Legacy mode value `'new'` is normalized to `'simplified'`.
 - In `simplified` mode, player 1 gets A/B items and player 2 gets X/Y items; other modes allow all combinations.
+- In `classic` mode, the dashboard's main statistics are CHSH/correlation metrics. In `simplified` and `aqmjoe`, the main statistics are success-rate metrics.
+- `Stats Sig` is a combo-coverage eligibility gate for dashboard awards, not just a high round count. `simplified` requires the four ordered A/B x X/Y pairs with doubled repeats; `aqmjoe` and `classic` require all 16 ordered A/B/X/Y pairs.
+- AQM Joe is the default mode. A short demo, such as 30 rounds, may still be ineligible for the trophy because AQM Joe samples all 16 ordered item pairs.
+- Teams progress independently. Different teams can intentionally be on different round numbers.
+- `Connected Players` currently counts all connected Socket.IO clients recorded in `state.connected_players`, including dashboard socket clients.
 - Some dashboard functions are imported inside function bodies in `src/sockets/game.py` to avoid circular imports.
 - CHSH calculations use the `uncertainties` package (`ufloat`) for error propagation.
 

@@ -3,7 +3,12 @@ Test dynamic statistics functionality for dashboard mode switching.
 """
 import pytest
 from unittest.mock import patch, MagicMock
-from src.sockets.dashboard import _process_single_team, _calculate_team_statistics, _calculate_success_statistics
+from src.sockets.dashboard import (
+    _process_single_team,
+    _process_single_team_optimized,
+    _calculate_team_statistics,
+    _calculate_success_statistics,
+)
 from src.models.quiz_models import ItemEnum
 from src.game_logic import QUESTION_ITEMS, TARGET_COMBO_REPEATS
 
@@ -116,9 +121,10 @@ class TestDynamicStatistics:
             assert result['classic_stats']['trace_average_statistic'] == 0.6
             assert result['new_stats']['trace_average_statistic'] == 0.75
 
-    def test_new_mode_team_processing(self, mock_state, mock_compute_functions):
-        """Test that new mode returns appropriate data structure."""
-        mock_state.game_mode = 'new'
+    @pytest.mark.parametrize('mode', ['simplified', 'aqmjoe', 'new'])
+    def test_success_rate_mode_team_processing(self, mock_state, mock_compute_functions, mode):
+        """Test that success-rate modes return success stats for the main dashboard display."""
+        mock_state.game_mode = mode
         
         with patch('src.sockets.dashboard._calculate_team_statistics') as mock_calc_classic, \
              patch('src.sockets.dashboard._calculate_success_statistics') as mock_calc_success:
@@ -141,10 +147,10 @@ class TestDynamicStatistics:
                 'same_item_balance_uncertainty': 0.06
             }
             
-            result = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
+            result = _process_single_team(1, f'TestTeam-{mode}', True, '2023-01-01', 5, 'p1', 'p2')
             
             assert result is not None
-            assert result['game_mode'] == 'new'
+            assert result['game_mode'] == mode
             
             # Should have both classic and new stats
             assert 'classic_stats' in result
@@ -152,12 +158,113 @@ class TestDynamicStatistics:
             assert 'classic_matrix' in result
             assert 'new_matrix' in result
             
-            # Display should use new stats (correlation_stats points to new)
+            # Display should use success-rate stats
             assert result['correlation_stats'] == mock_calc_success.return_value
             
             # Verify both stats are included
             assert result['classic_stats']['trace_average_statistic'] == 0.6
             assert result['new_stats']['trace_average_statistic'] == 0.75
+            assert result['correlation_matrix'] == mock_compute_functions[2].return_value[0]
+
+    @pytest.mark.parametrize('mode', ['classic', 'simplified', 'aqmjoe', 'new'])
+    def test_optimized_team_processing_uses_mode_appropriate_display_stats(self, mock_state, mode):
+        """Test that optimized team processing uses classic stats only for classic mode."""
+        mock_state.game_mode = mode
+        mock_state.active_teams = {
+            'OptimizedTeam': {
+                'players': ['p1', 'p2'],
+                'combo_tracker': {},
+                'status': 'active',
+            }
+        }
+
+        classic_matrix = [[('classic', 1)]]
+        success_matrix = [[('success', 1)]]
+        classic_stats = {'trace_average_statistic': 0.6}
+        success_stats = {'trace_average_statistic': 0.75}
+
+        with patch('src.sockets.dashboard._compute_team_hashes_optimized', return_value=('hash1', 'hash2')), \
+             patch('src.sockets.dashboard._compute_correlation_matrix_optimized') as mock_corr, \
+             patch('src.sockets.dashboard._compute_success_metrics_optimized') as mock_success, \
+             patch('src.sockets.dashboard._calculate_team_statistics_from_data', return_value=classic_stats), \
+             patch('src.sockets.dashboard._calculate_success_statistics_from_data', return_value=success_stats):
+
+            mock_corr.return_value = (
+                classic_matrix,
+                ['A', 'B', 'X', 'Y'],
+                0.8,
+                {},
+                {},
+                {},
+                {},
+            )
+            mock_success.return_value = (
+                success_matrix,
+                ['A', 'B', 'X', 'Y'],
+                0.75,
+                0.5,
+                {},
+                {},
+                {},
+            )
+
+            result = _process_single_team_optimized(
+                1,
+                'OptimizedTeam',
+                True,
+                '2023-01-01',
+                5,
+                'p1',
+                'p2',
+                [],
+                [],
+                MagicMock(player1_session_id='p1', player2_session_id='p2'),
+            )
+
+        assert result is not None
+        if mode == 'classic':
+            assert result['correlation_stats'] == classic_stats
+            assert result['correlation_matrix'] == classic_matrix
+        else:
+            assert result['correlation_stats'] == success_stats
+            assert result['correlation_matrix'] == success_matrix
+
+    def test_min_stats_sig_combo_coverage_by_mode(self, mock_state, mock_compute_functions):
+        """Test Stats Sig coverage: simplified uses four ordered pairs; AQM Joe uses all sixteen."""
+        simplified_repeats = TARGET_COMBO_REPEATS * 2
+        aqmjoe_repeats = TARGET_COMBO_REPEATS
+        simplified_combos = [('A', 'X'), ('A', 'Y'), ('B', 'X'), ('B', 'Y')]
+        all_ordered_combos = [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
+
+        mock_state.active_teams = {
+            'CoverageTeam': {
+                'players': ['p1', 'p2'],
+                'combo_tracker': {combo: simplified_repeats for combo in simplified_combos},
+                'status': 'active',
+            }
+        }
+
+        with patch('src.sockets.dashboard._calculate_team_statistics', return_value={}), \
+             patch('src.sockets.dashboard._calculate_success_statistics', return_value={}):
+            mock_state.game_mode = 'simplified'
+            simplified_result = _process_single_team(1, 'CoverageTeam', True, '2023-01-01', 5, 'p1', 'p2')
+
+            _process_single_team.cache_clear()
+            mock_state.game_mode = 'aqmjoe'
+            aqmjoe_result_before = _process_single_team(1, 'CoverageTeam', True, '2023-01-01', 5, 'p1', 'p2')
+
+            mock_state.active_teams['CoverageTeam']['combo_tracker'] = {
+                combo: aqmjoe_repeats for combo in all_ordered_combos
+            }
+            _process_single_team.cache_clear()
+            aqmjoe_result_after = _process_single_team(1, 'CoverageTeam', True, '2023-01-01', 5, 'p1', 'p2')
+
+        assert simplified_result is not None
+        assert aqmjoe_result_before is not None
+        assert aqmjoe_result_after is not None
+        assert simplified_result['min_stats_sig'] is True
+        assert aqmjoe_result_before['min_stats_sig'] is False
+        assert aqmjoe_result_after['min_stats_sig'] is True
 
     def test_success_statistics_calculation(self):
         """Test that success statistics are calculated correctly."""
@@ -188,7 +295,7 @@ class TestDynamicStatistics:
         assert result['chsh_value_statistic'] == 0.5     # normalized_cumulative_score
 
     def test_both_computations_called(self, mock_state, mock_compute_functions):
-        """Test that both classic and new computations are called regardless of mode."""
+        """Test that both classic and success-rate computations are called regardless of mode."""
         mock_state.game_mode = 'classic'
         
         with patch('src.sockets.dashboard._calculate_team_statistics') as mock_calc_classic, \
@@ -220,7 +327,7 @@ class TestDynamicStatistics:
             mock_state.game_mode = 'classic'
             result_classic = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
             
-            # Test new mode
+            # Test a success-rate mode
             mock_state.game_mode = 'new'
             result_new = _process_single_team(1, 'TestTeam', True, '2023-01-01', 5, 'p1', 'p2')
             
@@ -236,9 +343,9 @@ class TestDynamicStatistics:
                 assert 'correlation_stats' in result  # Current display stats
                 assert 'correlation_matrix' in result  # Current display matrix
 
-    def test_new_mode_individual_balance_calculation(self):
-        """Test that NEW mode correctly calculates individual player balance instead of same-question balance."""
-        # Mock success data with realistic player responses for NEW mode
+    def test_success_rate_mode_individual_balance_calculation(self):
+        """Test that success-rate modes calculate individual player balance instead of same-question balance."""
+        # Mock success data with realistic player responses for success-rate modes
         # Player 1 gets A,B questions; Player 2 gets X,Y questions
         success_data = (
             [[(8, 10), (7, 10), (6, 10), (5, 10)] for _ in range(4)],  # success_matrix_tuples
@@ -280,7 +387,7 @@ class TestDynamicStatistics:
         assert result['same_item_balance_uncertainty'] is not None
 
     def test_compute_success_metrics_tracks_individual_responses(self):
-        """Test that compute_success_metrics properly tracks individual player responses for NEW mode."""
+        """Test that compute_success_metrics properly tracks individual player responses for success-rate modes."""
         from unittest.mock import MagicMock
         from src.sockets.dashboard import compute_success_metrics
         from src.models.quiz_models import PairQuestionRounds, Answers, ItemEnum
@@ -298,7 +405,7 @@ class TestDynamicStatistics:
             mock_teams_query.filter_by.return_value.first.return_value = mock_team
             mock_teams_model.query = mock_teams_query
             
-            # Mock rounds data - NEW mode pattern (Player 1: A,B; Player 2: X,Y)
+            # Mock rounds data - simplified mode pattern (Player 1: A,B; Player 2: X,Y)
             mock_round_1 = MagicMock()
             mock_round_1.round_id = 1
             mock_round_1.player1_item = MagicMock()
@@ -377,9 +484,9 @@ class TestDynamicStatistics:
             assert player_responses['Y']['true'] == 1
             assert player_responses['Y']['false'] == 0
 
-    def test_new_mode_dashboard_display_logic(self):
-        """Test that NEW mode dashboard shows only success rate and awards only 🏆 based on success rate."""
-        # Mock teams data for NEW mode
+    def test_success_rate_mode_dashboard_display_logic(self):
+        """Test that success-rate modes show only success rate and award only 🏆 based on success rate."""
+        # Mock teams data for a success-rate mode
         teams_data = [
             {
                 'team_id': 1,
@@ -416,14 +523,14 @@ class TestDynamicStatistics:
             }
         ]
         
-        # Simulate award calculation logic from dashboard.js for NEW mode
-        highestBalancedTrTeamId = None  # Should be None in NEW mode (no 🎯 award)
+        # Simulate award calculation logic from dashboard.js for success-rate modes
+        highestBalancedTrTeamId = None  # Should be None in success-rate modes (no 🎯 award)
         highestChshTeamId = None
         maxChshValue = -float('inf')
         
         eligible_teams = [team for team in teams_data if team['min_stats_sig']]
         
-        # NEW mode award logic: only 🏆 based on success rate
+        # Success-rate mode award logic: only 🏆 based on success rate
         for team in eligible_teams:
             stats = team['new_stats']
             success_rate = stats['trace_average_statistic']
@@ -431,16 +538,16 @@ class TestDynamicStatistics:
                 maxChshValue = success_rate
                 highestChshTeamId = team['team_id']
         
-        # Verify award logic for NEW mode
-        assert highestBalancedTrTeamId is None, "NEW mode should not award 🎯"
+        # Verify award logic for success-rate modes
+        assert highestBalancedTrTeamId is None, "Success-rate modes should not award 🎯"
         assert highestChshTeamId == 1, "Team1 should get 🏆 for highest success rate (85%)"
         assert maxChshValue == 0.85, "Max value should be Team1's success rate"
         
         # Verify that Team3 (not eligible) doesn't get award despite higher success rate
         assert highestChshTeamId != 3, "Ineligible teams should not receive awards"
         
-        # Test table header logic for NEW mode
-        current_game_mode = 'new'
+        # Test table header logic for a success-rate mode
+        current_game_mode = 'aqmjoe'
         
         # Simulate header update logic
         header_config = {}
@@ -452,7 +559,7 @@ class TestDynamicStatistics:
                 'header4': 'CHSH Value 🏆',
                 'columns_visible': [True, True, True, True]
             }
-        else:  # new mode
+        else:  # success-rate modes
             header_config = {
                 'header1': 'Success Rate % 🏆',
                 'header2': 'Response Balance',
@@ -461,13 +568,13 @@ class TestDynamicStatistics:
                 'columns_visible': [True, False, False, False]  # Only first column visible
             }
         
-        # Verify NEW mode header configuration
+        # Verify success-rate mode header configuration
         assert header_config['header1'] == 'Success Rate % 🏆'
         assert header_config['columns_visible'] == [True, False, False, False]
         
-        # Verify that only success rate column is visible in NEW mode
+        # Verify that only success rate column is visible in success-rate modes
         visible_columns = sum(header_config['columns_visible'])
-        assert visible_columns == 1, "NEW mode should only show 1 column (Success Rate %)"
+        assert visible_columns == 1, "Success-rate modes should only show 1 column (Success Rate %)"
         
         # Test that awards string formation works correctly
         def get_awards_string(team_id, highest_balanced_tr_id, highest_chsh_id):
@@ -487,14 +594,14 @@ class TestDynamicStatistics:
         assert team2_awards == "", "Team2 should get no awards"
         assert team3_awards == "", "Team3 should get no awards (not eligible)"
         
-        # Verify no 🎯 awards in NEW mode
+        # Verify no 🎯 awards in success-rate modes
         for team_data in teams_data:
             team_awards = get_awards_string(team_data['team_id'], highestBalancedTrTeamId, highestChshTeamId)
-            assert "🎯" not in team_awards, f"Team {team_data['team_id']} should not have 🎯 award in NEW mode"
+            assert "🎯" not in team_awards, f"Team {team_data['team_id']} should not have 🎯 award in success-rate modes"
 
-    def test_dashboard_success_rate_sorting_new_mode(self):
-        """Test that NEW mode dashboard sorting by success rate works correctly."""
-        # Mock teams data for NEW mode with different success rates
+    def test_dashboard_success_rate_sorting_success_rate_mode(self):
+        """Test that success-rate mode dashboard sorting by success rate works correctly."""
+        # Mock teams data for a success-rate mode with different success rates
         teams_data = [
             {
                 'team_id': 1,
@@ -664,7 +771,7 @@ class TestDynamicStatistics:
         assert actual_order == expected_order, f"Expected {expected_order}, got {actual_order}"
 
     def test_dashboard_success_rate_sorting_mode_aware_behavior(self):
-        """Test that sorting behavior changes correctly between NEW and CLASSIC modes."""
+        """Test that sorting behavior changes correctly between success-rate and CLASSIC modes."""
         # Mock teams data with both new and classic stats
         teams_data = [
             {
@@ -693,7 +800,7 @@ class TestDynamicStatistics:
             }
         ]
         
-        # Test NEW mode sorting (by success rate)
+        # Test success-rate mode sorting (by success rate)
         def get_new_mode_sort_value(team):
             if team.get('new_stats') and team['new_stats']:
                 return team['new_stats'].get('trace_average_statistic', -1)
@@ -702,8 +809,8 @@ class TestDynamicStatistics:
         new_mode_sorted = sorted(teams_data, key=get_new_mode_sort_value, reverse=True)
         new_mode_order = [team['team_name'] for team in new_mode_sorted]
         
-        # In NEW mode: Team_Alpha (0.95) should come before Team_Beta (0.65)
-        assert new_mode_order == ['Team_Alpha', 'Team_Beta'], f"NEW mode sort failed: {new_mode_order}"
+        # In success-rate modes: Team_Alpha (0.95) should come before Team_Beta (0.65)
+        assert new_mode_order == ['Team_Alpha', 'Team_Beta'], f"Success-rate mode sort failed: {new_mode_order}"
         
         # Test CLASSIC mode sorting (by CHSH value)
         def get_classic_mode_sort_value(team):
@@ -735,4 +842,4 @@ class TestDynamicStatistics:
         
         # Test case insensitivity and edge cases
         assert get_dropdown_text('NEW') == 'Sort by Success Rate'  # Different case
-        assert get_dropdown_text('unknown') == 'Sort by Success Rate'  # Default to new mode
+        assert get_dropdown_text('unknown') == 'Sort by Success Rate'  # Default to success-rate behaviour
