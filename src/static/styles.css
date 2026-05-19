@@ -298,6 +298,35 @@ button:disabled {
     opacity: 1;
 }
 
+.in-game-role-hint {
+    margin: -4px 0 8px;
+    font-size: 13px;
+    text-align: center;
+    color: #546e7a;
+}
+
+#waitingMessage.partner-waiting::after {
+    content: "";
+    display: inline-block;
+    width: 12px;
+    height: 12px;
+    margin-left: 8px;
+    vertical-align: -1px;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 50%;
+    animation: waiting-spinner 0.8s linear infinite;
+}
+
+@keyframes waiting-spinner {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 .hidden {
     display: none;
 }

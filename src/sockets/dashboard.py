@@ -17,7 +17,21 @@ import io
 import logging
 import threading
 from datetime import datetime
-from typing import Dict, List, Tuple, Any, Optional, Union, Set
+from typing import (
+    Any,
+    Callable,
+    Dict,
+    List,
+    Optional,
+    Protocol,
+    Set,
+    Tuple,
+    TypeVar,
+    TypedDict,
+    Union,
+    cast,
+)
+from typing_extensions import ParamSpec
 from flask import request
 from contextlib import contextmanager
 import weakref
@@ -52,8 +66,20 @@ _cached_teams_is_stale = False  # NEW: Track if cached data is stale but still u
 # Global throttling state for dashboard update functions with differentiated timing
 _last_team_update_time = 0
 _last_full_update_time = 0
-_cached_team_metrics: Optional[Dict[str, int]] = None
-_cached_full_metrics: Optional[Dict[str, int]] = None
+
+
+class TeamMetricsCache(TypedDict):
+    cached_teams: List[Dict[str, Any]]
+    active_teams_count: int
+    ready_players_count: int
+
+
+class FullMetricsCache(TeamMetricsCache):
+    total_answers: int
+
+
+_cached_team_metrics: Optional[TeamMetricsCache] = None
+_cached_full_metrics: Optional[FullMetricsCache] = None
 _cached_team_metrics_is_stale = False  # NEW: Track staleness for team metrics
 _cached_full_metrics_is_stale = False  # NEW: Track staleness for full metrics
 
@@ -193,6 +219,16 @@ _classic_stats_cache = SelectiveCache()
 _new_stats_cache = SelectiveCache()
 _team_process_cache = SelectiveCache()
 
+P = ParamSpec("P")
+R = TypeVar("R")
+
+
+class SelectiveCachedCallable(Protocol[P, R]):
+    def __call__(self, *args: P.args, **kwargs: P.kwargs) -> R: ...
+    def cache_clear(self) -> None: ...
+    def cache_invalidate_team(self, team_name: str) -> int: ...
+    def cache_info(self) -> str: ...
+
 def _make_cache_key(*args, **kwargs) -> str:
     """Create a consistent cache key from function arguments."""
     key_parts = []
@@ -215,12 +251,14 @@ def _get_min_stats_sig_combos(mode: Optional[str]) -> List[Tuple[str, str]]:
 
     return [(i1.value, i2.value) for i1 in QUESTION_ITEMS for i2 in QUESTION_ITEMS]
 
-def selective_cache(cache_instance: SelectiveCache):
+def selective_cache(
+    cache_instance: SelectiveCache,
+) -> Callable[[Callable[P, R]], SelectiveCachedCallable[P, R]]:
     """
     Decorator for selective caching that supports team-specific invalidation.
     """
-    def decorator(func):
-        def wrapper(*args, **kwargs):
+    def decorator(func: Callable[P, R]) -> SelectiveCachedCallable[P, R]:
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
             cache_key = _make_cache_key(*args, **kwargs)
             
             # Try to get from cache
@@ -234,11 +272,11 @@ def selective_cache(cache_instance: SelectiveCache):
             return result
         
         # Add cache management methods to function
-        wrapper.cache_clear = cache_instance.clear_all
-        wrapper.cache_invalidate_team = cache_instance.invalidate_by_team
-        wrapper.cache_info = lambda: f"Cache entries: {len(cache_instance._cache)}"
+        wrapper.cache_clear = cache_instance.clear_all  # type: ignore[attr-defined]
+        wrapper.cache_invalidate_team = cache_instance.invalidate_by_team  # type: ignore[attr-defined]
+        wrapper.cache_info = lambda: f"Cache entries: {len(cache_instance._cache)}"  # type: ignore[attr-defined]
         
-        return wrapper
+        return cast(SelectiveCachedCallable[P, R], wrapper)
     return decorator
 
 # --- END SELECTIVE CACHE SYSTEM ---
@@ -1023,14 +1061,11 @@ def _calculate_success_statistics(team_name: str) -> Dict[str, Optional[float]]:
         else:
             success_rate_uncertainty = None
             
-        # Replace chsh_value_statistic with normalized_cumulative_score  
-        if normalized_cumulative_score is not None:
-            total_rounds = sum(pair_counts.values())
-            if total_rounds > 0:
-                # Uncertainty for normalized score based on binomial distribution
-                score_uncertainty = 2 / math.sqrt(total_rounds)  # Conservative estimate
-            else:
-                score_uncertainty = None
+        # Replace chsh_value_statistic with normalized_cumulative_score
+        total_rounds = sum(pair_counts.values())
+        if total_rounds > 0:
+            # Uncertainty for normalized score based on binomial distribution
+            score_uncertainty = 2 / math.sqrt(total_rounds)  # Conservative estimate
         else:
             score_uncertainty = None
             
@@ -1804,8 +1839,8 @@ def get_all_teams() -> List[Dict[str, Any]]:
         ).order_by(Answers.team_id, Answers.timestamp).all()
         
         # Group data by team_id for efficient lookup
-        rounds_by_team = {}
-        answers_by_team = {}
+        rounds_by_team: Dict[int, List[PairQuestionRounds]] = {}
+        answers_by_team: Dict[int, List[Answers]] = {}
         
         for round_obj in all_rounds:
             if round_obj.team_id not in rounds_by_team:

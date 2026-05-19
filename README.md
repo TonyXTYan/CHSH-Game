@@ -24,7 +24,7 @@ Teams of two players answer random A/B/X/Y questions while a host dashboard trac
 
 
 - Live demo: 
-    - ⚠️ As of May 2025, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire internet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
+    - ⚠️ As of May 2026, this game is hosted on the free[\*](https://community.fly.io/t/clarification-on-fly-ios-free-tier-and-billing-policy/20909/4)[^](https://fly.io/docs/about/pricing/) tier on [fly.io](https://fly.io) (Sydney server) and it only supports one game instance at a time across the entire internet. If you wish to host your own game or development, you can simply fork this repo and deploy your own instance. 
     - ⚠️ If you spot a live game is going on, please don't interrupt it! You can fork this repo and deployed within minutes for free on e.g. [render.com](https://render.com) or [fly.io](https://fly.io), which I have an instance hosted there too that you can freely play with.
     - Host: [chsh-game.***fly.dev***/dashboard](https://chsh-game.fly.dev/dashboard) ([chsh-game.***onrender.com***/dashboard](https://chsh-game.onrender.com/dashboard))
     - Player: [chsh-game.***fly.dev***](https://chsh-game.fly.dev) ([chsh-game.***fly.dev***](https://chsh-game.fly.dev))
@@ -227,9 +227,33 @@ gunicorn wsgi:app --worker-class eventlet --workers 4 --bind 0.0.0.0:8080
 ```
 
 
+## Testing
+
+Install dev dependencies first (once):
+```bash
+pip install -r requirements-dev.txt
+```
+
+| Command | What it runs |
+|---|---|
+| `pytest --cov=src --cov-branch --cov-report=xml tests/` | Full suite with branch coverage (matches CI) |
+| `pytest tests/unit/` | Unit tests only — no server required, fast |
+| `pytest tests/integration/` | Integration tests — spawns a gunicorn server on port 8080 |
+| `pytest tests/unit/test_game_logic.py -v` | Single file, verbose output |
+
+The `conftest.py` session fixture starts a real gunicorn process automatically when integration tests are collected, and tears it down afterwards. Set `TESTING=1` in your environment to suppress eventlet monkey-patching in the test process (the fixture does this by default).
+
+Type checking (non-blocking, matches CI):
+```bash
+mypy src
+pyright src
+```
+
+CI runs the full suite on Python 3.11 on every push to `main`/`master` and on all pull requests ([`.github/workflows/python-tests.yml`](.github/workflows/python-tests.yml)).
+
 ## Load Testing
 The `chsh_load_test.py` script simulates many teams and players. See [`LOAD_TEST_README.md`](load_test/LOAD_TEST_README.md) for more details.
 
 
 ## Acknowledgements
-- More than 99% of the code are AI generated, thanks to GitHub Copilot, OpenAI Codex, Cursor, Manus, DeepSeek, Claude Code, Qwen and more. Probably, billions of tokens have burned up in vibe coding this app. 
+- Over 99% of the code was AI generated, vibe coded, thanks to GitHub Copilot, OpenAI Codex, Cursor, Manus, DeepSeek, Claude Code, Qwen and more. Billions maybe trillions of tokens have burned up in vibe coding this app. 

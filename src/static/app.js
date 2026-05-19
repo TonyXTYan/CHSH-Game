@@ -30,6 +30,7 @@ const waitingMessage = document.getElementById('waitingMessage');
 const sessionInfo = document.getElementById('sessionInfo');
 const connectionStatus = document.getElementById('connectionStatus');
 const playerResponsibilityMessage = document.getElementById('playerResponsibilityMessage');
+const inGameRoleHint = document.getElementById('inGameRoleHint');
 
 // Connection status handling
 function updateConnectionStatus(status) {
@@ -71,6 +72,7 @@ function updatePlayerPosition(position) {
     playerPosition = position;
     updateGameHeader();
     updatePlayerResponsibilityMessage();
+    updateInGameRoleHint();
 }
 
 // Update button text based on current theme
@@ -106,6 +108,17 @@ function updateAnswerAccessibilityLabels() {
     falseBtn.setAttribute('aria-label', `Answer option: ${falseText}`);
 }
 
+function setWaitingMessage({ text = '', html = '', visible = false, partnerWaiting = false } = {}) {
+    if (html) {
+        waitingMessage.innerHTML = html;
+    } else {
+        waitingMessage.textContent = text;
+    }
+
+    waitingMessage.classList.toggle('visible', visible);
+    waitingMessage.classList.toggle('partner-waiting', visible && partnerWaiting);
+}
+
 // Update game mode (only log to console, don't show in UI)
 function updateGameMode(mode) {
     currentGameMode = mode;
@@ -117,6 +130,7 @@ function updateGameMode(mode) {
     }
     
     updatePlayerResponsibilityMessage();
+    updateInGameRoleHint();
 }
 
 // Update game theme
@@ -130,6 +144,7 @@ function updateGameTheme(theme) {
     }
     
     updatePlayerResponsibilityMessage();
+    updateInGameRoleHint();
     updateButtonText();
 }
 
@@ -142,6 +157,45 @@ function updateGameHeader() {
     } else {
         gameHeader.textContent = 'CHSH Game';
     }
+}
+
+function getInGameRoleHint() {
+    if (!currentTeam || !playerPosition) {
+        return '';
+    }
+
+    const effectiveMode = currentGameMode === 'new' ? 'simplified' : currentGameMode;
+
+    if (effectiveMode === 'simplified') {
+        if (playerPosition === 1) {
+            return 'Role hint: you answer Colour questions (A/B).';
+        }
+        if (playerPosition === 2) {
+            return 'Role hint: you answer Food questions (X/Y).';
+        }
+    }
+
+    return 'Role hint: you may get Colour or Food in this mode.';
+}
+
+function updateInGameRoleHint() {
+    if (!inGameRoleHint) {
+        return;
+    }
+
+    if (!currentTeam || !playerPosition || !gameStarted) {
+        inGameRoleHint.style.display = 'none';
+        return;
+    }
+
+    const hint = getInGameRoleHint();
+    if (!hint) {
+        inGameRoleHint.style.display = 'none';
+        return;
+    }
+
+    inGameRoleHint.textContent = hint;
+    inGameRoleHint.style.display = 'block';
 }
 
 // Update player responsibility message based on mode and position
@@ -219,7 +273,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         lastClickedButton = null;  // Reset on game reset
         trueBtn.disabled = false;
         falseBtn.disabled = false;
-        waitingMessage.classList.remove('visible');
+        setWaitingMessage({ visible: false });
         questionItem.textContent = '';
     }
 
@@ -227,6 +281,7 @@ function updateGameState(newGameStarted = null, isReset = false) {
         teamSection.style.display = 'block';
         questionSection.style.display = 'none';
         updatePlayerResponsibilityMessage();
+        updateInGameRoleHint();
         return;
     }
     
@@ -269,32 +324,28 @@ function updateGameState(newGameStarted = null, isReset = false) {
             // Show last round results if available (graceful fallback for null data)
             const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
             if (lastRoundMessage) {
-                waitingMessage.innerHTML = lastRoundMessage;
+                setWaitingMessage({ html: lastRoundMessage, visible: true });
             } else {
-                waitingMessage.textContent = "Waiting for next round...";
+                setWaitingMessage({ text: "Waiting for next round...", visible: true });
             }
-            waitingMessage.classList.add('visible');
         } else if (teamIncomplete) {
             // Team is incomplete - disable input
             trueBtn.disabled = true;
             falseBtn.disabled = true;
-            waitingMessage.textContent = "Waiting for teammate to reconnect...";
-            waitingMessage.classList.add('visible');
+            setWaitingMessage({ text: "Waiting for teammate to reconnect...", visible: true });
         } else {
             trueBtn.disabled = gamePaused;
             falseBtn.disabled = gamePaused;
-            waitingMessage.classList.remove('visible');
+            setWaitingMessage({ visible: false });
             if (gamePaused) {
-                waitingMessage.textContent = "Game is paused";
-                waitingMessage.classList.add('visible');
+                setWaitingMessage({ text: "Game is paused", visible: true });
             } else {
                 // Show last round results if available (graceful fallback for null data)
                 const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
                 if (lastRoundMessage) {
-                    waitingMessage.innerHTML = lastRoundMessage;
-                    waitingMessage.classList.add('visible');
+                    setWaitingMessage({ html: lastRoundMessage, visible: true });
                 } else {
-                    waitingMessage.textContent = "Waiting for next round...";
+                    setWaitingMessage({ text: "Waiting for next round..." });
                 }
             }
         }
@@ -320,12 +371,11 @@ function updateGameState(newGameStarted = null, isReset = false) {
             // Team is incomplete - disable input and show appropriate message
             trueBtn.disabled = true;
             falseBtn.disabled = true;
-            waitingMessage.textContent = "Waiting for teammate to reconnect...";
-            waitingMessage.classList.add('visible');
+            setWaitingMessage({ text: "Waiting for teammate to reconnect...", visible: true });
         } else {
             trueBtn.disabled = true;
             falseBtn.disabled = true;
-            waitingMessage.classList.remove('visible');
+            setWaitingMessage({ visible: false });
         }
     } else {
         // In team but game not started
@@ -338,13 +388,14 @@ function updateGameState(newGameStarted = null, isReset = false) {
     
     // Update responsibility message visibility based on current state
     updatePlayerResponsibilityMessage();
+    updateInGameRoleHint();
 }
 
 // Reset all game controls to their initial state
 function resetGameControls() {
     trueBtn.disabled = false;
     falseBtn.disabled = false;
-    waitingMessage.classList.remove('visible');
+    setWaitingMessage({ visible: false });
     questionItem.textContent = '';
     updateQuestionAccessibilityLabel('');
     currentRound = null;
@@ -485,9 +536,12 @@ function submitAnswer(answer) {
     
     trueBtn.disabled = true;
     falseBtn.disabled = true;
-    waitingMessage.textContent = "Waiting for partner to answer...";
-    waitingMessage.classList.add('visible');
-    showStatus(`Round ${currentRound.round_number} answer received`, 'success');
+    setWaitingMessage({
+        text: "Answer locked. Waiting for your teammate...",
+        visible: true,
+        partnerWaiting: true
+    });
+    showStatus(`Answer submitted for Round ${currentRound.round_number}`, 'success');
 }
 
 // Update team status header text
@@ -536,18 +590,19 @@ function setAnswerButtonsEnabled(enabled) {
     }
     
     if (gamePaused) {
-        waitingMessage.textContent = "Game is paused";
-        waitingMessage.classList.add('visible');
+        setWaitingMessage({ text: "Game is paused", visible: true });
     } else {
         // Show last round results if available (graceful fallback for null data)
         const lastRoundMessage = generateLastRoundMessage(lastRoundResults, currentGameTheme, playerPosition);
         if (lastRoundMessage && currentRound?.alreadyAnswered) {
-            waitingMessage.innerHTML = lastRoundMessage;
-            waitingMessage.classList.add('visible');
+            setWaitingMessage({ html: lastRoundMessage, visible: true });
         } else {
-            waitingMessage.textContent = "Waiting for next round...";
+            setWaitingMessage({
+                text: "Waiting for next round...",
+                visible: Boolean(currentRound?.alreadyAnswered)
+            });
             if (!currentRound?.alreadyAnswered) {
-                waitingMessage.classList.remove('visible');
+                setWaitingMessage({ visible: false });
             }
         }
     }
@@ -733,7 +788,16 @@ const callbacks = {
 
     onAnswerConfirmed: (data) => {
         if (currentRound) currentRound.alreadyAnswered = true;
-        showStatus(data.message, 'success');
+        setWaitingMessage({
+            text: "Answer locked. Waiting for your teammate...",
+            visible: true,
+            partnerWaiting: true
+        });
+        if (currentRound?.round_number) {
+            showStatus(`Answer submitted for Round ${currentRound.round_number}`, 'success');
+        } else {
+            showStatus(data.message, 'success');
+        }
     },
 
     onTeamDisbanded: (data) => {
@@ -908,7 +972,7 @@ function generateLastRoundMessage(lastRound, theme, playerPos) {
         // Evaluate the result
         const result = evaluateFoodResult(p1Item, p2Item, p1Answer, p2Answer);
         
-        return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and decisions was <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
+        return `Last round: <b>${p1Display}/${p2Display}</b> | <b>${p1Decision}/${p2Decision}</b> | <b>${result}</b>`;
     } else if (theme === 'aqmjoe') {
         // Use AQM Joe mapping
         const p1Display = window.themeManager ? window.themeManager.getItemDisplay(p1Item) : p1Item;
@@ -920,13 +984,13 @@ function generateLastRoundMessage(lastRound, theme, playerPos) {
         const p1Decision = label(p1Item, p1Answer);
         const p2Decision = label(p2Item, p2Answer);
         const ok = evaluateAqmJoeResult(p1Item, p2Item, p1Answer, p2Answer);
-        const result = ok ? 'good ✅' : 'bad ❌';
-        return `Last round, your team (P1/P2) were asked <b>${p1Display}/${p2Display}</b> and answered <b>${p1Decision}/${p2Decision}</b>, that was <b>${result}</b>`;
+        const result = ok ? 'Success ✅' : 'Miss ❌';
+        return `Last round: <b>${p1Display}/${p2Display}</b> | <b>${p1Decision}/${p2Decision}</b> | <b>${result}</b>`;
     } else {
         // Classic theme
         const p1AnswerText = p1Answer ? 'True' : 'False';
         const p2AnswerText = p2Answer ? 'True' : 'False';
         
-        return `Last round, your team (P1/P2) were asked <b>${p1Item}/${p2Item}</b> and answer was <b>${p1AnswerText}/${p2AnswerText}</b>`;
+        return `Last round: <b>${p1Item}/${p2Item}</b> | <b>${p1AnswerText}/${p2AnswerText}</b>`;
     }
 }

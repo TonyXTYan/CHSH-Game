@@ -27,10 +27,10 @@ const THEMES = {
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Discuss and agree on a shared strategy before the game starts.</li>
-                        <li><strong>No</strong> communicate during the game.</li>
+                        <li><strong>Do not</strong> communicate during the game.</li>
                         <li>Watch the dashboard to see your teams' progress.</li>
                         <li>Focus on <strong>consistency</strong> rather than <strong>randomness</strong>.</li>
-                        <li>This app is fragile, please keep browser page open to stay connected.</li>
+                        <li>Keep this tab open to stay connected.</li>
                     </ul>
                 `
             },
@@ -39,12 +39,12 @@ const THEMES = {
                 content: `
                     <ul style="margin: 0; padding-left: 20px;">
                         <li>Discuss and agree on a shared strategy before the game starts.</li>
-                        <li><strong>No</strong> communicate during the game.</li>
+                        <li><strong>Do not</strong> communicate during the game.</li>
                         <li>Watch the dashboard to see your teams' progress.</li>
                         <li>Player 1 will only receive A or B questions.</li>
                         <li>Player 2 will only receive X or Y questions.</li>
                         <li>Focus on <strong>consistency</strong> and <strong>coordination</strong>.</li>
-                        <li>This app is fragile, please keep browser page open to stay connected.</li>
+                        <li>Keep this tab open to stay connected.</li>
                     </ul>
                 `
             }
