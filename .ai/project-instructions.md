@@ -5,27 +5,11 @@ This file provides stable repository-specific guidance to any AI assistant worki
 ## AI Workspace
 
 - `AGENTS.md` is the canonical entrypoint for agent instructions in this repo.
-- `.ai/project-instructions.md` holds stable, repo-specific coding and architecture facts.
-- `.ai/user_profile.md` is a symlink to shared preferences in `ai-common`.
-- Keep this file focused on durable project facts; avoid temporary debugging notes or session logs.
+- `.ai/coding-workspace.md` — symlink to shared conventions in `ai-common` (folder structure, memory/sessions split, working conventions). Read that first for how `.ai/` works.
+- `.ai/user_profile.md` — symlink to shared preferences in `ai-common`.
+- `.ai/project-instructions.md` (this file) holds stable, repo-specific facts that don't belong in `AGENTS.md`. Keep it focused on durable project facts; avoid temporary debugging notes or session logs.
 
-### .ai/ Folder Structure
-
-```
-.ai/
-  memory/               # persistent memory (Claude Code reads/writes here)
-  prompts/              # active reference docs and strategy files
-  prompts/archived/     # completed or implemented prompt/planning docs
-  sessions/             # per-session AI work output
-  sessions/legacy-generated/  # pre-convention archive
-  project-instructions.md
-  user_profile.md       # symlink → ai-common/user_profile.md
-```
-
-New session folders go directly under `sessions/` using the format:
-`YYYY-MM-DD-<ai-tool>-<session-title>/`
-
-Example: `2026-05-01-claude-mode-refactor/`
+This repo also has `.ai/prompts/` (active reference docs and strategy files, with `archived/` for completed ones) and `.ai/sessions/legacy-generated/` (a pre-convention archive predating the `YYYY-MM-DD-<ai-tool>-<session-title>/` session format) — both repo-specific, not part of the shared `ai-common` structure.
 
 ## Project Overview
 
@@ -96,9 +80,4 @@ Database entities:
 
 In-memory `active_teams` tracks player membership, rounds, combo counts, and per-round answer state for each team.
 
-## Working Conventions
-
-- Keep edits minimal and targeted; avoid broad refactors unless explicitly requested.
-- Preserve existing socket event behaviour and state shape unless the task requires changing them.
-- Add or update tests with behavioural changes.
-- Run relevant pytest suites before finishing changes.
+Working conventions (minimal diffs, test before done, etc.) are in `.ai/coding-workspace.md`. One repo-specific addition: preserve existing socket event behaviour and state shape unless the task requires changing them.
